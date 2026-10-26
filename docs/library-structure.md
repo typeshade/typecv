@@ -5,11 +5,11 @@ accepted version becomes the record that every refactoring pull request cites. I
 code and no behaviour. Labels: **Fact** (read in the code, a document or a measurement),
 **Inference** (reasoned from facts), **Proposal** (a choice this document asks the owner to make).
 
-Evidence: the two audit records of 2026-10-26, [`audits/2026-10-26-sparse-structure.md`](audits/2026-10-26-sparse-structure.md)
-(the sparse pipeline on both tiers) and [`audits/2026-10-26-lab-structure.md`](audits/2026-10-26-lab-structure.md)
-(the lab's orchestration). Both were read on `main` at `5e1c95c` with the compiler pin
-`d36ac502`. A third audit, of how the kernels use the compiler, is in progress and will be added
-as section 3.6 and section 6 before this proposal leaves draft.
+Evidence: the three audit records of 2026-10-26, [`audits/2026-10-26-sparse-structure.md`](audits/2026-10-26-sparse-structure.md)
+(the sparse pipeline on both tiers), [`audits/2026-10-26-lab-structure.md`](audits/2026-10-26-lab-structure.md)
+(the lab's orchestration) and [`audits/2026-10-26-kernel-style.md`](audits/2026-10-26-kernel-style.md)
+(how the kernels use the compiler). All three were read on `main` at `5e1c95c` with the compiler
+pin `d36ac502`.
 
 ## 1. Why
 
@@ -37,7 +37,7 @@ The measurements agree with the verdict.
 | The lab's six mapper values | written in 7 places; seed 17 in 8 places; LM stall 1e-9 in 4; `finalBundleIterations` has two library defaults (25 and 8) |
 | Lab worker | `start` 243 lines with 23 positional parameters; `processFrame` 266 lines; 13 `post()` calls inside computation; policy rules (descriptor retention, pair minimums, keyframe rules) inline and untested |
 | Public surfaces | `src/index.ts` exports geometry, two-view, tracks, BA and focal search; `src/gpu/index.ts` exports 68 names from one plane; the lab's multi-video path imports `src/gpu/internal.ts`; the website imports 7 library-internal modules by deep path |
-| Kernel style | 30 `.shade.ts` files, 251 `@compute` entries, 0 kernel functions, 0 array methods in kernels, 4 host `fuse` plans |
+| Kernel style | 30 `.shade.ts` files, 13,186 lines, 251 `@compute` entries: 56 single-invocation steps, 136 per-element maps, 29 cooperative (workgroup memory or barriers), 12 with atomics, 18 `...Oracle` CPU twins; 8 kernel functions, all in `epipolar.shade.ts`, which the SfM pipeline does not call; 0 array methods in kernels; every dispatch 1D; an entry call never fuses with another call in a plan |
 
 **Inference.** No boundary separates an area of computer vision from another, a policy from its
 numerics, or the oracle from the product path. A change in one place is a change in several.
@@ -168,10 +168,34 @@ drivers, the lab's dense driver as a job over them. The audit of `mvs.ts` (2,579
 
 ### 3.6 Kernels
 
-Placeholder. The audit of how the kernels use the compiler (entries against kernel functions,
-array methods, `push`, `fuse`; what only an entry provides; what a conversion would change bit
-for bit; which compiler gaps forced the hand-written kernels) is in progress. Its findings and the
-phases they add go here before this proposal leaves draft.
+The kernel audit answers the owner's third question. **Fact.** Most entries are intentional.
+Four needs force an entry today: device-side control without a host round trip (the 56
+single-invocation steps, counters read by later dispatches, 11 indirect dispatches); workgroup
+memory and barriers (29 entries; the compiler refuses both in a kernel loop and itself names the
+entry as the remedy); atomics with a returned value or compare-exchange (the TSDF and cloud hash
+tables); and the idle-lane hang A1 (`hardware-observations.md`), since the compiler's kernel
+lowering emits the early return that A1 forbids. **Fact.** The advantages not taken: about 60
+barrier-free per-element maps in the image families (SLIC, planar depth, CLAHE, mesh, inverse
+depth, KLT, Hough, the maps of SIFT and ORB) that a kernel function expresses directly, with the
+compiler owning the workgroup counts (about 70 host expressions), the 65,535-workgroup split and
+fusion; `scan.shade.ts`, its copy in `pair-preparation.shade.ts` and about 25 flag, scatter and
+count entries that re-implement `push` (change 0078); exact reductions and histograms
+(the KLT eigenvalue maximum, the CLAHE and Hough counts) that re-implement kernel reductions
+and the integer scatter; 10 of the 18 oracle twins that add floating-point lanes in an order
+other than the GPU's 64-lane tree, so the CPU tier does not give the GPU's bits; shader
+constants copied into host files instead of exported.
+
+**Proposal.** The rule of the target: a kernel is an entry where only an entry provides what it
+needs (a device-side count or state word read by a later dispatch, indirect dispatch, workgroup
+memory and barriers, an atomic with a returned value, a specific invocation-to-work mapping, a
+long per-lane loop while A1 is open). A per-element map, an exact reduction and a compaction are
+kernel functions, array methods and `push`. A shader constant is exported and imported by the
+host. One `chunkedPass` serves every chunked family. The families that stay entries: the tiled
+matchers, the BA Schur products, the PCG and LM steps, the pair-model and PnP batches, the TSDF
+and cloud hashing, the MVS propagation with its pose cache, the Hough hysteresis, `orbPickTop`,
+and `triangulateTracks` until the compiler's idle-lane scaffold changes. The families that
+convert, in two phases, are the rows of section 5 (phases 9 and 10); the compiler changes they
+wait for are in section 6.
 
 ## 4. The rules of every phase
 
@@ -194,7 +218,8 @@ phases they add go here before this proposal leaves draft.
    functions, then the splits of long functions, then boundary changes. A boundary change waits
    for the owner's go-ahead named in section 5.
 6. **What waits for the scene engine** (`engine-v2.md`, `gpu-resident-scene.md`, R03): no edit of
-   a kernel file beyond what the kernel audit accepts (section 3.6); no restructuring of
+   a sparse-scene kernel (pair models, PnP, triangulation, observations, BA) beyond the
+   conversions of section 3.6 and the compiler changes of section 6; no restructuring of
    `IncrementalSfmSession` or `runIncrementalGpu` beyond the extraction of pure policies; no
    extension of `ReconstructionJob` (new requests go to `SceneRequest`); no removal of a deep
    path; no change of a lab preset value while it is being centralized.
@@ -224,25 +249,43 @@ unchanged, and the document audit of rule 7. Day counts are estimates (**Inferen
 | 6 Long functions | 3–4 | The GPU host functions split without a change to the device steps: request checks, step generators and unpack of `checkPairEstimation`, `estimatePosePnPGpu`, `triangulateTracksGpu`, `evaluateSceneObservationsGpu`; the host half of the two BA routes once where it is verbatim; `IncrementalSfmSession.add` and `update` reduced to pure policies (`evictWindow`, `chooseAnchors`, `carryAnchorEdges`, `archiveSolvePlan`) with unit tests. | Step-name sequences and plan reports identical; WGSL unchanged; session digests on the CPU device and SwiftShader. |
 | 7 Page controller and options schema | 4–5 | `lab-run` takes the run control that `runSfM`, `runMultiVideo` and `runBenchmark` copy (React keeps the state setters); `run-options` replaces the ten `*Override()` helpers and the scattered parser calls with one table; the values the page sends stay the same. | Table test over about 40 query strings: old and new start payloads and record options identical; transcripts and golden records identical. |
 | 8 Boundaries (owner's go-ahead) | 3–5 | BA window, subset, partition and depth-filter policy move from `HostSceneDriver` into the mapper; `sceneSteps` reaches parity with `incrementalSteps` (the six missing features and `verifiedPairs`) from the phase 4 parts; a typed request-to-result map. The lab's stage modules move to their library area (section 7, item 4). | New parity tests: `sceneSteps` with `HostSceneDriver` equals `incrementalSteps` with the CPU driver bit for bit for every phase 0 option set; `incrementalSteps` digest unchanged; `test:shade` and `test:webgpu`. |
-| 9 Kernels (after R03 and the kernel audit) | — | Shared BA bindings or the compiler change of section 6; shared reductions; the conversions the kernel audit accepts; layout constants exported from kernels; retirement of the object-model protocol and `runIncrementalGpu`; the area entry points go live. | Reviewed WGSL diff; CPU tier and SwiftShader bit-identical; native records in the collector. |
-| 10 Dense | — | The audit of `src/mvs/`, then its phases by amendment. | — |
+| 9 Kernels, no compiler change | 4–6, one pull request per step | The conversions that change no bits (audit kernel style, section 7, phase 1): the barrier-free maps of SLIC, planar depth, CLAHE apply, mesh field and vertices, and inverse depth (with struct arrays, which drops the host packing) become kernel functions; `kltEigenMax` and its final step become one kernel `max` reduction; `houghVote` becomes an integer scatter and `houghCollect` a `push`; the mesh classify and emit become a `push`; the shader constants are exported and the host imports them; the three `chunkedPass` copies become one; the four test-only triangulation entries go, or a line says why they stay. | CPU-tier outputs equal before and after on the family's inputs (`test:shade`); the family's WebGPU test unchanged (`test:webgpu`); no new readback and no new submission in the plan report; a run on the RTX 5060 Ti while A1 is open (section 7, item 11). |
+| 10 Kernels, after the compiler changes | — | One BA module (C1); `push` for every compaction (C3): `scan.shade.ts`, the pair scan copy and the compactions of SIFT, ORB, KLT, matching and MVS; the 18 oracle twins deleted (C2; the CPU digests change once, section 7, item 10); the loop-heavy maps (SIFT orient and describe, the global descriptor, the scalar matchers, k-NN) after C6 and C7; retirement of the object-model protocol and `runIncrementalGpu` with the scene engine; the area entry points go live. | Every BA digest and WebGPU BA test unchanged for C1; row order and counts bit-identical for C3; WebGPU unchanged for C2; the phase 9 gate plus a hardware run for the loop-heavy maps. |
+| 11 Dense | — | The audit of `src/mvs/`, then its phases by amendment. | — |
 
 Phases 1 to 3 can run in parallel in different directories; phases 4 to 7 follow them; 8 waits
-for the owner; 9 and 10 wait for R03 and the audits.
+for the owner; 9 touches only the image, feature, motion and dense families, which the scene
+engine does not rewrite, so it can run beside phases 4 to 7; 10 and 11 wait for the compiler
+changes, R03 and the dense audit.
 
 ## 6. Compiler changes this programme asks for
 
-Each is a proposal in TypeShade's `changes/`, by Rule 3.3. The kernel audit will add to this list.
+Each is a proposal in TypeShade's `changes/`, by Rule 3.3, or an issue where the row says so.
+The line counts are the kernel audit's estimates (**Inference**) of what each change removes
+from TypeCV. The compiler probes that establish each limit are in that audit, section 0.1.
 
-| # | Limit (**Fact**) | Effect in TypeCV | Change asked |
-| --- | --- | --- | --- |
-| C1 | `TS8020`: a storage array cannot be a helper's parameter | the fixed and shared-focal BA kernels copy 896 lines; helpers that read a binding belong to the file that declares it | storage-array reference parameters, or a shared bindings module both kernels import with one control struct (no compiler change, a layout change) |
-| C2 | the CPU tier runs one invocation per call and cannot run a barrier (gap G4) | 12 `...Oracle` sibling entries and 29 `device.backend` branches; the oracle proves the sibling, not the tiled entry | a CPU tier that runs a workgroup with barriers |
-| C3 | timestamp profiling is fixed when a device is created | the worker swaps the device for the dense stage and merges statistics across devices | a per-plan or per-scope switch for timestamp writes |
-| C4 | a device loss names no in-flight work | the lab tracks the last kernel itself | a loss record that names the plan or kernel submitted and not completed |
-| C5 | chunk rates live as long as the device | a record on a reused device includes earlier runs | a per-run epoch or snapshot of `chunkRates` |
-| C6 | GPU time cannot be attributed to stages inside one library call | the job diffs kernel statistics; view-graph stages carry no `gpuMs` | a named profiling scope that labels plan reports |
-| C7 | whether a host file may import a kernel's exported constants in this build is not verified | host mirrors of layout words in every driver | a build check; a change only if it fails |
+| # | Limit (**Fact**) | Effect in TypeCV | Change asked | Lines |
+| --- | --- | --- | --- | --- |
+| C1 | `TS8020`: a storage array cannot be a helper's parameter, so a helper that reads a binding belongs to the file that declares it | the fixed and shared-focal BA kernels repeat about 900 of their lines with different record sizes | a helper that takes a storage array by reference, or a module parameterized by constants that a file instantiates twice; without a compiler change, a shared bindings module with one control struct (a layout change) | ~900 |
+| C2 | the CPU tier runs one invocation per call and cannot run a barrier (Rule 8.24), although the compiler's own oracle `dispatch` can | 18 `...Oracle` twins, the MVS splits and 29 backend branches; the oracle proves the twin, not the tiled entry, and 10 twins add in another order than the GPU's tree | the host CPU tier of an entry runs barrier entries in passes, as `dispatch` does | ~250 |
+| C3 | a kernel function's trip count is computed on the host, and a reduction result or a `push` count reaches only the host | `scan.shade.ts`, its copy, and about 25 flag, scatter, advance and mark entries keep counts on the device by hand | a `push` that appends after a count held in a `Resident` and leaves the new count there; a reduction into a `Resident`; a loop bound read from a `Resident`, lowered to an indirect dispatch | 300–400 |
+| C4 | the compiler does not cut a loop into timed chunks (change 0074) | `chunkedPass` three times, `cappedPass`, and per-module chunk generators | a kernel call that splits a proved loop into chunks under `timeBudgetMs` | ~100 |
+| C5 | `write(value)` replaces a whole `Resident` | `mvsCopyF32`, `mvsCopyU32` and their staging buffers copy a view into a slot | `write(value, { offset })` on the queue | ~40 |
+| C6 | the proof refuses `out[base + i]` with a loop-invariant `base`, several fields at a runtime stride, a nested affine record and two record forms in one loop (rule R3 of 8.22) | several maps cannot convert as written | accept an injective offset, offsets `c < s` checked at the call as `a·i + c` is, and nested affine records | enabler |
+| C7 | the map lowering starts every invocation with an early return past the trip count; A1 (`hardware-observations.md`, TypeShade #703) forbids that return on the RTX 5060 Ti | loop-heavy maps must stay entries written clamp-and-mask | an iteration scaffold that clamps the index and masks the writes | enabler |
+| C8 | a kernel call takes no workgroup argument and no indirect count | 11 entries dispatch indirectly and cannot become kernel functions | a kernel call whose trip count is read from a `Resident` (shares C3's lowering) | enabler |
+| C9 | surface §65 lists `min` and `max` among the scatter forms; the compiler refuses `a[k] = min(a[k], e)` | a conversion that needs it fails | a TypeShade issue: the form the surface states, or a surface correction | bug |
+| C10 | timestamp profiling is fixed when a device is created | the worker swaps the device for the dense stage and merges statistics across devices | a per-plan or per-scope switch for timestamp writes | lab |
+| C11 | a device loss names no in-flight work | the lab tracks the last kernel itself | a loss record that names the plan or kernel submitted and not completed | lab |
+| C12 | chunk rates live as long as the device | a record on a reused device includes earlier runs | a per-run epoch or snapshot of `chunkRates` | lab |
+| C13 | GPU time cannot be attributed to stages inside one library call | the job diffs kernel statistics; view-graph stages carry no `gpuMs` | a named profiling scope that labels plan reports | lab |
+
+Not gaps (**Fact**, from the kernel audit): 2D and 3D kernel loops (TypeCV uses only `.x`); f64
+in kernel functions; integer scatter atomics; exported constants for the host (surface §64, a
+facility not taken; the build check of phase 2 confirms it in the esbuild bundle); workgroup
+memory in kernel functions (the entry is the remedy); kernel-to-kernel calls (`fuse` composes
+calls on the host). Device-resident hashing and an on-device sort are gaps that remove no lines
+today and are not asked for.
 
 ## 7. Decisions for the owner
 
@@ -267,13 +310,27 @@ Each is a proposal in TypeShade's `changes/`, by Rule 3.3. The kernel audit will
 8. **Freeze or sequence.** Functional work on the files of a phase stops while the phase is open,
    or follows it.
 9. **The front end (`design-rules.md` §4) and the package path (§5.1):** decided separately, or
-   together with the area entry points of phase 9.
+   together with the area entry points of phase 10.
+10. **Floating-point reductions as kernel reductions** (the observation summary, the BA metrics,
+    the PnP and consensus scores): the CPU tier and WebGPU would then agree bit for bit, but
+    today's numbers and the recorded digests (`PREVIOUS_RESULTS` of the pair-batch and PnP-batch
+    tests) change, and a tie in a score can pick another model. A behaviour change under Rule 2.2,
+    not proposed here. The same decision covers deleting the 18 oracle twins after C2, which
+    renews the CPU digests once.
+11. **The hardware gate of the kernel phases.** Phases 9 and 10 need a run on the RTX 5060 Ti while
+    A1 is open; CI has no such device. Who runs it, and on which samples.
+12. **`EpipolarSession`**, the only kernel-function path today, called by tests and one benchmark:
+    public or not. **The four test-only triangulation entries:** removed or kept with a reason.
 
 ## 8. Verification
 
 - Functional verification is the gate of section 5 on every phase; it runs in CI (`check`,
   `webgpu`) and locally before a pull request is ready. GPU identity is proved on the same runner;
   native GPUs are not in CI (`physical-gpu-runs.md`).
+- A kernel conversion (phases 9 and 10) is proved as the kernel audit's section 5 says: a map, an
+  exact fold and a compaction change no bits, so old and new CPU-tier outputs are equal and the
+  family's WebGPU test stays; a floating-point sum or a deleted oracle twin changes bits and is a
+  decision (section 7, item 10); a chunked reduction keeps one fold order per call.
 - The document audit of rule 7 is separate from the tests: the moved symbols are named in the
   documents, the docs index lists what exists, the website's generated pages link.
 - Status accounting: each phase's pull request records what moved, which gate ran on which
@@ -282,4 +339,4 @@ Each is a proposal in TypeShade's `changes/`, by Rule 3.3. The kernel audit will
 
 ## 9. Record of this document
 
-- 2026-10-26: written from the two audits of the same day; proposed.
+- 2026-10-26: written from the three audits of the same day; proposed (#241).
