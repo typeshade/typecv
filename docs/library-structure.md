@@ -3,7 +3,7 @@
 Status: accepted, 2026-10-26 (the owner's go-ahead in the session, #241). This document is the
 record that every refactoring pull request cites. Section 7 records the disposition of each
 decision. An open item is decided before the phase that needs it. It changes no code and no
-behaviour. Amendments 1 to 3 (section 9) record what the work of 2026-10-26 established. Labels:
+behaviour. Amendments 1 to 4 (section 9) record what the work of 2026-10-26 established. Labels:
 **Fact** (read in the code, a document or a measurement), **Inference** (reasoned from facts),
 **Proposal** (a choice this document asks the owner to make).
 
@@ -1006,3 +1006,7 @@ recorded here by amendment.
   bump of #246 to `725b2969`, the Node 24 investigation of 2026-10-26 and its gate change in
   #249, the `focalGrid` fact of rule 2, the list that change 0094 asks of section 3.6, the status
   of the programme), pull request #248.
+- 2026-10-26: amendment 4 (phase 1b delivered in #250 with its two deviations, phase 1c delivered
+  in #252 with its deviation, the places of section 3.1 after phase 1c, the kernel-alias limit of
+  typeshade/typeshade#780 in rule 4, the declaration errors of #251, the merge of the Node 24 gate
+  change #249 and the count of its monitor, the status of the programme), pull request #NNN.
