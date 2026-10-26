@@ -1,6 +1,6 @@
 import { SparseSymmetric, factorSparseSchur, type SchurFactor } from './sparse-schur.ts';
 import { type BundleAdjustmentOptions } from '../bundle/bundle-adjustment.ts';
-import { validateReconstruction } from '../bundle/validation.ts';
+import { validateReconstruction } from '../../geometry/validation.ts';
 import type {
   LandmarkObservation,
   SparseReconstruction,

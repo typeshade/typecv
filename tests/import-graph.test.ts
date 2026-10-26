@@ -11,9 +11,10 @@ import {
 } from '../scripts/import-graph.mjs';
 
 // The baseline of docs/library-structure.md, section 3.1 ("The layers today") and section 5,
-// phase 0: today's runtime import cycles and today's imports that break the layering rule. A
-// phase that removes a cycle or a break changes this test, and its pull request names the change
-// (section 4, rule 2). `node scripts/import-graph.mjs` prints the same report with line numbers.
+// phase 0: today's runtime import cycles and the imports that break the layering rule, none since
+// phase 1c. A phase that removes a cycle or a break changes this test, and its pull request names
+// the change (section 4, rule 2). `node scripts/import-graph.mjs` prints the same report with
+// line numbers.
 
 const graph = importGraph();
 
@@ -80,16 +81,8 @@ test('every file of src/ has an area of section 3.1 or is an entry point', () =>
   assert.equal(areaOf('src/gpu/new-module.ts'), undefined);
 });
 
-test('two imports break the layering rule, both at run time (section 3.1)', () => {
-  const breaks = layeringBreaks(graph).map(
-    (found) =>
-      `${found.typeOnly ? 'type-only' : 'runtime'} ${found.from} (${found.fromArea}) -> ` +
-      `${found.to} (${found.toArea})`,
-  );
-  assert.deepEqual(breaks, [
-    'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/validation.ts (sfm)',
-    'runtime src/mvs/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
-  ]);
+test('no import breaks the layering rule (section 5, phase 1c)', () => {
+  assert.deepEqual(layeringBreaks(graph), []);
 });
 
 test('an import is type-only exactly when TypeScript erases it', () => {

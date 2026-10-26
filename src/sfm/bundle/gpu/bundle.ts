@@ -1,7 +1,7 @@
 import type { Resident } from 'typeshade/runtime';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
-import { validateReconstruction } from '../validation.ts';
+import { validateReconstruction } from '../../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../../device/gpu/device.ts';

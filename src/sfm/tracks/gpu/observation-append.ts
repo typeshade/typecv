@@ -1,5 +1,5 @@
 import { projectPoint } from '../../../geometry/pose.ts';
-import { validateReconstruction } from '../../bundle/validation.ts';
+import { validateReconstruction } from '../../../geometry/validation.ts';
 import { validateFeatures } from '../tracks.ts';
 import type { ImageFeatures, SparseReconstruction } from '../../../contracts/scene.ts';
 import type {

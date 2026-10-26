@@ -33,7 +33,7 @@ import type {
   DepthSensitivityOptions,
 } from '../../geometry/multiview.ts';
 import { bundleAdjust } from '../bundle/bundle-adjustment.ts';
-import { validateReconstruction } from '../bundle/validation.ts';
+import { validateReconstruction } from '../../geometry/validation.ts';
 import { pendingBundleDirections } from '../bundle/directional-tracks.ts';
 import type { BundleAdjustmentResult } from '../bundle/bundle-adjustment.ts';
 import {

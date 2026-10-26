@@ -89,7 +89,7 @@ import { radialLimitSquared } from '../../geometry/camera.ts';
 import {
   snapshotObservationPaths,
   type ObservationPathMask,
-} from '../../reconstruction/observation-paths.ts';
+} from '../../geometry/observation-paths.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { rgbaToGray } from '../../features/gpu/features.shade.ts';
 import {

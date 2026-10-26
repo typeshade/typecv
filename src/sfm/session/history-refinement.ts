@@ -6,7 +6,7 @@ import {
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
 } from '../bundle/bundle-adjustment.ts';
-import { validateReconstruction } from '../bundle/validation.ts';
+import { validateReconstruction } from '../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../contracts/scene.ts';
 
 /** Whole-output metrics: unlike mapper inlier diagnostics, every exported observation counts. */

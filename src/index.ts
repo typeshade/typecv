@@ -63,15 +63,15 @@ export type {
   InverseDepthBundleResult,
 } from './sfm/depth/inverse-depth-bundle.ts';
 export { cameraMaskFromRegions } from './sfm/tracks/observation-selection.ts';
-export { cameraMaskFromPixelPaths } from './reconstruction/observation-paths.ts';
-export type { ObservationPathMask } from './reconstruction/observation-paths.ts';
+export { cameraMaskFromPixelPaths } from './geometry/observation-paths.ts';
+export type { ObservationPathMask } from './geometry/observation-paths.ts';
 export type {
   CameraObservationSelection,
   ObservationExclusion,
 } from './sfm/tracks/observation-selection.ts';
 export type { CameraObservationMask } from './contracts/observation-mask.ts';
 export { bundleAdjust } from './sfm/bundle/bundle-adjustment.ts';
-export { validateReconstruction } from './sfm/bundle/validation.ts';
+export { validateReconstruction } from './geometry/validation.ts';
 export type {
   BundleAdjustmentOptions,
   BundleAdjustmentResult,
