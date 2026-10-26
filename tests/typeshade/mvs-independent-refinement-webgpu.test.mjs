@@ -173,6 +173,8 @@ test('independent MVS perturbations on actual WebGPU preserve OFF and satisfy ex
         JSON.stringify({ result, errors, legacyHashes, legacyManifestSHA }, null, 2) + '\n',
       );
     assert.deepEqual(errors, []);
+    assert.deepEqual(result.failures, [], 'driver failure metadata is preserved in the raw result');
+    assert.equal(result.status, 'completed');
     assert.equal(result.inputSHA, inputSHA);
     const rows = Object.fromEntries(result.rows.map((row) => [row.name, row]));
     assert.deepEqual(rows.default.final, rows.off.final);
