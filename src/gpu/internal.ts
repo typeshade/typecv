@@ -75,7 +75,7 @@ export {
   trackKltReference,
 } from './klt.ts';
 export { createKltTracker, kltResidentBytes } from './klt-tracker.ts';
-export { extractSiftGpuResident } from './sift.ts';
+export { extractSiftGpuResident } from '../features/gpu/sift.ts';
 export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
 /**
  * @internal The GPU backend of `buildViewGraph` (`docs/multi-video.md` step 4) and the SIFT
@@ -101,6 +101,6 @@ export type {
 } from './multi-video.ts';
 /** @internal Consuming worker-only lifetime; no immutable public API change. */
 export type { OwnedMultiVideoOptions, OwnedMultiVideoResult } from './multi-video.ts';
-export { globalDescriptorGpu } from './global-descriptor-gpu.ts';
-export { parseVocabulary } from './global-descriptor.ts';
+export { globalDescriptorGpu } from '../features/gpu/global-descriptor-gpu.ts';
+export { parseVocabulary } from '../features/gpu/global-descriptor.ts';
 export { quantizeDescriptors } from '../reconstruction/view-graph.ts';

@@ -22,8 +22,8 @@ import {
 } from '../reconstruction/view-graph.ts';
 import type { ShadeDevice } from '../device/gpu/device.ts';
 import { gpuViewGraphBackend } from './view-graph.ts';
-import { globalDescriptorGpu } from './global-descriptor-gpu.ts';
-import type { GpuResidentSift } from './sift.ts';
+import { globalDescriptorGpu } from '../features/gpu/global-descriptor-gpu.ts';
+import type { GpuResidentSift } from '../features/gpu/sift.ts';
 import { reconstructIncrementalGpu, type GpuIncrementalOptions } from './mapper.ts';
 import { OwnedMultiVideoFeatures, graphMatchBytes } from './multi-video-lifetime.ts';
 import type { ViewGraphDescriptorStatistics } from './view-graph-descriptors.ts';

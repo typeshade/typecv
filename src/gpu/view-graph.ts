@@ -1,5 +1,5 @@
 import type { ViewGraphBackend } from '../reconstruction/view-graph.ts';
-import { matchFloatDescriptorsGpu } from './float-matching.ts';
+import { matchFloatDescriptorsGpu } from '../features/gpu/float-matching.ts';
 import { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
 import type { ShadeDevice } from '../device/gpu/device.ts';
 import {

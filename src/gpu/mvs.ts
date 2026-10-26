@@ -91,7 +91,7 @@ import {
   type ObservationPathMask,
 } from '../reconstruction/observation-paths.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from '../device/gpu/device.ts';
-import { rgbaToGray } from './features.shade.ts';
+import { rgbaToGray } from '../features/gpu/features.shade.ts';
 import {
   MVS_CAMERA_FLOATS,
   MVS_SEED_FLOATS,
@@ -134,7 +134,7 @@ import {
   mvsUndistort,
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
-import { packRgba } from './sift.ts';
+import { packRgba } from '../features/gpu/sift.ts';
 import { readOnlyRgbaWords } from '../device/gpu/rgba-read-view.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
 import {

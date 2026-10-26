@@ -41,13 +41,13 @@ export type {
   GpuFloatIncrementalOptions,
   GpuFloatIncrementalResult,
 } from './mapper.ts';
-export { matchFloatDescriptorsGpu } from './float-matching.ts';
+export { matchFloatDescriptorsGpu } from '../features/gpu/float-matching.ts';
 export { equalizeGrayCpu, equalizeGrayGpu } from '../image/gpu/clahe.ts';
 export type { ClaheOptions } from '../image/gpu/clahe.ts';
-export { extractOrbGpuResident } from './orb.ts';
-export type { GpuOrbOptions, GpuResidentOrb } from './orb.ts';
-export { extractOrbCpu } from './orb-reference.ts';
-export type { OrbFeaturesCpu, OrbParameters } from './orb-reference.ts';
+export { extractOrbGpuResident } from '../features/gpu/orb.ts';
+export type { GpuOrbOptions, GpuResidentOrb } from '../features/gpu/orb.ts';
+export { extractOrbCpu } from '../features/gpu/orb-reference.ts';
+export type { OrbFeaturesCpu, OrbParameters } from '../features/gpu/orb-reference.ts';
 export { slic, slicGpu } from '../analysis/gpu/slic.ts';
 export type { SlicOptions, SlicResult } from '../analysis/gpu/slic.ts';
 export { canny, cannyGpu, houghLines, houghLinesGpu } from '../analysis/gpu/hough.ts';
@@ -59,8 +59,13 @@ export type {
   HoughLinesResult,
   HoughSegment,
 } from '../analysis/gpu/hough.ts';
-export { extractSiftGpuResident } from './sift.ts';
-export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
+export { extractSiftGpuResident } from '../features/gpu/sift.ts';
+export type {
+  GpuSiftOptions,
+  GpuResidentSift,
+  GpuSiftExecution,
+  GpuSiftGray,
+} from '../features/gpu/sift.ts';
 export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
 export { expandObservationsGpu } from './observation-expansion.ts';
 export { appendExpandedObservations } from './observation-append.ts';
@@ -101,7 +106,7 @@ export type {
   GpuResidentFloatDescriptors,
   GpuFloatMatchOptions,
   GpuFloatMatches,
-} from './float-matching.ts';
+} from '../features/gpu/float-matching.ts';
 export { bundleAdjustGpu } from './bundle.ts';
 export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
 export { EpipolarSession } from './epipolar.ts';
@@ -128,14 +133,14 @@ export {
   extractFeaturesGpuResident,
   matchFeaturesGpu,
   matchResidentFeaturesGpu,
-} from './features.ts';
+} from '../features/gpu/features.ts';
 export type {
   GpuFeatureExecution,
   GpuFeatureOptions,
   GpuFeatures,
   GpuFeatureMatches,
   GpuResidentFeatures,
-} from './features.ts';
+} from '../features/gpu/features.ts';
 
 export { reconstructDenseGpu } from './mvs.ts';
 export type {
@@ -186,13 +191,13 @@ export type {
   MvsResidencyMode,
 } from './mvs-residency.ts';
 
-export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';
+export { extractFeaturesTiledGpu, featureTileRegions } from '../features/gpu/tiled-features.ts';
 export type {
   GpuImageSource,
   ImageRegion,
   GpuTiledFeatureOptions,
   GpuTiledFeatures,
-} from './tiled-features.ts';
+} from '../features/gpu/tiled-features.ts';
 export {
   BAG_OF_WORDS_VOCABULARY_ID,
   BAG_OF_WORDS_WORDS,
@@ -210,12 +215,15 @@ export {
   vladDescriptorReference,
   vladFromWords,
   wordHistogram,
-} from './global-descriptor.ts';
-export type { GlobalDescriptorKind, GlobalDescriptorOptions } from './global-descriptor.ts';
+} from '../features/gpu/global-descriptor.ts';
+export type {
+  GlobalDescriptorKind,
+  GlobalDescriptorOptions,
+} from '../features/gpu/global-descriptor.ts';
 export {
   assignWordsGpu,
   bagOfWordsDescriptorGpu,
   globalDescriptorGpu,
   vladDescriptorGpu,
-} from './global-descriptor-gpu.ts';
-export type { GlobalAssignOptions } from './global-descriptor-gpu.ts';
+} from '../features/gpu/global-descriptor-gpu.ts';
+export type { GlobalAssignOptions } from '../features/gpu/global-descriptor-gpu.ts';

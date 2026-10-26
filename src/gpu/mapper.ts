@@ -57,7 +57,7 @@ import {
   type GpuResidentFloatDescriptors,
   type GpuFloatMatchOptions,
   type GpuFloatMatches,
-} from './float-matching.ts';
+} from '../features/gpu/float-matching.ts';
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
