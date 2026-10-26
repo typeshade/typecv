@@ -92,3 +92,59 @@ export async function loadPageModule(environment = ENVIRONMENT) {
     },
   };
 }
+
+/**
+ * The query strings of the start payload baseline (`run-options.test.mjs`,
+ * `run-options-browser.test.mjs`): `[kind, query, base]`. Each string carries
+ * `LAB_QUERY_BASE` unless `base` is false.
+ */
+export const LAB_QUERY_BASE = 'decode=main&fps=1';
+export const LAB_QUERIES = [
+  ['single', ''],
+  ['single', 'gate=legacy'],
+  ['single', 'gate=phase'],
+  ['single', 'gate=other'],
+  ['single', 'octave=-1'],
+  ['single', 'octave=0'],
+  ['single', 'guided=0'],
+  ['single', 'guided=1'],
+  ['single', 'guided=tiled'],
+  ['single', 'clahe=1'],
+  ['single', 'features=orb'],
+  ['single', 'features=orb&orbFeatures=2000&orbRatio=0.9&orbDistance=64'],
+  ['single', 'features=orb&orbFeatures=9000&orbRatio=1&orbDistance=0'],
+  ['single', 'klt=1'],
+  ['single', 'klt=1&kltCapacity=1024&kltFill=1&kltMatching=tracks&kltGate=1&gate=legacy'],
+  ['single', 'klt=0&kltCapacity=99999'],
+  ['single', 'decode=main&fps=2', false],
+  ['single', 'decode=main&fps=0', false],
+  ['single', 'bounded=1'],
+  ['single', 'fp64=float'],
+  ['single', 'fp64=integer'],
+  ['single', 'fp64=double'],
+  ['single', 'budget=100'],
+  ['single', 'budget=0'],
+  ['single', 'budget=60001'],
+  ['single', 'dense=1'],
+  ['single', 'denseFusion=pixel'],
+  ['single', 'denseFusion=tsdf&denseClean=1'],
+  ['single', 'denseClean=0&denseFusion=pixel'],
+  ['single', 'denseMesh=1'],
+  ['single', 'gpuTimestamps=1'],
+  ['single', 'denseBoundary=1&denseFiniteGain=0.5'],
+  ['single', 'denseBoundary=2&denseFiniteGain=3'],
+  ['single', 'fps=1', false],
+  [
+    'single',
+    'gate=legacy&octave=-1&guided=tiled&clahe=1&bounded=1&fp64=integer&budget=500&denseMesh=1',
+  ],
+  ['multi', ''],
+  ['multi', 'canonical=0'],
+  ['multi', 'maxKeyframes=30'],
+  ['multi', 'maxKeyframes=1'],
+  ['multi', 'maxFeatures=2048'],
+  ['multi', 'clahe=1&octave=-1'],
+  ['multi', 'fp64=float&budget=100'],
+  ['multi', 'denseFusion=pixel&denseMesh=1&gpuTimestamps=1'],
+  ['multi', 'gate=legacy&klt=1&features=orb&bounded=1'],
+];

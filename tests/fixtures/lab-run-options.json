@@ -1,0 +1,2793 @@
+[
+ {
+  "query": "decode=main&fps=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "legacy",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "legacy",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=phase",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=other",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&octave=-1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&octave=0",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": 0,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 1024,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=0",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": false,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=tiled",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "tiled",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "guidedKernel": "tiled",
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&clahe=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": true,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": true,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "orb",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "corner",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4000,
+   "matchRatio": 0.95,
+   "maxDistance": 256,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "features": "orb",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb&orbFeatures=2000&orbRatio=0.9&orbDistance=64",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "orb",
+   "guidedKernel": "scalar",
+   "orbTuning": {
+    "maxFeatures": 2000,
+    "ratio": 0.9,
+    "maxDistance": 64
+   },
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "corner",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 2000,
+   "matchRatio": 0.9,
+   "maxDistance": 64,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "features": "orb",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb&orbFeatures=9000&orbRatio=1&orbDistance=0",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "orb",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "corner",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4000,
+   "matchRatio": 0.95,
+   "maxDistance": 256,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "features": "orb",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": true,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": true
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=1&kltCapacity=1024&kltFill=1&kltMatching=tracks&kltGate=1&gate=legacy",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "legacy",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": true,
+   "kltSetup": {
+    "capacity": 1024,
+    "fillIn": true,
+    "matching": "tracks",
+    "gate": true
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "legacy",
+   "klt": true,
+   "kltSetup": {
+    "capacity": 1024,
+    "fillIn": true,
+    "matching": "tracks",
+    "gate": true
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=0&kltCapacity=99999",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=2",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 2,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=0",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 4,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&bounded=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": true,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": true,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=float",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": "float",
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=integer",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": "integer",
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "integer",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=double",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=100",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": 100,
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=0",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=60001",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&dense=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=pixel",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": true,
+   "denseFusion": "pixel",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=tsdf&denseClean=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": true,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseClean=0&denseFusion=pixel",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "pixel",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseMesh=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": true,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gpuTimestamps=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": true,
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseBoundary=1&denseFiniteGain=0.5",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {
+    "boundaryAware": true,
+    "minFiniteGain": 0.5
+   },
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseBoundary=2&denseFiniteGain=3",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "fps=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": false,
+   "fp64": {
+    "$": "undefined"
+   },
+   "budget": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false,
+   "gate": "phase",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": false,
+   "features": "sift",
+   "guidedKernel": "scalar",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": true,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "worker",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy&octave=-1&guided=tiled&clahe=1&bounded=1&fp64=integer&budget=500&denseMesh=1",
+  "kind": "single",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "start",
+   "focalRatio": 0.8,
+   "focalSearch": true,
+   "profile": "video",
+   "bounded": true,
+   "fp64": "integer",
+   "budget": 500,
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": true,
+   "gate": "legacy",
+   "firstOctave": -1,
+   "guided": true,
+   "clahe": true,
+   "features": "sift",
+   "guidedKernel": "tiled",
+   "orbTuning": {},
+   "klt": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "analysisEdge": 320
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 32,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "focalSearch": true,
+   "maxFeatures": 4096,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": true,
+   "fp64Flavor": "integer",
+   "guidedMatching": true,
+   "guidedKernel": "tiled",
+   "siftFirstOctave": -1,
+   "clahe": true,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "legacy",
+   "klt": false
+  }
+ },
+ {
+  "query": "decode=main&fps=1",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&canonical=0",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": false,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": false,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxKeyframes=30",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 30,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 30,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxKeyframes=1",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxFeatures=2048",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": 2048
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 2048,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&clahe=1&octave=-1",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": -1,
+   "clahe": true,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": -1,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=float&budget=100",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": 100,
+   "fp64": "float",
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=pixel&denseMesh=1&gpuTimestamps=1",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": true,
+   "denseClean": true,
+   "denseFusion": "pixel",
+   "denseQuality": {},
+   "denseMesh": true
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy&klt=1&features=orb&bounded=1",
+  "kind": "multi",
+  "failure": null,
+  "start": {
+   "id": 1,
+   "type": "multiStart",
+   "query": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "analysisEdge": 1280,
+   "firstOctave": 0,
+   "clahe": false,
+   "budget": {
+    "$": "undefined"
+   },
+   "fp64": {
+    "$": "undefined"
+   },
+   "dense": true,
+   "denseGpuTimestamps": {
+    "$": "undefined"
+   },
+   "denseClean": false,
+   "denseFusion": "tsdf",
+   "denseQuality": {},
+   "denseMesh": false
+  },
+  "options": {
+   "frontEnd": "sift",
+   "focalRatio": 0.8,
+   "windowSize": 0,
+   "ransacIterations": 500,
+   "maxErrorPx": 3,
+   "bundleIterations": 4,
+   "finalBundleIterations": 8,
+   "refineSharedFocal": true,
+   "maxFeatures": 16384,
+   "matchRatio": 0.8,
+   "maxDistance": 10000000000000000000,
+   "boundedSubmissions": false,
+   "fp64Flavor": "float",
+   "guidedMatching": false,
+   "siftFirstOctave": 0,
+   "clahe": false,
+   "videoSampleFps": 1,
+   "videoDecode": "main-thread",
+   "videoSource": "source",
+   "keyframeGate": "phase",
+   "multiVideo": {
+    "descriptor": "vlad-32-v1",
+    "k": 10,
+    "minMatches": 30,
+    "minEdgeInliers": 25,
+    "maxKeyframesPerVideo": 60,
+    "growth": "incremental",
+    "canonical": true,
+    "focalPerVideo": false
+   }
+  }
+ }
+]
