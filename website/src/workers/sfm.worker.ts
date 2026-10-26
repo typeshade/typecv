@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
-import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
-import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
-import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching';
+import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling.ts';
+import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate.ts';
+import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching.ts';
 import {
   KLT_COVER_MATCHES,
   mergeTrackerPairs,
@@ -9,9 +9,9 @@ import {
   trackAnchor,
   trackerVerdicts,
   type TrackerPair,
-} from '../lib/klt-join';
-import type { DenseQualityOptions } from '../lib/dense-quality';
-import type { KltSetup } from '../lib/sift-quality';
+} from '../lib/klt-join.ts';
+import type { DenseQualityOptions } from '../lib/dense-quality.ts';
+import type { KltSetup } from '../lib/sift-quality.ts';
 import {
   DENSE_CLEAN_OPTIONS,
   DENSE_LAB_FUSION,
@@ -26,15 +26,15 @@ import {
   runDense,
   type DenseJob,
   type DenseRunContext,
-} from '../lib/dense-run';
-import { workingBytesFromAdapter } from '../lib/working-budget';
-import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video';
-import { adapterFacts } from '../lib/adapter-info';
-import { reportGpuMs } from '../lib/run-record';
-import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context';
-import type { GpuPreparationPhase } from '../lib/gpu-preparation';
-import { initializationFailureRecord } from '../lib/initialization-failure';
-import { sceneViewWithFrame } from '../lib/sfm-scene';
+} from '../lib/dense-run.ts';
+import { workingBytesFromAdapter } from '../lib/working-budget.ts';
+import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video.ts';
+import { adapterFacts } from '../lib/adapter-info.ts';
+import { reportGpuMs } from '../lib/run-record.ts';
+import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context.ts';
+import type { GpuPreparationPhase } from '../lib/gpu-preparation.ts';
+import { initializationFailureRecord } from '../lib/initialization-failure.ts';
+import { sceneViewWithFrame } from '../lib/sfm-scene.ts';
 export {};
 type Frame = {
   id: number;
