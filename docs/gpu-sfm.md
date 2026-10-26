@@ -259,6 +259,7 @@ devices in one JS context, TypeCV's or another consumer's, are independent.
 ```sh
 npm ci
 npm run check
+npm run test:digests   # the characterization digests of docs/library-structure.md, phase 0
 npx playwright install --only-shell chromium
 npm run test:webgpu
 npm run benchmark:gpu > data/gpu-software.json

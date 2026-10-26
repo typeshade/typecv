@@ -14,6 +14,8 @@ export interface KernelDigest {
 }
 /** The contents of tests/digests/kernels.json. */
 export interface KernelDigests {
+  /** The command that writes the file. */
+  readonly update: string;
   readonly compiler: string;
   readonly modules: Readonly<Record<string, KernelDigest>>;
 }

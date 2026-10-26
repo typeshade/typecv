@@ -1,0 +1,123 @@
+{
+  "update": "TYPECV_DIGEST_UPDATE=1 node --test tests/digests/south-building.test.ts",
+  "cases": {
+    "focalSearchSteps/south-building/start-1.2": {
+      "output": "22549d795a5af95641c7bd22b1b1c8712444174db6466531899760499078d170",
+      "parts": {
+        "candidates": "9be0f09880a640448ad6e14ba856b567c47be3cb7c1f8db042a28081db2bcb72",
+        "gridRatio": "993ba9b6d0277f51c811ac25a8753c5d0cfae11d4663983487996145333921ff",
+        "ratio": "66c2a2e1a5fb33b42807d6a957b80e70e08201b59ba9e73e34da097a632640df",
+        "views": "d1db22c01a65fe980dd64b9b84a2573236f64e737d242e04de003d142f672399"
+      },
+      "trace": "4461312c979602b74d7eceaed32990c55b49b7b670ddc8d96d9b2284860d2f90",
+      "requests": {
+        "bundle": 60,
+        "observations": 108,
+        "pnp": 36,
+        "triangulation": 83,
+        "verifyPair": 120
+      },
+      "summary": {
+        "views": 5,
+        "throws": 0
+      }
+    },
+    "reconstructComponent/south-building/lab-known-matches": {
+      "output": "6bacd767d35b4c2672fe91c517b3ab9d5ed6844b1d0e1d891f542f9fc4d2d1e0",
+      "parts": {
+        "graph": "15be66ccd62f2e568598574a38ad9c5f0929d2014a63ff75487538c9290ad01d",
+        "result": "cedb17e9d38829879b4732e413cc3dbb21e107d35e4946155a453c9b4f706dac"
+      },
+      "trace": "6d95fcce052d6d89f249dc278ae7d67853826e3b23c5e1e32474d81ebb35a694",
+      "requests": {
+        "bundle": 12,
+        "observations": 23,
+        "pnp": 10,
+        "triangulation": 21
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 5785,
+        "observations": 15756,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/south-building/lab": {
+      "output": "db7721d1649e33b1d399b2b99cafa71f5a1762982bcf33bebe3f32c81c7ceba9",
+      "parts": {
+        "diagnostics": "5bcf3f70d1332f0e58e8841c1ac53a6f8dbd276fce745b6864c7ba160bce64a6",
+        "reconstruction": "e3ea4e4ab24bcd1bfb2c89d499477d0dd426099e6005c812a70bb7e6f6669281",
+        "tracking": "88918b709c31d4abdfe0d3c35bbbb61d2f4dab93aee59143a9c4c440580ada27",
+        "tracks": "944d2c7fa8ac7cb8560d503b5011b9db106571c1268d4c9364fe183caac7593b",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "122058dcf284303b77d94f4c0d624a475bfca987b4c850bf4ec4c78b800c5b5e"
+      },
+      "trace": "d49bbf9f95df0a2d7cdfdfdc4d27979def5546c0585c79fe0b1a69bc72db110c",
+      "requests": {
+        "bundle": 12,
+        "observations": 23,
+        "pnp": 10,
+        "triangulation": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 5785,
+        "observations": 15762,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/south-building/lab": {
+      "output": "a96a652b2635a4b201e03989ec79fc27bb62144d1b77bb0ceb4f68bfebe4536b",
+      "parts": {
+        "diagnostics": "9194ffa616125e62d40656d78bc2f134edc8a4272b91890bb46f7ea714ad03a7",
+        "reconstruction": "ae9d7a0525830e40dafaec97c07225fc0066990cff63ee70e52da6e8efa9afdd",
+        "tracking": "88918b709c31d4abdfe0d3c35bbbb61d2f4dab93aee59143a9c4c440580ada27",
+        "tracks": "944d2c7fa8ac7cb8560d503b5011b9db106571c1268d4c9364fe183caac7593b",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "fa73006f5ebaec8b4003025d9bc21b99a50d56f4b3126160bde1624c88529d04",
+      "requests": {
+        "bundle": 12,
+        "continue": 10,
+        "filter": 12,
+        "measure": 1,
+        "pnp": 10,
+        "register": 12,
+        "snapshot": 1,
+        "triangulate": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 5785,
+        "observations": 15762,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "refineIncremental/south-building/lab-near-then-all": {
+      "output": "b229502b00c4ddd2b20457dfa28266fdd1bfbca871c5f032cf47de74d268cd88",
+      "parts": {
+        "initial": "daa6a4078f08fc3b8eeb6817fbf4a6ad5e3eab7473da68589219e6d06328d87a",
+        "refined": "65f7e0735c444c92e254cfb611b97789ac6dbb4b61d7bf2b857cfa9793b25162"
+      },
+      "trace": "f09b87728315eb6dd39f3421e8f23820b6018d801ca9f100b111e07bf45fa8cc",
+      "requests": {
+        "bundle": 1,
+        "observations": 14,
+        "triangulation": 2,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 5783,
+        "observations": 15755,
+        "unregistered": 0,
+        "throws": 0
+      }
+    }
+  }
+}

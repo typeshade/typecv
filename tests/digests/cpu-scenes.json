@@ -1,0 +1,257 @@
+{
+  "update": "TYPECV_DIGEST_UPDATE=1 node --test tests/characterization.test.ts",
+  "cases": {
+    "focalSearchSteps/scene-90x6-focal-1.2": {
+      "output": "8d4aebdf9df782a14241a0248991608fae484ee1302f05b388e89e8fb95ca627",
+      "parts": {
+        "candidates": "ccc1281ddf71554b9ec7d9449beeac15832c4d1c4cdc37e648f4eda69b9e8575",
+        "gridRatio": "bbda085d073cf962ab48663298972fda25255c2b9db4c679face41ea0d7e3644",
+        "ratio": "b2c863b6b889b0e514604dfe00abe1f3d88d5def3080bc70d2b90264d59124b2",
+        "views": "1ed3e25a528341581cb2b299672e7b6ad1efc619663d17de5e918de50a1edcaa"
+      },
+      "trace": "6dbb653f2975571fa61122dae5c1bafbbe6a86004ff89939ac2fd7c289329372",
+      "requests": {
+        "bundle": 48,
+        "observations": 84,
+        "pnp": 24,
+        "triangulation": 15
+      },
+      "summary": {
+        "views": 4,
+        "throws": 0
+      }
+    },
+    "reconstructComponent/scene-80x6-known-matches": {
+      "output": "065c5f6909860c8809a1fdf6db646c3561a6ea881d7bc41d2fcd622b7517a4b8",
+      "parts": {
+        "graph": "0666f2b72470abe8cd90a5996faaaab1674e4b09b0d1e57d29992d10c35e6f9f",
+        "result": "65d2a666034f7a18aae3d2ca35613325b7133e20cc0f40136e9b299e9e7821a8"
+      },
+      "trace": "3e78d9c3b19526bb3b42d84b8b6a3c5c34d8bd8ed27496d37e762201d00abfe2",
+      "requests": {
+        "bundle": 6,
+        "observations": 11,
+        "pnp": 4,
+        "triangulation": 1
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 80,
+        "observations": 480,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/scene-90x6-distorted/global": {
+      "output": "402cf17e2c8fd5877a4e36113d641c7a0c658b9e22d2693377131ec0f56f0708",
+      "parts": {
+        "diagnostics": "b2471f4427f540dbf42951d5c4d4b35d92ce0378a65838740f9ed82888e67e4f",
+        "reconstruction": "7e775ff07a136719d6b38c830e95b93667266da6eea48b088cdcdfdd57d856d6",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"
+      },
+      "trace": "2dbaf20c90811e9ffe42d6f38341814dea42c1e1a642d73cd99cdfd8b020a0b7",
+      "requests": {
+        "bundle": 6,
+        "observations": 11,
+        "pnp": 4,
+        "triangulation": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/scene-90x6-distorted/local-subset": {
+      "output": "a453b070c650f72eeefe9c0dc57a96e6e3b5c6296dbf2ddd66839d0abd0e8d8d",
+      "parts": {
+        "diagnostics": "de3734c42ec02b1be7aa20fa194a77a405e160b371eb4c7338497dd5a10d094f",
+        "reconstruction": "f5f4fb645693d638875b12f697cd8a0dabb66d50e66c60d300ec9cbdfc28c53a",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"
+      },
+      "trace": "2dbaf20c90811e9ffe42d6f38341814dea42c1e1a642d73cd99cdfd8b020a0b7",
+      "requests": {
+        "bundle": 6,
+        "observations": 11,
+        "pnp": 4,
+        "triangulation": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/scene-90x6-distorted/shared-focal": {
+      "output": "c13d8c8418930635308b3c63fbcf5dcefcee562f09fe35af1f8779de5db60f9d",
+      "parts": {
+        "diagnostics": "a9fc1c96c5f1ad4ae7c4a8c477850a2379ab055295302303750fe602714090fb",
+        "reconstruction": "6df76fe4a942032b11ac22068e1b2262745c7da815e5d4bbdbc2cc1415c44ca9",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"
+      },
+      "trace": "2dbaf20c90811e9ffe42d6f38341814dea42c1e1a642d73cd99cdfd8b020a0b7",
+      "requests": {
+        "bundle": 6,
+        "observations": 11,
+        "pnp": 4,
+        "triangulation": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/scene-90x6-focal-1.2/focal-search": {
+      "output": "ee204b9549d6c1970b122e74f96dfb4f021e5e1bc9c40e87d5012f42016e4519",
+      "parts": {
+        "diagnostics": "b906bc1ecbef68a1b18c98180e8927c7db5a316bff5c94dfefee94e4d50c7f18",
+        "reconstruction": "e1f059e91462796397035520051615c970ff2a4c5abec268a1617bb674a9b1f7",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"
+      },
+      "trace": "3f97a2dae2c19852b91907ceeaae4b8382d63a431d4adc4bed668483017c9c60",
+      "requests": {
+        "bundle": 54,
+        "observations": 95,
+        "pnp": 28,
+        "triangulation": 16,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/scene-90x6-distorted/global": {
+      "output": "36681983efb1de0b2f9b2e4f74110da93d95df951f2ceb6c31dad2b12252a312",
+      "parts": {
+        "diagnostics": "a56cc6f97bfff3862c5e056424af54e75d1199965d90ae98358fd25477437362",
+        "reconstruction": "7e775ff07a136719d6b38c830e95b93667266da6eea48b088cdcdfdd57d856d6",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "9bbb19b6e4d507ffdca5d0aed8a4040fb21d4859c5c1df2b66e810663cb80d97",
+      "requests": {
+        "bundle": 6,
+        "continue": 4,
+        "filter": 6,
+        "measure": 1,
+        "pnp": 4,
+        "register": 6,
+        "snapshot": 1,
+        "triangulate": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/scene-90x6-distorted/local-subset": {
+      "output": "daee8b3027c877f5f2821cda805c2f78334cc07fd1128d78cdcad1a863ca27d9",
+      "parts": {
+        "diagnostics": "c346dc9038fff37d3a1b6adfcba1ab089c8ff9d22ed5334fe79b277e56e69869",
+        "reconstruction": "f5f4fb645693d638875b12f697cd8a0dabb66d50e66c60d300ec9cbdfc28c53a",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "0ddb8694908de7bdc16e87e04020f854bc1f3c995fc29db38f964077bdeba12d",
+      "requests": {
+        "bundle": 6,
+        "continue": 4,
+        "filter": 6,
+        "measure": 1,
+        "pnp": 4,
+        "register": 6,
+        "snapshot": 1,
+        "triangulate": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/scene-90x6-distorted/shared-focal": {
+      "output": "7fae487570e73212b19ebb382ab2c32a84a385d71b544172b9c823075e824769",
+      "parts": {
+        "diagnostics": "d8733c51e8b2a837b8adb51bc8da17b1ab068f1c113b6ac087d54638266ff18f",
+        "reconstruction": "6df76fe4a942032b11ac22068e1b2262745c7da815e5d4bbdbc2cc1415c44ca9",
+        "tracking": "da85778627936b307c0da92d26e85b2e54fe7222731ea0c44e1073f35f875071",
+        "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "78c097ffed2f15f53676de908a1e7dbd419f0abfb9e2da1aed66388aab576907",
+      "requests": {
+        "bundle": 6,
+        "continue": 4,
+        "filter": 6,
+        "measure": 1,
+        "pnp": 4,
+        "register": 6,
+        "snapshot": 1,
+        "triangulate": 1,
+        "verifyPair": 15
+      },
+      "summary": {
+        "views": 6,
+        "landmarks": 90,
+        "observations": 540,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "refineIncremental/refinement-fixture": {
+      "output": "33cfaddcbf0102f253734dcc4568787a323705af9b04ede972e36ed65b1e38fd",
+      "parts": {
+        "initial": "af4d2a60ee258b6cdb5a7ce6a2d8bdacfbefec7445a6ce980b60c1f8c241fc4b",
+        "refined": "22b8dfa51684fe2bfa0fe476742c71ab88efeb60a28a527fd6276ac6fc9ce16e"
+      },
+      "trace": "409c56f15cf55b8799f46b4e24fd3e9a3fe1ecc67e66d1c372b8138153776dd9",
+      "requests": {
+        "bundle": 1,
+        "observations": 3,
+        "triangulation": 1,
+        "verifyPair": 6
+      },
+      "summary": {
+        "views": 4,
+        "landmarks": 60,
+        "observations": 240,
+        "unregistered": 0,
+        "throws": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "update": "TYPECV_DIGEST_UPDATE=1 node --test tests/digests/scenes.test.ts",
+  "cases": {
+    "reconstructComponent/path-scene/component-0": {
+      "output": "24d1c561da4f7fe3f8d5389e41b0525b2b49c4c3c5261fac30369339f14eb4e0",
+      "parts": {
+        "graph": "cd1bc4db359de6bd92c1d899d1f892df44f6c1a5f4c297978b25be6318b7b0b6",
+        "result": "56a2e369480c203c6e42935cbe6d1a3e9662b400c2cfe68bad22ea3c05a7dc0a"
+      },
+      "trace": "846870fd13ba2c2f6ebb1e99f848e9a722b371cd17d32ce0368722bc84c6c705",
+      "requests": {
+        "bundle": 21,
+        "observations": 36,
+        "pnp": 19,
+        "triangulation": 1
+      },
+      "summary": {
+        "views": 21,
+        "landmarks": 60,
+        "observations": 1260,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructComponent/path-scene/component-1": {
+      "output": "4e06cd4527ab8e8d0883ed7b5bf4c3ec2bfd519fdd1a50a2c63d75c72738b252",
+      "parts": {
+        "graph": "cd1bc4db359de6bd92c1d899d1f892df44f6c1a5f4c297978b25be6318b7b0b6",
+        "result": "6fccfa209eded9766569012c58835387a7a65b128a5b13cc66eecd02bd75549d"
+      },
+      "trace": "7276bf2a978efa7d4bcb6d7633e421450465b9aa9441eb64562f9bb557efafa3",
+      "requests": {
+        "bundle": 7,
+        "observations": 13,
+        "pnp": 5,
+        "triangulation": 1
+      },
+      "summary": {
+        "views": 7,
+        "landmarks": 60,
+        "observations": 414,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/scene-90x12/defaults": {
+      "output": "7abdea9aecb2701b4675aa41fcbb3f2519b431b64973819c61c17f9b8fa36335",
+      "parts": {
+        "diagnostics": "bb908ba594a2cf68b3dc094e2a219db8a106503579d40c04874ef63c3f5db101",
+        "reconstruction": "6657e2d5abe26ef9cc43a4e04b36e304350091d3be8155b3cf1ab9f92fd009ba",
+        "tracking": "5ed09e25871e7f749373fcdc79606b95f2fa0745bf650e92ba923df288b99de1",
+        "tracks": "10daa70255b6cba76d91e5abfa06392256ffebf385a3b59f272f481f6fe822a2",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "58ad4ed23dc4266c069abcd06eef12f761a050327fc3d8bc6544c9c8f44a1b8c"
+      },
+      "trace": "323035d9f7995b3eb2cdc07828006e76d6f26f6edc71af4ead9ae9e231f7567d",
+      "requests": {
+        "bundle": 12,
+        "observations": 22,
+        "pnp": 10,
+        "triangulation": 1,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 90,
+        "observations": 1080,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/scene-90x12/defaults": {
+      "output": "cebbf6f05ebdbe9b9b40ec5f58d9b930f3b37ee0141205d3e9dc59b7ff6d789a",
+      "parts": {
+        "diagnostics": "3d3338682a2e43ee30d65d43a913e11f8e0d64bc49390467dd0d940df08831b6",
+        "reconstruction": "6657e2d5abe26ef9cc43a4e04b36e304350091d3be8155b3cf1ab9f92fd009ba",
+        "tracking": "5ed09e25871e7f749373fcdc79606b95f2fa0745bf650e92ba923df288b99de1",
+        "tracks": "10daa70255b6cba76d91e5abfa06392256ffebf385a3b59f272f481f6fe822a2",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "fc098a64dd2c9bf1b3f8e2c3577e97c5f740fe5b7d0bd4fd6ee8500e95fd56f9",
+      "requests": {
+        "bundle": 12,
+        "continue": 10,
+        "filter": 11,
+        "measure": 1,
+        "pnp": 10,
+        "register": 12,
+        "snapshot": 1,
+        "triangulate": 1,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 90,
+        "observations": 1080,
+        "unregistered": 0,
+        "throws": 0
+      }
+    }
+  }
+}

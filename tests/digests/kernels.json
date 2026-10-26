@@ -1,4 +1,5 @@
 {
+  "update": "node scripts/kernel-digests.mjs --write",
   "compiler": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
   "modules": {
     "bundle.shade.ts": {

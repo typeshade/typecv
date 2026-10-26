@@ -113,7 +113,11 @@ export async function kernelDigests(root = ROOT, faces = undefined) {
       .sort(byName)
       .map((k) => [k, modules[k]]),
   );
-  return { compiler: compilerPin(root), modules: sorted };
+  return {
+    update: 'node scripts/kernel-digests.mjs --write',
+    compiler: compilerPin(root),
+    modules: sorted,
+  };
 }
 
 if (import.meta.main) {

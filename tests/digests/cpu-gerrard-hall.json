@@ -1,0 +1,123 @@
+{
+  "update": "TYPECV_DIGEST_UPDATE=1 node --test tests/digests/gerrard-hall.test.ts",
+  "cases": {
+    "focalSearchSteps/gerrard-hall/start-1.2": {
+      "output": "72bda9346508bbebf5e5cffb2c0a1d41c0dc9c0f4983f4876dcc4bca1f864b27",
+      "parts": {
+        "candidates": "ccacb1ac3f0e1d081d91ac63ebfe786c822e4ef0a03239e19ebe9b2c3eeba167",
+        "gridRatio": "679a5a3614a2e33251bb28d86e791078a057c1da48de116e38069b94ef360633",
+        "ratio": "4ecdd546715f489450330cdc7a7299f8b40373a2e29e4fd227cf0332d1239b88",
+        "views": "d1db22c01a65fe980dd64b9b84a2573236f64e737d242e04de003d142f672399"
+      },
+      "trace": "17b9629827bfb7e7f68668cd89d428215e30249459eee293f4274bb15a42bfd3",
+      "requests": {
+        "bundle": 45,
+        "observations": 81,
+        "pnp": 27,
+        "triangulation": 63,
+        "verifyPair": 120
+      },
+      "summary": {
+        "views": 5,
+        "throws": 0
+      }
+    },
+    "reconstructComponent/gerrard-hall/lab-known-matches": {
+      "output": "18c72e108f322c3187722d35a5c8571f04444135a23c690dd683d6dad5b49ef0",
+      "parts": {
+        "graph": "7a2485d2eb81b3e0715fce1c8932d59fd4402487a99a7915cb4d9205217c53d8",
+        "result": "eff9bcd3df7b9a1d45154c6aa9028d88cef75382244ef2031c3e062f1ba51700"
+      },
+      "trace": "6bb77d3d3f80692f8a137857d2e60d0e129689cc03cf2a72711a937bb971e1ae",
+      "requests": {
+        "bundle": 12,
+        "observations": 22,
+        "pnp": 10,
+        "triangulation": 21
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 7773,
+        "observations": 26726,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/gerrard-hall/lab": {
+      "output": "567f15dc1e8c182a6b18dbe127a4ccac587d9a13d2ddb96d222eb99a8f115f9a",
+      "parts": {
+        "diagnostics": "e25d5d6d91b8b775aa8660d626c5dbd7c5038b8106ea04665815df1680efb842",
+        "reconstruction": "1506b8ea2c8c7c3643c3cde8e948ea51e489dfd983a5e19e5a405a1e9a975c30",
+        "tracking": "0f24eb197fcfced67e8c72a54f8c144e368336714b24e4e92b1a3c35b4c0d008",
+        "tracks": "af3fcde3ed995b56c935ac56fb0ce9150ffc1594f7c63ea9883f53ef70833855",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "a8ce8ab63f4602ecd80c9023654528fdeadd127b5dde856d41b1b551155a9682"
+      },
+      "trace": "eb6e1a038e70defe84c1370a54078d59521ee23895450dd79546afc442910eca",
+      "requests": {
+        "bundle": 12,
+        "observations": 22,
+        "pnp": 10,
+        "triangulation": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 7775,
+        "observations": 26732,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/gerrard-hall/lab": {
+      "output": "169478b8d1b3bcc8e23dcfcc4a6c66d8c7d45f3d932ce07d72849879e60a699b",
+      "parts": {
+        "diagnostics": "e10d9ac8d1619102821b035110b1e67c33accaf2d664f2ba88c0b30e1e546a17",
+        "reconstruction": "570bc3fc00c937fcdf0ec8fe289b54366607e5941a2a748171e36523c9b500d7",
+        "tracking": "0f24eb197fcfced67e8c72a54f8c144e368336714b24e4e92b1a3c35b4c0d008",
+        "tracks": "af3fcde3ed995b56c935ac56fb0ce9150ffc1594f7c63ea9883f53ef70833855",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "80c02b9415fdf278e8e302e467476827f3da6b13d10a05d281497946948f5261",
+      "requests": {
+        "bundle": 12,
+        "continue": 10,
+        "filter": 11,
+        "measure": 1,
+        "pnp": 10,
+        "register": 12,
+        "snapshot": 1,
+        "triangulate": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 7775,
+        "observations": 26732,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "refineIncremental/gerrard-hall/lab-near-then-all": {
+      "output": "d3a5f741f2447c78fe8c756dd01ae166065def009d9c8caaea1c3835ef8543ae",
+      "parts": {
+        "initial": "85f9a47051b80a0e91f3798ef55c3ebdcc72daf001a659715bf78a952719db17",
+        "refined": "7fe028e6b51f54457949eb8c699d89d4e58feeed735b6949ab1b8a68296c7135"
+      },
+      "trace": "ddf1dd4c0ee95aab16d6c1ae24ca23eddd859dc96809662d304093dce6098f16",
+      "requests": {
+        "bundle": 1,
+        "observations": 14,
+        "triangulation": 2,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 7772,
+        "observations": 26734,
+        "unregistered": 0,
+        "throws": 0
+      }
+    }
+  }
+}
