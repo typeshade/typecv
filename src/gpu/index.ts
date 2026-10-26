@@ -69,7 +69,7 @@ export type {
   GpuSiftExecution,
   GpuSiftGray,
 } from '../features/gpu/sift.ts';
-export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
+export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from '../motion/gpu/klt-tracker.ts';
 export { expandObservationsGpu } from './observation-expansion.ts';
 export { appendExpandedObservations } from './observation-append.ts';
 export type {
@@ -95,7 +95,7 @@ export type {
   KltTracker,
   KltTrackerOptions,
   KltTracks,
-} from './klt-tracker.ts';
+} from '../motion/gpu/klt-tracker.ts';
 export {
   KLT_DEFAULTS_640,
   KLT_DEFAULT_CAPACITY,
@@ -103,8 +103,8 @@ export {
   KLT_MAX_CAPACITY,
   kltOptionsFor,
   kltReject,
-} from './klt.ts';
-export type { KltOptions } from './klt.ts';
+} from '../motion/gpu/klt.ts';
+export type { KltOptions } from '../motion/gpu/klt.ts';
 export type {
   GpuResidentFloatDescriptors,
   GpuFloatMatchOptions,

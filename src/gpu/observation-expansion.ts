@@ -5,11 +5,17 @@ import type { PairRotationEvidence } from '../reconstruction/tracking.ts';
 import { multiply, transpose } from '../geometry/linear.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
 import type { ShadeDevice } from '../device/gpu/device.ts';
-import { trackKltGpu } from './klt-device.ts';
-import { createKltPairCache } from './klt-pair-cache.ts';
+import { trackKltGpu } from '../motion/gpu/klt-device.ts';
+import { createKltPairCache } from '../motion/gpu/klt-pair-cache.ts';
 import { createObservationSurfacePredictor } from './observation-surface.ts';
 import { corroborateObservations, type ConsensusMeasurement } from './observation-consensus.ts';
-import { KltPointGrid, kltAlive, kltOptionsFor, kltAffineRecords, type KltOptions } from './klt.ts';
+import {
+  KltPointGrid,
+  kltAlive,
+  kltOptionsFor,
+  kltAffineRecords,
+  type KltOptions,
+} from '../motion/gpu/klt.ts';
 
 /** Frames in playback order, in the same pixel coordinates as their keypoints and camera. */
 export interface ObservationExpansionFrame extends ImageFeatures {

@@ -48,10 +48,10 @@ export type { DenseLabelOptions, DenseLabelReport } from '../reconstruction/dens
 export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruction/tsdf.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
-export { trackKltGpu, kltChunkSteps } from './klt-device.ts';
-export { createKltPairCache } from './klt-pair-cache.ts';
+export { trackKltGpu, kltChunkSteps } from '../motion/gpu/klt-device.ts';
+export { createKltPairCache } from '../motion/gpu/klt-pair-cache.ts';
 export { expandObservationsGpu } from './observation-expansion.ts';
-export type { KltGpuOptions, KltGpuResult } from './klt-device.ts';
+export type { KltGpuOptions, KltGpuResult } from '../motion/gpu/klt-device.ts';
 export {
   KLT_DEFAULTS_640,
   KLT_END,
@@ -73,10 +73,10 @@ export {
   kltSelectReference,
   trackKlt,
   trackKltReference,
-} from './klt.ts';
-export { createKltTracker, kltResidentBytes } from './klt-tracker.ts';
+} from '../motion/gpu/klt.ts';
+export { createKltTracker, kltResidentBytes } from '../motion/gpu/klt-tracker.ts';
 export { extractSiftGpuResident } from '../features/gpu/sift.ts';
-export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
+export type { KltOptions, KltPyramid, KltTrackResult } from '../motion/gpu/klt.ts';
 /**
  * @internal The GPU backend of `buildViewGraph` (`docs/multi-video.md` step 4) and the SIFT
  * extraction its test reads, from one runtime copy. Step 6 decides the public export.

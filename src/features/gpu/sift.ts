@@ -8,7 +8,7 @@ import {
 } from '../../image/gpu/clahe.ts';
 import { rgbaToGray } from './features.shade.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
-import { kltLayout } from '../../gpu/klt.ts';
+import { kltLayout } from '../../motion/gpu/klt.ts';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import {
   siftAdvance,

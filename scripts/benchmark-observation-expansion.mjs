@@ -649,10 +649,10 @@ const receipt = {
     await Promise.all(
       [
         'src/gpu/observation-expansion.ts',
-        'src/gpu/klt-device.ts',
-        'src/gpu/klt-pair-cache.ts',
-        'src/gpu/klt-tracker.ts',
-        'src/gpu/klt.shade.ts',
+        'src/motion/gpu/klt-device.ts',
+        'src/motion/gpu/klt-pair-cache.ts',
+        'src/motion/gpu/klt-tracker.ts',
+        'src/motion/gpu/klt.shade.ts',
         'src/device/gpu/device.ts',
         'src/gpu/observation-surface.ts',
         'src/gpu/observation-consensus.ts',
