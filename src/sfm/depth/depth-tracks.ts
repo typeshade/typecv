@@ -1,8 +1,4 @@
-import type {
-  FeatureTrack,
-  ImageFeatures,
-  LandmarkObservation,
-} from '../../reconstruction/types.ts';
+import type { FeatureTrack, ImageFeatures, LandmarkObservation } from '../../contracts/scene.ts';
 
 export interface PersistentDepthTrack {
   readonly id: number;

@@ -1,4 +1,4 @@
-import type { CameraIntrinsics } from '../two-view.ts';
+import type { CameraIntrinsics } from '../../contracts/camera.ts';
 import type { Resident } from 'typeshade/runtime';
 import { validateCamera } from '../camera.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';

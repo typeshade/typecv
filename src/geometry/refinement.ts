@@ -1,6 +1,6 @@
 import { multiply } from './linear.ts';
 import { triangulate } from './triangulation.ts';
-import type { CameraIntrinsics } from './two-view.ts';
+import type { CameraIntrinsics } from '../contracts/camera.ts';
 
 type Pose = { R: Float64Array; t: Float64Array };
 

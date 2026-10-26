@@ -1,4 +1,4 @@
-import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
+import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 import { copyReconstruction } from '../model/copy.ts';
 
 /** Historical observations identify a point even when local track indices are rebuilt. */

@@ -1,5 +1,6 @@
-import { cameraProjection, unprojectPixel, validateCamera, type Camera } from './camera.ts';
-import { cameraCenter, clonePose, transformPoint, validatePose, type Pose } from './pose.ts';
+import { cameraProjection, unprojectPixel, validateCamera } from './camera.ts';
+import type { Camera, Pose } from '../contracts/camera.ts';
+import { cameraCenter, clonePose, transformPoint, validatePose } from './pose.ts';
 import { inverse3, solveSystem } from './numerics.ts';
 import type { TriangulationObservation } from './multiview.ts';
 

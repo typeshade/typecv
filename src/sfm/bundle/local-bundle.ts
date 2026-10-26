@@ -1,6 +1,6 @@
 import { cameraCenter } from '../../geometry/pose.ts';
 import type { BundleAdjustmentOptions } from './bundle-adjustment.ts';
-import type { SparseReconstruction } from '../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../contracts/scene.ts';
 
 /** A window/filter can disconnect observations of cameras already registered in one map. */
 export interface BundleAdjustmentPartition {

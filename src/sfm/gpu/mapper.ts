@@ -18,11 +18,7 @@ import {
   ReconstructionInitializationError,
 } from '../protocol/errors.ts';
 import { copyReconstruction } from '../model/copy.ts';
-import type {
-  ImageFeatures,
-  PairMatches,
-  SparseReconstruction,
-} from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { MapHistory } from '../session/map-history.ts';
 import {
   measureHistory,
@@ -44,9 +40,9 @@ import {
   snapshotCameraMasks,
   copyCameraSelection,
   selectCameraObservations,
-  type CameraObservationMask,
   type CameraObservationSelection,
 } from '../tracks/observation-selection.ts';
+import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import {
   evaluateObservationsGpu,
   evaluateContinuedObservationsGpu,

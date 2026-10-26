@@ -1,5 +1,5 @@
 import { validateCamera } from '../../geometry/camera.ts';
-import type { Camera } from '../../geometry/camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import { validatePose } from '../../geometry/pose.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
 import type {
@@ -7,7 +7,7 @@ import type {
   ImageFeatures,
   PairMatches,
   RegisteredView,
-} from '../../reconstruction/types.ts';
+} from '../../contracts/scene.ts';
 
 export const POSED_EVIDENCE_VERSION = 'typecv-posed-pair-evidence-v1' as const;
 const representation = 'f64-le-hex-v1' as const;

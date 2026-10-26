@@ -4,7 +4,7 @@ import type {
   FeatureTrack,
   ImageFeatures,
   PairMatches,
-} from '../../reconstruction/types.ts';
+} from '../../contracts/scene.ts';
 
 export function validateFeatures(
   views: readonly ImageFeatures[],

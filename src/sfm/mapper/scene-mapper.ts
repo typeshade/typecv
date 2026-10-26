@@ -5,8 +5,7 @@ import {
   recordDeferredDepth,
 } from '../depth/depth-publication.ts';
 import { identityPose, projectPoint } from '../../geometry/pose.ts';
-import type { Pose } from '../../geometry/pose.ts';
-import type { Camera } from '../../geometry/camera.ts';
+import type { Pose, Camera } from '../../contracts/camera.ts';
 import { estimatePosePnP } from '../../geometry/pnp.ts';
 import type { PnPOptions, PnPResult } from '../../geometry/pnp.ts';
 import { assessTrackDepth, triangulateTrackDetailed } from '../../geometry/multiview.ts';
@@ -48,7 +47,7 @@ import type {
   Landmark,
   PairMatches,
   SparseReconstruction,
-} from '../../reconstruction/types.ts';
+} from '../../contracts/scene.ts';
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
 export interface TriangulationGroup {

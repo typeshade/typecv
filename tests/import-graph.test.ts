@@ -27,17 +27,13 @@ test('the mapper-focal cycle is the only runtime import cycle (section 5, phase 
   ]);
 });
 
-test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
+test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
   assert.deepEqual(
     typeOnlyCycles(graph).map(({ files, typeOnly }) => ({
       files,
       typeOnly: typeOnly.map(({ from, to }) => `${from} -> ${to}`),
     })),
     [
-      {
-        files: ['src/geometry/refinement.ts', 'src/geometry/two-view.ts'],
-        typeOnly: ['src/geometry/refinement.ts -> src/geometry/two-view.ts'],
-      },
       {
         files: [
           'src/sfm/bundle/bundle-adjustment.ts',
@@ -84,14 +80,13 @@ test('every file of src/ has an area of section 3.1 or is an entry point', () =>
   assert.equal(areaOf('src/gpu/new-module.ts'), undefined);
 });
 
-test('three imports break the layering rule, two of them at run time (section 3.1)', () => {
+test('two imports break the layering rule, both at run time (section 3.1)', () => {
   const breaks = layeringBreaks(graph).map(
     (found) =>
       `${found.typeOnly ? 'type-only' : 'runtime'} ${found.from} (${found.fromArea}) -> ` +
       `${found.to} (${found.toArea})`,
   );
   assert.deepEqual(breaks, [
-    'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
     'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/validation.ts (sfm)',
     'runtime src/mvs/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
   ]);

@@ -7,7 +7,7 @@ import {
   type InverseDepthConstraint,
   type InverseDepthMeasurementJob,
 } from '../inverse-depth-bundle.ts';
-import type { SparseReconstruction } from '../../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import { ShadeDevice } from '../../../device/gpu/device.ts';
 import { linearizeInverseDepth } from './inverse-depth.shade.ts';
 

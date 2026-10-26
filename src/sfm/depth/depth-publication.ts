@@ -4,8 +4,8 @@ import type {
   DepthTrackingInput,
   DepthTrackingResult,
 } from './inverse-depth-tracker.ts';
-import type { ImageFeatures } from '../../reconstruction/types.ts';
-import type { CameraObservationMask } from '../tracks/observation-selection.ts';
+import type { ImageFeatures } from '../../contracts/scene.ts';
+import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import type { ReconstructionTracking } from '../tracks/tracking.ts';
 import { projectPoint } from '../../geometry/pose.ts';
 

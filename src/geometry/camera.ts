@@ -1,11 +1,7 @@
-import type { CameraIntrinsics } from './two-view.ts';
+import type { Camera, Pixel } from '../contracts/camera.ts';
 
-/** Undistorted pinhole if k1=k2=0; otherwise Brown radial distortion only. */
-export interface Camera extends CameraIntrinsics {
-  readonly k1?: number;
-  readonly k2?: number;
-}
-export type Pixel = readonly [number, number];
+export type { Camera, Pixel } from '../contracts/camera.ts';
+
 export function validateCamera(k: Camera): void {
   if (
     ![k.fx, k.fy, k.cx, k.cy, k.k1 ?? 0, k.k2 ?? 0].every(Number.isFinite) ||

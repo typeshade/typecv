@@ -6,11 +6,11 @@
  * the finished keyframes of all videos and does everything that needs the whole run. It is
  * exported from the internal entry only (`src/gpu/internal.ts`).
  */
-import type { Camera } from '../../../geometry/camera.ts';
+import type { Camera } from '../../../contracts/camera.ts';
 import { assignViewIds } from '../../model/identity.ts';
 import { componentInput } from '../component-mapper.ts';
 import { ReconstructionInitializationError } from '../../protocol/errors.ts';
-import type { SparseReconstruction } from '../../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import {
   buildViewGraph,
   dequantizeDescriptors,

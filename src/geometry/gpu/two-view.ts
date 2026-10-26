@@ -1,5 +1,5 @@
 import { GeometryEstimationError } from '../errors.ts';
-import type { Camera } from '../camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import type { ImagePairGeometry } from '../image-pair.ts';
 import { resolveTwoViewInput, type TwoViewOptions, type TwoViewResult } from '../two-view.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';

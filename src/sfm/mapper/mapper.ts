@@ -47,9 +47,9 @@ import { pairSeed } from '../model/identity.ts';
 import { buildTracks, validateFeatures } from '../tracks/tracks.ts';
 import {
   selectCameraObservations,
-  type CameraObservationMask,
   type CameraObservationSelection,
 } from '../tracks/observation-selection.ts';
+import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import {
   applyFocal,
   focalSearchControls,
@@ -65,7 +65,7 @@ import type {
   PairMatches,
   RegisteredView,
   SparseReconstruction,
-} from '../../reconstruction/types.ts';
+} from '../../contracts/scene.ts';
 import { judgePair } from '../pairs/pair-verdict.ts';
 import { incrementalControls } from '../config/incremental-controls.ts';
 import {

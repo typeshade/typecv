@@ -12,7 +12,7 @@ import {
   type IncrementalResult,
   type PreVerifiedPair,
 } from '../mapper/mapper.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 import type { ViewGraph, ViewGraphEdge, ViewGraphKeyframe } from './view-graph.ts';
 
 export interface ComponentOptions extends IncrementalOptions {

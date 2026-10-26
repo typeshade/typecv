@@ -5,7 +5,7 @@ import type {
   LandmarkObservation,
   SparseReconstruction,
   RegisteredView,
-} from '../../reconstruction/types.ts';
+} from '../../contracts/scene.ts';
 import { cameraCenter, updatePose, validatePose } from '../../geometry/pose.ts';
 import {
   initializeInverseDepth,

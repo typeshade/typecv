@@ -1,12 +1,9 @@
 import { validateFeatures } from './tracks.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
+import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 
-export interface CameraObservationMask {
-  readonly viewId: number;
-  /** 1 permits a background hypothesis; 0 separates the feature from camera/static-map estimation. */
-  readonly values: Uint8Array;
-  readonly source: 'manual' | 'geometry' | 'learned' | 'ground-truth';
-}
+export type { CameraObservationMask } from '../../contracts/observation-mask.ts';
+
 export interface CameraObservationSelection {
   readonly masks: readonly CameraObservationMask[];
   /** Original rows, not geometrically verified object tracks or motion classifications. */

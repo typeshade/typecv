@@ -2,7 +2,7 @@ import type { Resident } from 'typeshade/runtime';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../validation.ts';
-import type { SparseReconstruction } from '../../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../../device/gpu/device.ts';
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';

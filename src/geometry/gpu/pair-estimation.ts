@@ -1,5 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
-import type { Camera } from '../camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import {
   preparePairModels,
   appendPairModelRows,

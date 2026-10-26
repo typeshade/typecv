@@ -1,6 +1,6 @@
 import { unprojectPixel, validateCamera } from '../geometry/camera.ts';
-import type { ImageFeatures } from './types.ts';
-import type { CameraObservationMask } from '../sfm/tracks/observation-selection.ts';
+import type { ImageFeatures } from '../contracts/scene.ts';
+import type { CameraObservationMask } from '../contracts/observation-mask.ts';
 
 /** Optical path is independent of depth observability. These labels never estimate depth. */
 export interface ObservationPathMask {

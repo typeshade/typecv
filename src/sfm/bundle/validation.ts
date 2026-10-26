@@ -1,6 +1,6 @@
 import { validateCamera } from '../../geometry/camera.ts';
 import { validatePose } from '../../geometry/pose.ts';
-import type { RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
+import type { RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 
 export function validateReconstruction(input: SparseReconstruction): void {
   const views = new Map<number, RegisteredView>();

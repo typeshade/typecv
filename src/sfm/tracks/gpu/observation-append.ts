@@ -1,7 +1,7 @@
 import { projectPoint } from '../../../geometry/pose.ts';
 import { validateReconstruction } from '../../bundle/validation.ts';
 import { validateFeatures } from '../tracks.ts';
-import type { ImageFeatures, SparseReconstruction } from '../../../reconstruction/types.ts';
+import type { ImageFeatures, SparseReconstruction } from '../../../contracts/scene.ts';
 import type {
   ExpandedObservationEdge,
   ObservationExpansionResult,

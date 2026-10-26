@@ -1,5 +1,5 @@
 import type { ImagePairVerification } from '../../geometry/image-pair.ts';
-import type { PairMatches } from '../../reconstruction/types.ts';
+import type { PairMatches } from '../../contracts/scene.ts';
 import type { IncrementalControls, PairVerification, SeedCandidate } from '../mapper/mapper.ts';
 import { selectPairRows } from '../tracks/tracking.ts';
 

@@ -1,7 +1,7 @@
 import { bundleAdjustJointFocal } from './joint-focal.ts';
 import { cameraCenter, transformPoint, updatePose } from '../../geometry/pose.ts';
 import { inverse3, solveSystem } from '../../geometry/numerics.ts';
-import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
+import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 import {
   appendBundleDirections,
   separateBundleDirections,
