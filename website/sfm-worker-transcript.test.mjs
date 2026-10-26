@@ -7,54 +7,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkBaseline } from './lab-baseline.mjs';
-import { OTHER, SCENE, WorkerHarness, bundleWorker, framePixels } from './lab-worker-harness.mjs';
+import { OTHER, WorkerHarness, bundleWorker, pageFrame, pageStart } from './lab-worker-harness.mjs';
 
 const code = await bundleWorker();
 const fixture = (name) =>
   new URL(`../tests/fixtures/lab-transcripts/single-${name}.jsonl`, import.meta.url);
 
-/** The start message as the page writes it (`SfmLab.tsx`, `runSfM`), with `extra` on top. */
-const start = (id, extra = {}) => ({
-  type: 'start',
-  id,
-  focalRatio: 0.8,
-  focalSearch: false,
-  profile: 'video',
-  bounded: false,
-  fp64: undefined,
-  budget: undefined,
-  dense: false,
-  denseGpuTimestamps: undefined,
-  denseClean: false,
-  denseFusion: 'tsdf',
-  denseQuality: {},
-  denseMesh: false,
-  gate: 'legacy',
-  firstOctave: 0,
-  guided: false,
-  clahe: false,
-  features: 'sift',
-  guidedKernel: 'scalar',
-  orbTuning: {},
-  klt: false,
-  kltSetup: undefined,
-  analysisEdge: 640,
-  ...extra,
-});
-
-/** A frame of 128 × 96 pixels at `time` whose content moved by `shift` (spec `shift[id]`). */
-const frame = (job, id, time, spec, { source = SCENE, ...extra } = {}) => ({
-  type: 'frame',
-  id: job,
-  frame: {
-    id,
-    width: 128,
-    height: 96,
-    time,
-    pixels: framePixels(id, spec.shift?.[id] ?? [id * 4, 0], source),
-    ...extra,
-  },
-});
+const start = pageStart;
+const frame = pageFrame;
 
 /** The messages of one type that the worker posted. */
 const posted = (h, type) => h.outgoing.filter((message) => message.type === type);

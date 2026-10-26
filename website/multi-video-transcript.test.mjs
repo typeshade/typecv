@@ -7,85 +7,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkBaseline } from './lab-baseline.mjs';
-import { OTHER, SCENE, WorkerHarness, bundleWorker, framePixels } from './lab-worker-harness.mjs';
+import {
+  VIDEOS,
+  WorkerHarness,
+  bundleWorker,
+  framePixels,
+  pageMultiStart,
+  pageThreeVideos,
+} from './lab-worker-harness.mjs';
 
 const code = await bundleWorker();
 const fixture = (name) =>
   new URL(`../tests/fixtures/lab-transcripts/multi-${name}.jsonl`, import.meta.url);
 
-const VIDEOS = ['a', 'b', 'c'].map((letter) => letter.repeat(16));
 const [A, B, C] = VIDEOS;
-
-/** The `multiStart` message as the page writes it (`SfmLab.tsx`, `runMultiVideo`). */
-const start = (id, extra = {}) => ({
-  type: 'multiStart',
-  id,
-  query: { canonical: true, maxKeyframesPerVideo: 60, maxFeatures: undefined },
-  analysisEdge: 640,
-  firstOctave: 0,
-  clahe: false,
-  budget: undefined,
-  fp64: undefined,
-  dense: false,
-  denseGpuTimestamps: undefined,
-  denseClean: false,
-  denseFusion: 'tsdf',
-  denseQuality: {},
-  denseMesh: false,
-  ...extra,
-});
-
-/**
- * Feed one video as the page does: `multiVideo`, a `multiFrame` per frame and `multiEndVideo`.
- * `frames` are `[time, content, shift, source?, features?]`; the last one is marked `last`.
- */
-async function video(h, id, videoId, label, frames) {
-  await h.send({
-    type: 'multiVideo',
-    id,
-    video: { videoId, label, durationSeconds: 2, focalRatio: 0.8 },
-  });
-  for (const [index, [time, content, shift, source = SCENE]] of frames.entries())
-    await h.send({
-      type: 'multiFrame',
-      id,
-      videoId,
-      frame: {
-        id: index,
-        width: 128,
-        height: 96,
-        time,
-        pixels: framePixels(content, shift, source),
-        sourceWidth: 1280,
-        sourceHeight: 960,
-        image: `data:image/jpeg;base64,${label ?? 'upload'}${index}`,
-        ...(index === frames.length - 1 ? { last: true } : {}),
-      },
-    });
-  await h.send({ type: 'multiEndVideo', id, videoId });
-}
-
-/** Three videos: the first two share a component, the third stands alone. */
-async function threeVideos(h, id) {
-  await video(h, id, A, 'sample-a', [
-    [0, 0, [0, 0]],
-    [0.1, 1, [0, 0]],
-    [0.6, 2, [20, 0]],
-    [1, 3, [22, 0]],
-  ]);
-  await video(h, id, B, null, [
-    [0, 10, [0, 0]],
-    // The other scene gives a weak peak: the job has no legacy rule and keeps the frame.
-    [0.5, 11, [2, 0], OTHER],
-    [1.6, 12, [4, 0]],
-    [1.8, 13, [30, 0]],
-  ]);
-  await video(h, id, C, 'sample-c', [
-    [0, 20, [0, 0]],
-    [0.4, 21, [10, 0]],
-    [1.2, 22, [24, 0]],
-  ]);
-}
+const start = pageMultiStart;
+const threeVideos = pageThreeVideos;
 
 const posted = (h, type) => h.outgoing.filter((message) => message.type === type);
 

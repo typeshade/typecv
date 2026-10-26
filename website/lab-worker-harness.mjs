@@ -301,3 +301,121 @@ export class WorkerHarness {
     ]);
   }
 }
+
+/** The `start` message as the page writes it (`SfmLab.tsx`, `runSfM`), with `extra` on top. */
+export const pageStart = (id, extra = {}) => ({
+  type: 'start',
+  id,
+  focalRatio: 0.8,
+  focalSearch: false,
+  profile: 'video',
+  bounded: false,
+  fp64: undefined,
+  budget: undefined,
+  dense: false,
+  denseGpuTimestamps: undefined,
+  denseClean: false,
+  denseFusion: 'tsdf',
+  denseQuality: {},
+  denseMesh: false,
+  gate: 'legacy',
+  firstOctave: 0,
+  guided: false,
+  clahe: false,
+  features: 'sift',
+  guidedKernel: 'scalar',
+  orbTuning: {},
+  klt: false,
+  kltSetup: undefined,
+  analysisEdge: 640,
+  ...extra,
+});
+
+/** A `frame` message of 128 × 96 pixels at `time`; its content moved by `spec.shift[id]`. */
+export const pageFrame = (job, id, time, spec, { source = SCENE, ...extra } = {}) => ({
+  type: 'frame',
+  id: job,
+  frame: {
+    id,
+    width: 128,
+    height: 96,
+    time,
+    pixels: framePixels(id, spec.shift?.[id] ?? [id * 4, 0], source),
+    ...extra,
+  },
+});
+
+/** The `multiStart` message as the page writes it (`SfmLab.tsx`, `runMultiVideo`). */
+export const pageMultiStart = (id, extra = {}) => ({
+  type: 'multiStart',
+  id,
+  query: { canonical: true, maxKeyframesPerVideo: 60, maxFeatures: undefined },
+  analysisEdge: 640,
+  firstOctave: 0,
+  clahe: false,
+  budget: undefined,
+  fp64: undefined,
+  dense: false,
+  denseGpuTimestamps: undefined,
+  denseClean: false,
+  denseFusion: 'tsdf',
+  denseQuality: {},
+  denseMesh: false,
+  ...extra,
+});
+
+/**
+ * Feed one video as the page does: `multiVideo`, a `multiFrame` per frame and `multiEndVideo`.
+ * `frames` are `[time, content, shift, source?]`; the last one is marked `last`.
+ */
+export async function pageVideo(h, id, videoId, label, frames) {
+  await h.send({
+    type: 'multiVideo',
+    id,
+    video: { videoId, label, durationSeconds: 2, focalRatio: 0.8 },
+  });
+  for (const [index, [time, content, shift, source = SCENE]] of frames.entries())
+    await h.send({
+      type: 'multiFrame',
+      id,
+      videoId,
+      frame: {
+        id: index,
+        width: 128,
+        height: 96,
+        time,
+        pixels: framePixels(content, shift, source),
+        sourceWidth: 1280,
+        sourceHeight: 960,
+        image: `data:image/jpeg;base64,${label ?? 'upload'}${index}`,
+        ...(index === frames.length - 1 ? { last: true } : {}),
+      },
+    });
+  await h.send({ type: 'multiEndVideo', id, videoId });
+}
+
+/** The video ids of the multi-video cases. */
+export const VIDEOS = ['a', 'b', 'c'].map((letter) => letter.repeat(16));
+
+/** Three videos: the first two share a component, the third stands alone. */
+export async function pageThreeVideos(h, id) {
+  const [a, b, c] = VIDEOS;
+  await pageVideo(h, id, a, 'sample-a', [
+    [0, 0, [0, 0]],
+    [0.1, 1, [0, 0]],
+    [0.6, 2, [20, 0]],
+    [1, 3, [22, 0]],
+  ]);
+  await pageVideo(h, id, b, null, [
+    [0, 10, [0, 0]],
+    // The other scene gives a weak peak: the job has no legacy rule and keeps the frame.
+    [0.5, 11, [2, 0], OTHER],
+    [1.6, 12, [4, 0]],
+    [1.8, 13, [30, 0]],
+  ]);
+  await pageVideo(h, id, c, 'sample-c', [
+    [0, 20, [0, 0]],
+    [0.4, 21, [10, 0]],
+    [1.2, 22, [24, 0]],
+  ]);
+}
