@@ -15,8 +15,8 @@ Labels used below. **Fact**: read in the code or measured. **Inference**: reason
 
 Fact: for an uncalibrated video the lab asked the visitor for "focal length / image width"
 (`DEFAULT_VIDEO_FOCAL` = 0.8 in `website/src/components/SfmLab.tsx`). The final bundle adjustment
-refines one shared focal scale (`refineSharedFocal`, `src/reconstruction/joint-focal.ts` and
-`src/gpu/joint-focal.ts`). On the owner's record `20261021062057594-4a8aa2ff` (the pyramid video
+refines one shared focal scale (`refineSharedFocal`, `src/sfm/bundle/joint-focal.ts` and
+`src/sfm/bundle/gpu/joint-focal.ts`). On the owner's record `20261021062057594-4a8aa2ff` (the pyramid video
 sample, 640 × 360, 22 registered views) the focal moved from 0.80 to 0.81.
 
 Goal (the owner, 2026-10-21): the system estimates the focal by itself, independent of the start
@@ -130,7 +130,7 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
 
 ## 4. Design
 
-### 4.1 The search (`src/reconstruction/focal-search.ts`)
+### 4.1 The search (`src/sfm/focal/focal-search.ts`)
 
 1. Form match-connected components from pairs with at least eight correspondences. Try larger
    components first, preserving input order within them and breaking component ties by input
@@ -172,7 +172,7 @@ described in section 4.2 below.
   `candidates`).
 - `FOCAL_SEARCH_DEFAULTS` and the types `FocalSearchOptions`, `FocalSearchResult` and
   `FocalCandidate` from the root entry.
-- `IncrementalSfmSession` (`src/gpu/mapper.ts`) with `focalSearch`: during `add`, the first map
+- `IncrementalSfmSession` (`src/sfm/gpu/mapper.ts`) with `focalSearch`: during `add`, the first map
   waits until one component registers at least `views` calibration views (or `finish`). Input
   count alone is insufficient. `finish` allows short input, whose focal can be poorly constrained.
   The run that builds it performs this initial subset search once. The initial map adopts its
@@ -351,7 +351,7 @@ Only these steps depend on the focal `f`:
 
 ### 8.3 Change
 
-1. `pairBase` (`src/reconstruction/focal-pairs.ts`) keeps, for each pair of the subset, the
+1. `pairBase` (`src/sfm/focal/focal-pairs.ts`) keeps, for each pair of the subset, the
    correspondences, the homography inlier count and the eight-point solution of each trial
    (drawn on demand, in the order of `reconstructTwoView`).
 2. `verificationFromBase` scales a solution to the cameras of one grid point, projects it and
@@ -359,7 +359,7 @@ Only these steps depend on the focal `f`:
    (`ImagePairOptions.hypotheses`, internal). The inlier rows and the geometry are the same as
    those of a full verification.
 3. `focalSearchSteps` gives each mapper run these verdicts as `preVerified` rows. A pair that
-   failed has `PreVerifiedPair.rejected`. `judgePair` (`mapper.ts`) is the one function that
+   failed has `PreVerifiedPair.rejected`. `judgePair` (`sfm/pairs/pair-verdict.ts`) is the one function that
    turns a verification into a verdict, for `verifyPairs` and for the search.
 4. The base runs on the host, so the CPU reference and the device driver use the same verdicts.
    A subset with lens distortion verifies each grid point in full as before: the ideal pixels

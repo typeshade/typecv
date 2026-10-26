@@ -589,14 +589,14 @@ device in the final bundle adjustment (`bundle #25`, last kernel
 40.2 s (22 pairs, 688 submissions, 2697 dispatches); the bundle adjustments before the
 loss took 6.1 s (7 calls, 42 submissions). The loss moved from pair verification to the
 one long dispatch that remains on this path, the shared-focal route's `bundlePersistentCg`
-of `src/gpu/joint-focal.shade.ts`: the final bundle runs with `refineSharedFocal: true`,
+of `src/sfm/bundle/gpu/joint-focal.shade.ts`: the final bundle runs with `refineSharedFocal: true`,
 and on WebGPU without bounded submissions one workgroup runs the whole conjugate-gradient
 loop of a bundle iteration in one dispatch. This is an inference from the code and from
 the kernels the record names first in that bundle (`bundleFocalCameraRows`,
 `bundleFocalBlock`, which only the shared-focal route runs). The remedy is the same as for
 pair verification: run the conjugate-gradient iterations as chunk steps under the time
 budget. Pull request #56 removes the fixed-focal route's kernel of the same name
-(`src/gpu/bundle.shade.ts`), and pull request #58
+(`src/sfm/bundle/gpu/bundle.shade.ts`), and pull request #58
 removes the shared-focal one and the Schur cache's `bundleCachedPersistentCg`
 (`docs/gpu-sfm.md`, "The BA's PCG loop").
 
@@ -637,7 +637,7 @@ verification passed for all 10 pairs of the 5 frames processed, in 10.9 s (330
 submissions, 2166 dispatches; key `scorePairModels`: 90 chunks, the longest 162.7 ms,
 0.80 ms/unit). The device was lost again in `triangulation #11`, last kernel
 `triangulateTracks`, with `DXGI_ERROR_DEVICE_HUNG`. The index `#11` counts every
-operation of the GPU mapper (`src/gpu/mapper.ts`), so this is the first triangulation of
+operation of the GPU mapper (`src/sfm/gpu/mapper.ts`), so this is the first triangulation of
 the run in both records. Before the loss, 8 chunks of key `triangulateTracks` completed:
 the longest took 8763 ms, the rate was 4.68 ms per track, and the last chunk was 16
 tracks, the least chunk. Inference: a chunk of one workgroup of 16 tracks ran past the

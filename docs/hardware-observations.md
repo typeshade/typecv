@@ -48,7 +48,7 @@ The flavor of the emulated double on this device is `'float'`. `recommendFp64Fla
 
 ### A1. A workgroup whose idle lanes return before the loops hangs the device
 
-`triangulateTracks` (`src/gpu/triangulation.shade.ts`, `@compute([16])`) solves one track per
+`triangulateTracks` (`src/geometry/gpu/triangulation.shade.ts`, `@compute([16])`) solves one track per
 lane in emulated `f64`. Each lane runs up to `maxPairHypotheses + 1` hypotheses, each with a
 Jacobi SVD of up to 160 sweeps. A lane past its chunk returned at once (`h >= range.end`). The
 probe ran the lab job (`tests/fixtures/south-building-pair-triangulation.json`, 1672 tracks) on
@@ -83,7 +83,7 @@ over all the tracks of a call or a chunk whose track count was not a multiple of
 
 Observed elsewhere: the CPU tier, SwiftShader (Vulkan) and the owner's iPhone (Metal) run the
 same kernel with partial workgroups and lose no device. On this device the pair-model kernels
-(`scorePairModels` and the others of `src/gpu/pair-models.shade.ts`) have the same guard.
+(`scorePairModels` and the others of `src/geometry/gpu/pair-models.shade.ts`) have the same guard.
 In every record of the second table they verified all the pairs without a loss, 10 pairs in
 each standard benchmark.
 
@@ -127,7 +127,7 @@ on this driver. The cold pass spent 12.8 s in the bundle adjustment and 9.0 s in
 3.6 s and 0.45 s warm; inference: the pipelines of those kernels compiled in the cold pass (A2).
 The key `scorePnP` reports its longest chunk as 581 ms: its first timed chunk has no warm-up
 dispatch (pull request #61 predates #63), so that chunk measured the compile. The branch
-`fix/pnp-warmup-idle-lanes` adds that warm-up (`warm: { id: 'pnp' }` in `src/gpu/pnp.ts`). No record
+`fix/pnp-warmup-idle-lanes` adds that warm-up (`warm: { id: 'pnp' }` in `src/geometry/gpu/pnp.ts`). No record
 on this device has run with it.
 
 Open:
@@ -262,7 +262,7 @@ Observed:
 
 Inference, from the code and from the kernels that `85ed0ae6` names first in that bundle: the loss
 moved to the one long dispatch left on that path, `bundlePersistentCg` of
-`src/gpu/joint-focal.shade.ts`. That kernel ran the whole PCG loop of an LM iteration in one
+`src/sfm/bundle/gpu/joint-focal.shade.ts`. That kernel ran the whole PCG loop of an LM iteration in one
 workgroup.
 
 Remedy:
@@ -314,7 +314,7 @@ budget of 250 ms, so the budget never limited a chunk.
 Inference: the fences, two for each timed chunk, bound the time of pair verification.
 
 Remedy: pull request #63 times the first 8 chunks of each key and runs the later ones untimed,
-with no fence (`CHUNK_TIMING_SAMPLES` in `src/gpu/device.ts`).
+with no fence (`CHUNK_TIMING_SAMPLES` in `src/device/gpu/device.ts`).
 
 Open: no record on this device has run with pull request #63.
 

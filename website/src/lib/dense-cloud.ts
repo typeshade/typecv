@@ -175,7 +175,7 @@ export function denseMeshPly(
   return bytes;
 }
 
-/** The side of a depth preview's block in pixels (`PREVIEW_STEP` of `src/gpu/mvs.ts`). */
+/** The side of a depth preview's block in pixels (`PREVIEW_STEP` of `src/mvs/gpu/mvs.ts`). */
 export const PREVIEW_BLOCK = 4;
 
 /** One `denseDepth` message (`docs/dense-mvs.md`, Amendment 5): a reference's depth preview. */

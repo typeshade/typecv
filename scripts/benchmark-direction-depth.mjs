@@ -152,13 +152,13 @@ const report = {
   sourceHashes: Object.fromEntries(
     await Promise.all(
       [
-        'src/sfm/two-view.ts',
-        'src/sfm/refinement.ts',
-        'src/gpu/recovery.shade.ts',
-        'src/reconstruction/mapper.ts',
-        'src/reconstruction/directional-tracks.ts',
-        'src/reconstruction/bundle-directions.ts',
-        'src/reconstruction/focal-search.ts',
+        'src/geometry/two-view.ts',
+        'src/geometry/refinement.ts',
+        'src/geometry/gpu/recovery.shade.ts',
+        'src/sfm/mapper/mapper.ts',
+        'src/sfm/bundle/directional-tracks.ts',
+        'src/sfm/bundle/bundle-directions.ts',
+        'src/sfm/focal/focal-search.ts',
         'src/geometry/rotation.ts',
         'tests/fixtures/direction-observations.ts',
         'scripts/benchmark-direction-depth.mjs',

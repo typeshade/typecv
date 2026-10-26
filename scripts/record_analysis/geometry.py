@@ -189,7 +189,7 @@ def plane_ray_angle_deg(plane: PlaneFit | None, ray: np.ndarray) -> float | None
 
 
 def decode_octahedral(words: np.ndarray) -> np.ndarray:
-    """Unit vectors (..., 3) of octahedral snorm16x2 words, as `decodeMvsNormal` in src/gpu/mvs.ts.
+    """Unit vectors (..., 3) of octahedral snorm16x2 words, as `decodeMvsNormal` in src/mvs/gpu/mvs.ts.
 
     x comes from the low 16 bits and y from the high 16 bits, each a signed 16-bit value v read
     as max(v / 32767, -1). The MVS maps store camera-frame normals this way.

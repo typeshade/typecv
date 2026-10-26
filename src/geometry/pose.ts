@@ -1,4 +1,4 @@
-import { determinant3, identity, multiply, transpose } from '../sfm/linear.ts';
+import { determinant3, identity, multiply, transpose } from './linear.ts';
 import { cameraProjection } from './camera.ts';
 import type { Camera, Pixel } from './camera.ts';
 

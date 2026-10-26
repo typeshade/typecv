@@ -229,7 +229,7 @@ test('kltTrack and kltCheck: chunks of 3 tracks give the same bits as one chunk'
 });
 
 test('klt.shade.ts follows the rules of section 4.3', () => {
-  const source = readFileSync(new URL('../../src/gpu/klt.shade.ts', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/motion/gpu/klt.shade.ts', import.meta.url), 'utf8')
     .split('\n')
     .filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
     .join('\n');

@@ -166,9 +166,9 @@ const report = {
     await Promise.all(
       [
         'src/geometry/rotation.ts',
-        'src/reconstruction/tracking.ts',
-        'src/reconstruction/mapper.ts',
-        'src/reconstruction/focal-search.ts',
+        'src/sfm/tracks/tracking.ts',
+        'src/sfm/mapper/mapper.ts',
+        'src/sfm/focal/focal-search.ts',
         'tests/fixtures/general-video.ts',
         'scripts/benchmark-rotation-tracking.mjs',
       ].map(async (p) => [p, sha(await readFile(p))]),

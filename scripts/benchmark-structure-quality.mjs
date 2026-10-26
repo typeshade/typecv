@@ -173,8 +173,8 @@ for (const { name, fixture: f, added } of cases) {
 report.sourceSha256 = Object.fromEntries(
   await Promise.all(
     [
-      'src/reconstruction/mapper.ts',
-      'src/reconstruction/observation-selection.ts',
+      'src/sfm/mapper/mapper.ts',
+      'src/sfm/tracks/observation-selection.ts',
       'src/geometry/multiview.ts',
       'tests/fixtures/foreground.ts',
       'scripts/geometry-comparison.mjs',

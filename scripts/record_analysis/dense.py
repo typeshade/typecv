@@ -1,7 +1,7 @@
 """Dense-stage analyses of one run record.
 
 - `seed_agreement`: the MVS depth at the pixels of the sparse landmarks against the landmarks'
-  own depth. These pixels are the MVS seeds (src/gpu/mvs-views.ts).
+  own depth. These pixels are the MVS seeds (src/mvs/gpu/mvs-views.ts).
 - `dense_normal_angles`: the angle between each dense point's normal and the rays of the cameras.
 - `stage_normals`: one view's depth-surface normals (finite differences) and stored PatchMatch
   normals against the viewing ray.
@@ -46,7 +46,7 @@ DECADE_BINS = tuple(range(0, 100, 10))
 
 def require_undistorted(camera: Camera, what: str) -> None:
     """Refuse a camera with radial terms. Its observation pixels lie on the original grid, not on
-    the undistorted grid of the depth maps; src/gpu/mvs-views.ts undistorts a seed's pixel with
+    the undistorted grid of the depth maps; src/mvs/gpu/mvs-views.ts undistorts a seed's pixel with
     k1, k2 first, and this package does not."""
     if camera.distorted:
         raise ValueError(
@@ -84,7 +84,7 @@ def seed_agreement(
 ) -> SeedAgreement:
     """The agreement of the view's dense depth with its sparse landmarks at their observed pixels.
 
-    Pixels are rounded half to even (numpy's rounding); src/gpu/mvs-views.ts rounds a seed's pixel
+    Pixels are rounded half to even (numpy's rounding); src/mvs/gpu/mvs-views.ts rounds a seed's pixel
     with Math.round (half up). The two differ only at an exact half pixel.
     """
     view = reconstruction.view(view_id)

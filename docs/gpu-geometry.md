@@ -116,7 +116,7 @@ of `samplePnP`, `solveP3p`, `scorePnP` (or `scorePnPOracle`) and `selectPnP`
 into `batchCounts`, zero for a batch at or past the budget, and those entries
 dispatch with `{ indirect: batchCounts, offset }`. No entry that dispatches with
 the counts binds them. The host reads the budget word (`snapshotPnPBudget`)
-after every fourth batch (`PROGRESS_INTERVAL` in `src/gpu/pnp.ts`), so at most
+after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/pnp.ts`), so at most
 three batches past the budget are submitted, each with no workgroup but its
 `planPnPBatch`. The scoring of a batch is a plan of its own, timed only when the
 host knows it runs: the first batch, and the first batch after a read that
@@ -254,11 +254,11 @@ cross the host boundary and are included in application readback/submission
 reports. Intermediate candidate geometry and the assembled Schur matrix remain
 resident; only the usual final result is read back.
 
-The option is declared in [`src/gpu/bundle.ts`](../src/gpu/bundle.ts) and
-[`src/gpu/mapper.ts`](../src/gpu/mapper.ts); route selection and certification
-are implemented in [`src/gpu/joint-focal.ts`](../src/gpu/joint-focal.ts). The
+The option is declared in [`src/sfm/bundle/gpu/bundle.ts`](../src/sfm/bundle/gpu/bundle.ts) and
+[`src/sfm/gpu/mapper.ts`](../src/sfm/gpu/mapper.ts); route selection and certification
+are implemented in [`src/sfm/bundle/gpu/joint-focal.ts`](../src/sfm/bundle/gpu/joint-focal.ts). The
 incremental mapper's problem-count report is assembled in
-[`src/gpu/mapper.ts`](../src/gpu/mapper.ts). The independent
+[`src/sfm/gpu/mapper.ts`](../src/sfm/gpu/mapper.ts). The independent
 [`localBundleSubset`](incremental-sfm.md) option can reduce a local BA input, but
 does not alter the cache's guards or numerical acceptance rules.
 

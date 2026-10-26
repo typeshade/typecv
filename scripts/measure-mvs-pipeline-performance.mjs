@@ -48,10 +48,10 @@ if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1200000)
 if (values.hardware) process.env.TYPECV_HARDWARE_GPU = '1';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex'),
   files = [
-    'src/gpu/mvs.shade.ts',
-    'src/gpu/mvs.ts',
-    'src/gpu/mvs-residency.ts',
-    'src/gpu/device.ts',
+    'src/mvs/gpu/mvs.shade.ts',
+    'src/mvs/gpu/mvs.ts',
+    'src/mvs/gpu/mvs-residency.ts',
+    'src/device/gpu/device.ts',
     'tests/typeshade/mvs-cases.mjs',
     'scripts/measure-mvs-pipeline-performance.mjs',
   ],

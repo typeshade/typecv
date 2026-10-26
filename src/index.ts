@@ -1,7 +1,7 @@
-export { reconstructTwoView, sampsonSquared } from './sfm/two-view.ts';
+export { reconstructTwoView, sampsonSquared } from './geometry/two-view.ts';
 export { GeometryEstimationError } from './geometry/errors.ts';
-export { triangulate } from './sfm/triangulation.ts';
-export type { CameraIntrinsics, TwoViewOptions, TwoViewResult } from './sfm/two-view.ts';
+export { triangulate } from './geometry/triangulation.ts';
+export type { CameraIntrinsics, TwoViewOptions, TwoViewResult } from './geometry/two-view.ts';
 export { cameraProjection, unprojectPixel, validateCamera } from './geometry/camera.ts';
 export type { Camera, Pixel } from './geometry/camera.ts';
 export {
@@ -27,7 +27,7 @@ export type {
 export { estimateHomography } from './geometry/homography.ts';
 export { estimateRelativeRotation } from './geometry/rotation.ts';
 export type { RelativeRotationOptions, RelativeRotationResult } from './geometry/rotation.ts';
-export type { PairRotationEvidence, ReconstructionTracking } from './reconstruction/tracking.ts';
+export type { PairRotationEvidence, ReconstructionTracking } from './sfm/tracks/tracking.ts';
 export { verifyImagePair } from './geometry/image-pair.ts';
 export type {
   ImagePairOptions,
@@ -36,9 +36,9 @@ export type {
 } from './geometry/image-pair.ts';
 export { estimatePosePnP } from './geometry/pnp.ts';
 export type { PnPOptions, PnPResult } from './geometry/pnp.ts';
-export { buildTracks } from './reconstruction/tracks.ts';
-export { InverseDepthTracker } from './reconstruction/inverse-depth-tracker.ts';
-export { inverseDepthRecord } from './reconstruction/depth-record.ts';
+export { buildTracks } from './sfm/tracks/tracks.ts';
+export { InverseDepthTracker } from './sfm/depth/inverse-depth-tracker.ts';
+export { inverseDepthRecord } from './sfm/depth/depth-record.ts';
 export {
   fitInverseDepth,
   initializeInverseDepth,
@@ -56,46 +56,44 @@ export type {
   DepthTrackState,
   DepthTrackingInput,
   DepthTrackingResult,
-} from './reconstruction/inverse-depth-tracker.ts';
-export { bundleAdjustInverseDepth } from './reconstruction/inverse-depth-bundle.ts';
+} from './sfm/depth/inverse-depth-tracker.ts';
+export { bundleAdjustInverseDepth } from './sfm/depth/inverse-depth-bundle.ts';
 export type {
   InverseDepthConstraint,
   InverseDepthBundleOptions,
   InverseDepthBundleResult,
-} from './reconstruction/inverse-depth-bundle.ts';
-export { cameraMaskFromRegions } from './reconstruction/observation-selection.ts';
+} from './sfm/depth/inverse-depth-bundle.ts';
+export { cameraMaskFromRegions } from './sfm/tracks/observation-selection.ts';
 export { cameraMaskFromPixelPaths } from './reconstruction/observation-paths.ts';
 export type { ObservationPathMask } from './reconstruction/observation-paths.ts';
 export type {
   CameraObservationMask,
   CameraObservationSelection,
   ObservationExclusion,
-} from './reconstruction/observation-selection.ts';
-export { bundleAdjust, validateReconstruction } from './reconstruction/bundle-adjustment.ts';
+} from './sfm/tracks/observation-selection.ts';
+export { bundleAdjust } from './sfm/bundle/bundle-adjustment.ts';
+export { validateReconstruction } from './sfm/bundle/validation.ts';
 export type {
   BundleAdjustmentOptions,
   BundleAdjustmentResult,
-} from './reconstruction/bundle-adjustment.ts';
-export type { BundleDirection } from './reconstruction/bundle-directions.ts';
-export type { BundleAdjustmentPartition } from './reconstruction/local-bundle.ts';
-export {
-  reconstructIncremental,
-  refineIncremental,
-  ReconstructionInitializationError,
-} from './reconstruction/mapper.ts';
+} from './sfm/bundle/bundle-adjustment.ts';
+export type { BundleDirection } from './sfm/bundle/bundle-directions.ts';
+export type { BundleAdjustmentPartition } from './sfm/bundle/local-bundle.ts';
+export { reconstructIncremental, refineIncremental } from './sfm/mapper/mapper.ts';
+export { ReconstructionInitializationError } from './sfm/protocol/errors.ts';
 export type {
   IncrementalOptions,
   IncrementalResult,
   PairVerification,
-} from './reconstruction/mapper.ts';
-export { FOCAL_SEARCH_DEFAULTS } from './reconstruction/focal-search.ts';
+} from './sfm/mapper/mapper.ts';
+export { FOCAL_SEARCH_DEFAULTS } from './sfm/focal/focal-search.ts';
 export type {
   FocalCandidate,
   FocalSearchOptions,
   FocalSearchResult,
   FocalInitializationAttempt,
   FocalSearchFailure,
-} from './reconstruction/focal-search.ts';
+} from './sfm/focal/focal-search.ts';
 export type {
   ImageFeatures,
   PairMatches,
@@ -112,14 +110,9 @@ export {
   keepLargestClusters,
   removeStatisticalOutliers,
   voxelDownsample,
-} from './reconstruction/cloud-clean.ts';
-export { meshDenseCloud, MESH_DEFAULTS } from './reconstruction/dense-mesh.ts';
-export type {
-  DenseMesh,
-  DenseMeshResult,
-  MeshOptions,
-  MeshReport,
-} from './reconstruction/dense-mesh.ts';
+} from './mvs/cloud-clean.ts';
+export { meshDenseCloud, MESH_DEFAULTS } from './mvs/dense-mesh.ts';
+export type { DenseMesh, DenseMeshResult, MeshOptions, MeshReport } from './mvs/dense-mesh.ts';
 export type {
   CleanCloud,
   ClusterResult,
@@ -132,4 +125,4 @@ export type {
   OutlierResult,
   VoxelOptions,
   VoxelResult,
-} from './reconstruction/cloud-clean.ts';
+} from './mvs/cloud-clean.ts';

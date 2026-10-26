@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { kernelFaces } from '../../scripts/kernel-faces.mjs';
 import { ENTRIES, SURFACE_FILE, apiSurface, emitDeclarations } from '../../scripts/api-surface.mjs';
-import { DIGEST_FILE, kernelDigests } from '../../scripts/kernel-digests.mjs';
+import { DIGEST_FILE, kernelAliases, kernelDigests } from '../../scripts/kernel-digests.mjs';
 
 // The compile-time gates of docs/library-structure.md, section 4, rule 2 (section 5, phase 0):
 // the public declaration surface of typecv and typecv/gpu, and the WGSL and GLSL of every kernel
@@ -95,5 +95,16 @@ test('the WGSL and GLSL of every kernel module are the recorded ones', async () 
     [],
     `The emitted shader text differs from ${DIGEST_FILE}. A phase that names a kernel updates the ` +
       'file: node scripts/kernel-digests.mjs --write',
+  );
+});
+
+test('every kernel alias emits the WGSL and GLSL of its target', async () => {
+  // docs/library-structure.md, section 4, rule 4 (amendment 1): an alias keeps an old kernel path
+  // working only if it emits its target's shader text.
+  const aliases = await kernelAliases(root, faces);
+  assert.deepEqual(
+    aliases.filter(({ equal }) => !equal).map(({ alias, target }) => `${alias} -> ${target}`),
+    [],
+    'A kernel alias emits other shader text than its target',
   );
 });

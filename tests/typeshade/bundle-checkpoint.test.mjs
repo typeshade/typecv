@@ -191,7 +191,7 @@ test('the shared-focal BA PCG loop runs as timed chunks of the time budget with 
     const { input } = jointFocalFixture(fixture),
       C = input.views.length,
       M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
-    // The shared-focal route (`src/gpu/joint-focal.ts`): its reduced system has `6C + 1` rows
+    // The shared-focal route (`src/sfm/bundle/gpu/joint-focal.ts`): its reduced system has `6C + 1` rows
     // with the focal row, so one PCG iteration is `M + 6C + 1` rows, and its default budget is
     // `min(256, max(32, 12C + 1))` iterations.
     await assertChunkedLoop(

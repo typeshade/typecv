@@ -1,4 +1,4 @@
-import type { CameraIntrinsics } from '../sfm/two-view.ts';
+import type { CameraIntrinsics } from './two-view.ts';
 
 /** Undistorted pinhole if k1=k2=0; otherwise Brown radial distortion only. */
 export interface Camera extends CameraIntrinsics {

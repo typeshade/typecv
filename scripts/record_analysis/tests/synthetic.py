@@ -50,7 +50,7 @@ def pack2x16snorm(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def encode_octahedral(normals: np.ndarray) -> np.ndarray:
-    """The reference encoder, `encodeNormal` of src/gpu/mvs.shade.ts, for unit vectors (..., 3)."""
+    """The reference encoder, `encodeNormal` of src/mvs/gpu/mvs.shade.ts, for unit vectors (..., 3)."""
     n = np.asarray(normals, float)
     s = np.abs(n).sum(-1)
     px, py = n[..., 0] / s, n[..., 1] / s

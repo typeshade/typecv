@@ -11,9 +11,9 @@
 
 | 기존 구현·근거 | 확인한 경계 | 이번 변경 |
 | --- | --- | --- |
-| `src/sfm/refinement.ts:refinePose`, `src/gpu/image-pair.ts` | CPU와 TypeShade에 상대 자세 정련이 이미 있으나 mapper는 0회로 고정 | `pairRefinementIterations`로 기존 연산을 선택해 재사용 |
+| `src/geometry/refinement.ts:refinePose`, `src/geometry/gpu/image-pair.ts` | CPU와 TypeShade에 상대 자세 정련이 이미 있으나 mapper는 0회로 고정 | `pairRefinementIterations`로 기존 연산을 선택해 재사용 |
 | `src/geometry/multiview.ts:triangulateTrackDetailed`, [PR #18](https://github.com/typeshade/typecv/pull/18) | 강건한 합의·양의 깊이·재투영·시차 검사와 상태 0/1/3/4가 이미 있음 | 고정 자세·K에 조건부인 깊이 민감도와 보류 상태 5 추가 |
-| `mapper.ts`, `scene-mapper.ts`, `src/gpu/observations.ts` | BA 후 필터는 재투영 오차를 검사 | 선택한 깊이 기준도 재검사하고 보류된 트랙을 보존 |
+| `mapper.ts`, `scene-mapper.ts`, `src/geometry/gpu/observations.ts` | BA 후 필터는 재투영 오차를 검사 | 선택한 깊이 기준도 재검사하고 보류된 트랙을 보존 |
 | 기존 작업 트리의 게임 HUD 제외 영역·픽셀 중심 규약 | 해당 미커밋 구현은 보존; 정적·동적 운동 분류기가 아님 | 같은 정규화 영역 규약으로 특징점 마스크를 만들고 합의 모델 추정 전에 적용 |
 | Lab SIFT, KLT tracker/join, `website/src/lib/klt-join.ts` | 추적·매칭은 이미 존재 | 기존 경로를 RGB 검증에 그대로 사용; 특징점 ID와 원래 대응점 유지 |
 

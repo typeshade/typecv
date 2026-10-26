@@ -102,7 +102,7 @@ Actual TypeShade IR and generated WGSL were inspected on source base `6cdd70e` w
 ```sh
 node scripts/profile-kernel-ir.mjs --out .typecv-build/kernel-ir
 # A single entry, including its imported shader helpers:
-node scripts/profile-kernel-ir.mjs --kernel 'src/gpu/mvs.shade.ts#mvsPropagate'
+node scripts/profile-kernel-ir.mjs --kernel 'src/mvs/gpu/mvs.shade.ts#mvsPropagate'
 ```
 
 The tool writes authored IR, O0/O2 lowered IR, generated WGSL, dependency/code hashes and
@@ -218,13 +218,13 @@ Reference-sample/weight caching and the other remaining items are proposals.
 
 | Priority | Candidate and current evidence | Proposed change and verification |
 | -------- | ------------------------------ | -------------------------------- |
-| 1, sparse SfM | BA still runs `bundleSchurCameraRow` with one lane per row, serially walking a camera's observations (`src/gpu/bundle.shade.ts`, `src/gpu/joint-focal.shade.ts`). `src/gpu/joint-focal.ts` enables its existing Schur cache only when explicitly requested, resident, unbounded, at most 16 cameras, and within a structural work limit. More than 16 cameras cannot use it. | First compare a workgroup reduction over each camera's observations. Then evaluate a budget-based extension of the cache. Changing reduction order needs per-iteration vector/cost checks and final reprojection/registration checks. Do not remove the 16-camera/work guards without bounding the assembly kernel. A direct Cholesky solve is a later, larger change. |
-| 1, Dense | `referenceWindow` computes reference samples/weights and `sourceCost` reads/recomputes them inside every hypothesis/source evaluation. `sourceCost` and `relativePose` also reconstruct view-pair transforms repeatedly (`src/gpu/mvs.shade.ts`). There is no resident relative-pose cache. | Cache reference values/weights per active pixel and relative poses per reference/source window. Start with transformations of invariant calculations, preserving operation order. Compare depth/normal bits and final geometry. Benchmark cache variants: a large per-lane array can increase register pressure and make a larger workgroup slower. Handle all supported window sizes, not just the default 36 samples. |
-| 2, small implementation | `readState` awaits depth, normal and optional cost one after another (`src/gpu/mvs.ts`). TSDF extraction similarly awaits positions then attributes (`src/gpu/tsdf.ts`). These reads have no data dependency after the producing kernels finish. | Overlap independent reads with `Promise.all`; measure `readWaves`, actual queue submissions and wall time. Parallel promises do not themselves combine staging buffers or guarantee one GPU submission. Keep terminal count reads before allocation, and copy/transfer outputs with their current ownership rules. Numerical arrays must remain identical. |
-| 2, multi-video | `DescriptorStore.view().floatDescriptors()` dequantizes 8-bit descriptors on demand. `gpuViewGraphBackend.match()` uploads the first keyframe once for its candidate batch but dequantizes/uploads each candidate again when it appears in another batch (`src/reconstruction/view-graph.ts`, `src/gpu/view-graph.ts`). | Add a bounded LRU of decoded/resident descriptors keyed by immutable view id. Measure decode time, uploads, cache hits, peak active bytes and candidate-pair time. Reserve cache bytes against the working budget and release them before mapping. Reuse the same decoded values and preserve candidate order and exact match results. |
-| 2, interactive Dense | Photometric iteration previews read the full depth image after iterations 1 and 3, then `depthPreview` reduces 4 x 4 blocks on the host (`src/gpu/mvs.ts`). Final depth/normal reads are separately required by the current fusion path. | Reduce preview-only images on the GPU before readback: about 1/16 as many depth values for these events, with ceil-sized edges. Preserve positive-depth mean semantics and verify previews within an explicit float tolerance. This does not remove final depth-map reads. Compare final geometry unchanged and page/worker activity with previews enabled. |
-| 3, new TSDF visibility | The view-weighted mode introduced in #195 dispatches `tsdfViewCarve` over every voxel of every box for each observation view; off-screen samples return inside the shader (`src/gpu/tsdf.ts`, `src/gpu/tsdf.shade.ts`). | Investigate conservative block/frustum culling before per-voxel projection, then compact/indirect dispatch if it pays. Include truncation and voxel extent, near-plane crossings and every grouped camera. All retained points and evidence weights must equal the unculled route. First profile the new mode: no current native-GPU share is known. |
-| Later, quality-changing | `sourceAt` loads four f32 gray values and mixes them manually. The depth stage initializes at one resolution (`src/gpu/mvs.shade.ts`, `src/gpu/mvs.ts`). | Hardware-filtered texture sampling and coarse-to-fine propagation are candidates after the invariant caches. They change interpolation or the search trajectory. Require accuracy AND completeness/floor coverage against the baseline, not just point count or runtime. Keep the no-data mask and budget/residency behavior. |
+| 1, sparse SfM | BA still runs `bundleSchurCameraRow` with one lane per row, serially walking a camera's observations (`src/sfm/bundle/gpu/bundle.shade.ts`, `src/sfm/bundle/gpu/joint-focal.shade.ts`). `src/sfm/bundle/gpu/joint-focal.ts` enables its existing Schur cache only when explicitly requested, resident, unbounded, at most 16 cameras, and within a structural work limit. More than 16 cameras cannot use it. | First compare a workgroup reduction over each camera's observations. Then evaluate a budget-based extension of the cache. Changing reduction order needs per-iteration vector/cost checks and final reprojection/registration checks. Do not remove the 16-camera/work guards without bounding the assembly kernel. A direct Cholesky solve is a later, larger change. |
+| 1, Dense | `referenceWindow` computes reference samples/weights and `sourceCost` reads/recomputes them inside every hypothesis/source evaluation. `sourceCost` and `relativePose` also reconstruct view-pair transforms repeatedly (`src/mvs/gpu/mvs.shade.ts`). There is no resident relative-pose cache. | Cache reference values/weights per active pixel and relative poses per reference/source window. Start with transformations of invariant calculations, preserving operation order. Compare depth/normal bits and final geometry. Benchmark cache variants: a large per-lane array can increase register pressure and make a larger workgroup slower. Handle all supported window sizes, not just the default 36 samples. |
+| 2, small implementation | `readState` awaits depth, normal and optional cost one after another (`src/mvs/gpu/mvs.ts`). TSDF extraction similarly awaits positions then attributes (`src/mvs/gpu/tsdf.ts`). These reads have no data dependency after the producing kernels finish. | Overlap independent reads with `Promise.all`; measure `readWaves`, actual queue submissions and wall time. Parallel promises do not themselves combine staging buffers or guarantee one GPU submission. Keep terminal count reads before allocation, and copy/transfer outputs with their current ownership rules. Numerical arrays must remain identical. |
+| 2, multi-video | `DescriptorStore.view().floatDescriptors()` dequantizes 8-bit descriptors on demand. `gpuViewGraphBackend.match()` uploads the first keyframe once for its candidate batch but dequantizes/uploads each candidate again when it appears in another batch (`src/sfm/multiview/view-graph.ts`, `src/sfm/multiview/gpu/view-graph.ts`). | Add a bounded LRU of decoded/resident descriptors keyed by immutable view id. Measure decode time, uploads, cache hits, peak active bytes and candidate-pair time. Reserve cache bytes against the working budget and release them before mapping. Reuse the same decoded values and preserve candidate order and exact match results. |
+| 2, interactive Dense | Photometric iteration previews read the full depth image after iterations 1 and 3, then `depthPreview` reduces 4 x 4 blocks on the host (`src/mvs/gpu/mvs.ts`). Final depth/normal reads are separately required by the current fusion path. | Reduce preview-only images on the GPU before readback: about 1/16 as many depth values for these events, with ceil-sized edges. Preserve positive-depth mean semantics and verify previews within an explicit float tolerance. This does not remove final depth-map reads. Compare final geometry unchanged and page/worker activity with previews enabled. |
+| 3, new TSDF visibility | The view-weighted mode introduced in #195 dispatches `tsdfViewCarve` over every voxel of every box for each observation view; off-screen samples return inside the shader (`src/mvs/gpu/tsdf.ts`, `src/mvs/gpu/tsdf.shade.ts`). | Investigate conservative block/frustum culling before per-voxel projection, then compact/indirect dispatch if it pays. Include truncation and voxel extent, near-plane crossings and every grouped camera. All retained points and evidence weights must equal the unculled route. First profile the new mode: no current native-GPU share is known. |
+| Later, quality-changing | `sourceAt` loads four f32 gray values and mixes them manually. The depth stage initializes at one resolution (`src/mvs/gpu/mvs.shade.ts`, `src/mvs/gpu/mvs.ts`). | Hardware-filtered texture sampling and coarse-to-fine propagation are candidates after the invariant caches. They change interpolation or the search trajectory. Require accuracy AND completeness/floor coverage against the baseline, not just point count or runtime. Keep the no-data mask and budget/residency behavior. |
 
 Already delivered and not counted as new opportunities: GPU-time/adapter telemetry, chunk
 occupancy floors with GPU-time feedback, essential-only guided RANSAC, and reusing focal-search
@@ -717,7 +717,7 @@ a PCG iteration (`M + 6C`, `docs/gpu-sfm.md`). For `f1edec5c` that is
 0.0002 x (33458 + 162) = 6.7 ms per PCG iteration, and for `ed932d77` 0.0007 x 24312 = 17 ms.
 
 The data one iteration reads, assuming 8 bytes per emulated `f64` and 21 stored cross-block words
-per observation (`crossAt` in `src/gpu/joint-focal.shade.ts`): 33458 x 168 B = 5.6 MB per pass, two
+per observation (`crossAt` in `src/sfm/bundle/gpu/joint-focal.shade.ts`): 33458 x 168 B = 5.6 MB per pass, two
 passes, about 12 MB with the vectors. At about 450 GB/s that is 25 microseconds. The arithmetic is
 about 33458 x 21 MACs x 2 passes x 20 f32 operations per emulated MAC = 28 MFLOP, below 2
 microseconds at 20 TFLOP/s. Inference: the iteration is more than 100 times above its roofline, and
@@ -915,9 +915,9 @@ Verification classes:
   minimum number of units that fills the device (for example 2048 workgroups), and the rate
   learned from GPU time (item 1) replaces the fence time as soon as the pin offers it (G5).
   Until G5, TypeCV computes the rate itself from `gpuTime` of the chunk's report.
-- Cost: medium-small. Files: `src/gpu/device.ts` (`planSteps`), `src/gpu/triangulation.ts`,
-  `src/gpu/pnp.ts`, `src/gpu/pair-estimation.ts` (the `trials` expression, 32 floor),
-  `src/gpu/observations.ts`.
+- Cost: medium-small. Files: `src/device/gpu/device.ts` (`planSteps`), `src/geometry/gpu/triangulation.ts`,
+  `src/geometry/gpu/pnp.ts`, `src/geometry/gpu/pair-estimation.ts` (the `trials` expression, 32 floor),
+  `src/geometry/gpu/observations.ts`.
 - Expected gain: triangulation 5.4 s to about 1 s (a call of 6341 tracks as one 400-workgroup
   dispatch, because a latency-bound serial solve costs the same for 118 and 6341 tracks until
   the card fills); PnP 5 s to about 2 s; pair verification 16 s to about 9 s (a batch of 256 to
@@ -938,7 +938,7 @@ Step record (PR 2, 2026-10-21; head of `perf/occupancy-floors`, based on `main` 
 
 - Change: `GpuChunk.minUnits` and `ShadeDevice.chunkSize(key, max, min, minUnits)`. Floors:
   `triangulateTracks` 16384 tracks (16 lanes x 1024 workgroups), `scorePnP` 512 trials,
-  `scorePairModels` 256 models. The floor of 32 in `src/gpu/pair-estimation.ts` and `src/gpu/pnp.ts`
+  `scorePairModels` 256 models. The floor of 32 in `src/geometry/gpu/pair-estimation.ts` and `src/geometry/gpu/pnp.ts`
   is the `min` argument still, and the floor is the new fourth argument. `observations` is one plan
   of three dispatches over all its units, so its floor is met already, and the step changes nothing
   there. The refit's one-model scoring declares no floor.
@@ -1010,12 +1010,12 @@ Step record (PR 2, 2026-10-21; head of `perf/occupancy-floors`, based on `main` 
 ### Item 3. The guide of guided matching estimates E only
 
 - Stage: guided matching (17.6 s, 23 percent). Technique: the guide needs a band, not a pose. Run
-  the essential-matrix RANSAC alone (`estimateEssentialRansacGpu`, `src/gpu/two-view.ts`) in one
+  the essential-matrix RANSAC alone (`estimateEssentialRansacGpu`, `src/geometry/gpu/two-view.ts`) in one
   batch of 64 to 128 hypotheses and build the band from E directly. Skip pose recovery,
   triangulation and refinement (`triangulatePoseCandidates` is 10 percent of pair verification
   GPU time on SwiftShader) and the `essentialFromPose` round trip.
 - Cost: small to medium. Files: `website/src/workers/sfm.worker.ts` (`guidedMatches`),
-  `website/src/lib/guided-matching.ts`, maybe `src/gpu/two-view.ts`.
+  `website/src/lib/guided-matching.ts`, maybe `src/geometry/gpu/two-view.ts`.
 - Expected gain: the guide drops from about 170 ms to about 40 to 60 ms per pair: 17.6 s to 6 to 8 s.
   A further step, reuse of the mapper's E (verify first, then rematch), would remove the guide
   entirely but reorders the worker. Record it as a follow-up.
@@ -1076,7 +1076,7 @@ the old and the new build alternated.
   3. Gray as `unorm8` (tolerance). The gray comes from 8-bit RGB. Store the undistorted gray with
      `pack4x8unorm` (4 samples per word). Source bytes fall 4 times. Quantization error is at most
      0.5/255 of the range per sample and enters NCC as noise below the cost's own noise.
-- Cost: step 1 and 2 small (`src/gpu/mvs.shade.ts`, `src/gpu/mvs.ts`); step 3 medium
+- Cost: step 1 and 2 small (`src/mvs/gpu/mvs.shade.ts`, `src/mvs/gpu/mvs.ts`); step 3 medium
   (`mvsUndistort`, `mvsGray` layout in `docs/dense-mvs.md` 4.1 and the residency plan of
   Amendment 3).
 - Expected gain: steps 1 and 2: 20 to 30 percent of the propagate time (a count of the loads and
@@ -1101,8 +1101,8 @@ the old and the new build alternated.
   tree reduction in `workgroup<array<f64, 64>>` finishes the six rows (512 B per row, 3 KiB for six rows,
   well inside 16 KiB). Sort the camera's observation
   index so lane loads are contiguous. Keep the existing kernel as the CPU tier's `Oracle`.
-- Cost: medium. Files: `src/gpu/joint-focal.shade.ts` (`bundleSchurCamera`, the cached variants),
-  `src/gpu/bundle.shade.ts` (fixed-focal route), `src/gpu/joint-focal.ts`, `src/gpu/bundle.ts`,
+- Cost: medium. Files: `src/sfm/bundle/gpu/joint-focal.shade.ts` (`bundleSchurCamera`, the cached variants),
+  `src/sfm/bundle/gpu/bundle.shade.ts` (fixed-focal route), `src/sfm/bundle/gpu/joint-focal.ts`, `src/sfm/bundle/gpu/bundle.ts`,
   the oracle siblings, tests. The camera count per workgroup stays small, so grid size is
   C workgroups: at 27 cameras still fewer than a card's SMs. Item 6 is the answer to that; this
   item cuts the critical path from about 1200 serial steps to about 20.
@@ -1129,7 +1129,7 @@ the old and the new build alternated.
   `DENSE_SCHUR` on a GPU). At C = 27 the matrix is 162 x 162, 26244 entries, about 210 KB in
   `f64` pairs. This is the `schurCache` assembly (`cacheBundleSchurCross`, `cacheBundleSchurRows`),
   lifted from its 16-camera guard and followed by a direct solve in place of PCG.
-- Cost: large. Files: `src/gpu/joint-focal.shade.ts`, `src/gpu/joint-focal.ts`, a new
+- Cost: large. Files: `src/sfm/bundle/gpu/joint-focal.shade.ts`, `src/sfm/bundle/gpu/joint-focal.ts`, a new
   `src/gpu/cholesky.shade.ts` (blocked, 16 x 16 tiles, 2 KiB each in `f64`), tests, and a record in
   `docs/gpu-geometry.md`. A direct solve also needs a damping retry loop for LM.
 - Expected gain: 20 to 100 PCG iterations (60 to 300 dispatches) per LM step become about 10
@@ -1154,7 +1154,7 @@ the old and the new build alternated.
   window in the texture cache, and the four loads and three mixes become one instruction. Needs
   the device owner to make textures (change 0077 for a kernel-written texture; an uploaded
   texture is available).
-- Cost: medium. Files: `src/gpu/mvs.shade.ts`, `src/gpu/mvs.ts`, `src/gpu/mvs-residency.ts`
+- Cost: medium. Files: `src/mvs/gpu/mvs.shade.ts`, `src/mvs/gpu/mvs.ts`, `src/mvs/gpu/mvs-residency.ts`
   (bytes per view change), `docs/dense-mvs.md`.
 - Expected gain: 1.5 to 2.5 times on propagation where it is texture-bound. Unproven: it depends
   on the card (item 1 tells whether propagation is bandwidth or ALU bound).
@@ -1170,7 +1170,7 @@ the old and the new build alternated.
 - Stage: dense photometric. Technique: run 2 to 3 iterations at 1/4 and 1/2 resolution first, upsample
   the depth and normal as the full-resolution initialization, and run 2 to 3 iterations at full
   resolution instead of 8. Estimated 2 to 3 times on the photometric stage.
-- Cost: large (`src/gpu/mvs.ts` plan, `mvs-residency.ts`, a design amendment to
+- Cost: large (`src/mvs/gpu/mvs.ts` plan, `mvs-residency.ts`, a design amendment to
   `docs/dense-mvs.md` 3.5 and 4.x). Result changes; needs a quality gate (ETH3D-style
   accuracy or the repository's TUM and south-building comparisons).
 - Verification: tolerance with a quality gate against `scripts/compare-mvs-tum.mjs`. Own design
@@ -1200,7 +1200,7 @@ the old and the new build alternated.
 
 1. Move `scripts/profile-kernels.mjs` into the pull request (it exists in the branch of this record).
    Keep its wrapper of `device.shade.fuse` as the model.
-2. In `src/gpu/device.ts`, add a small collector in `ShadeDevice.plan`: for each report, add
+2. In `src/device/gpu/device.ts`, add a small collector in `ShadeDevice.plan`: for each report, add
    `groups` and `gpuTime` to a map keyed by `calls.join('+')`. Expose it as `statistics.kernels`.
    Do not keep more than 160 keys.
 3. In `website/src/workers/sfm.worker.ts`, add the collector's rows to the record's `timing.gpu`
@@ -1218,12 +1218,12 @@ Checks: `npm run format:check`, `npm run typecheck`, `npm test`, `npm run test:w
 
 ### PR 2. Fill the device before splitting a chunk (item 2)
 
-1. Add a `minUnits` option to `GpuChunk` in `src/gpu/device.ts` and use it in `ShadeDevice.chunkSize`
+1. Add a `minUnits` option to `GpuChunk` in `src/device/gpu/device.ts` and use it in `ShadeDevice.chunkSize`
    so that a key never returns less than `minUnits`, unless a measured dispatch exceeded the
    ceiling.
 2. Set `minUnits` from workgroups: triangulation 16 lanes x 1024 workgroups, `scorePnP` 512 trials,
    `scorePairModels` 256 trials, `observations` all units. Replace the `Math.min(batchSize, 32)`
-   floor in `src/gpu/pair-estimation.ts` and the equal floor in `src/gpu/pnp.ts`.
+   floor in `src/geometry/gpu/pair-estimation.ts` and the equal floor in `src/geometry/gpu/pnp.ts`.
 3. Teach `ShadeDevice` to read the chunk's `gpuTime` and to learn the rate from it when it
    exists (`device.shade.chunkRates` stays the fence-based fallback). Add a ceiling of 100 GPU
    ms per dispatch that halves the key's `minUnits` after one overrun.
@@ -1235,7 +1235,7 @@ Checks: `npm run format:check`, `npm run typecheck`, `npm test`, `npm run test:w
 ### PR 3. The guide estimates E only (item 3)
 
 1. In `website/src/workers/sfm.worker.ts` `guidedMatches`, replace `verifyImagePairGpu` with
-   `estimateEssentialRansacGpu` at 64 to 128 hypotheses (read `src/gpu/two-view.ts` for the
+   `estimateEssentialRansacGpu` at 64 to 128 hypotheses (read `src/geometry/gpu/two-view.ts` for the
    options), and build `E` from its result.
 2. Remove the pose round trip (`essentialFromPose`) and `guideVerificationOptions`'s unused
    options; keep `GUIDE_RANSAC_ITERATIONS` as the hypothesis count.
@@ -1254,7 +1254,7 @@ dispatches. `appendPairModelRows` took 160.2 s of 265 s GPU time in 53,478 dispa
 1. Cause (fact, `scripts/measure-focal-search-cost.mjs`): the focal search of #162 verified the
    10 pairs of its first 5 views at each of 17 grid points and once more at the refined focal.
    On the pyramid sample that is 180 of 208 calls.
-2. Change (#180): `src/reconstruction/focal-pairs.ts` keeps the eight-point solution of each trial
+2. Change (#180): `src/sfm/focal/focal-pairs.ts` keeps the eight-point solution of each trial
    of a pair, which does not depend on the focal, and derives each grid point's verification on
    the host. Details, accuracy and measurements: `docs/auto-focal.md`, section 8.
 3. Result (SwiftShader): pair verifications of the search 180 to 0; pyramid run 208 to 28 calls,
