@@ -981,6 +981,9 @@ hanging tracks, the number of steps, and `ABORTED` when the probe aborted. Under
 track or aborted. The inputs are `limit` (newest
 records, default 50) and `print` (`failures`, `all` or `none`).
 
+`scripts/fetch-record-files.mjs` fetches and checks the result files of an exported record, and
+`scripts/analyze-record.py` analyses them offline (`docs/chimney-rock-58532c69.md`).
+
 With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
 
 ```sh

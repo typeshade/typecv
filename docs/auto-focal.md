@@ -263,6 +263,12 @@ of `physical-gpu-runs.md` asks for it.
    lens "about 0.58". No measurement supports it: the mapper's error is lowest near 0.8 on both
    pyramid inputs, and the vanishing-point note (`research/vanishing-point-focal.md`) gave 0.77.
 4. Multi-video runs (`docs/multi-video.md`) do not search yet.
+5. On a calibration subset with little rotation, the grid's lower bound wins. Record
+   `chimney-rock-58532c69.md` (section 3.1) measures it on a drone video: the RMS error is flat
+   over the whole grid, the observations kept fall as the focal grows, and the truncated score
+   therefore rises with the focal. The final restarts of 4.2 reuse the map built at the boundary
+   and stop short of the reference focal. A change of the score, of the subset selection and of the
+   restart is a candidate, not decided.
 
 ## 5. Measurements with the search
 
@@ -304,6 +310,7 @@ distortion (`graham-hall`, `tests/focal-search.test.ts`), and 2 % on the synthet
 
 - 2026-10-21: written with the implementation, proposed (#162).
 - 2026-10-21: section 8 added: the pair base of the search (#180).
+- 2026-10-26: open item 5 added from the diagnosis record `chimney-rock-58532c69.md` (#239).
 
 ## 8. Step record: the pair base of the search (#180)
 
