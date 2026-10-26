@@ -159,6 +159,33 @@ test('time between the partial maps sends a held map by its timer', async () => 
   );
 });
 
+test('a dense device lost during a component ends it and the next one as failed', async () => {
+  const spec = {
+    loss: {
+      call: 'reconstructDenseGpu',
+      at: 0,
+      info: { reason: 'unknown', message: 'dense loss' },
+    },
+    multi: { components: [[A, B], [C]] },
+  };
+  await transcript(
+    'dense-loss',
+    spec,
+    async (h) => {
+      await h.send(start(1, { dense: true }));
+      await threeVideos(h, 1);
+      await h.send({ id: 1, type: 'multiFinish' });
+    },
+    (h) => {
+      const results = posted(h, 'denseResult');
+      assert.equal(results.length, 2);
+      assert.ok(
+        results.every((m) => /WebGPU device lost during the dense MVS/.test(m.failure.message)),
+      );
+    },
+  );
+});
+
 test('a failed reconstruction posts the error with the GPU totals', async () => {
   const spec = { multi: { components: [[A, B], [C]], failure: 'synthetic mapper failure' } };
   await transcript(

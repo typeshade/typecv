@@ -405,6 +405,24 @@ test('throttles: time inside the calls sends a held map, and the dense activity 
   );
 });
 
+test('dense: a dense device that does not open keeps the sparse result', async () => {
+  const spec = { openFailure: [1], shift: { 0: [0, 0], 1: [8, 0], 2: [16, 0] } };
+  await transcript(
+    'dense-open-failure',
+    spec,
+    async (h) => {
+      await h.send(start(1, { dense: true }));
+      for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
+      await h.send({ id: 1, type: 'finish' });
+    },
+    (h) => {
+      assert.equal(posted(h, 'result').length, 1);
+      const [dense] = posted(h, 'denseResult');
+      assert.match(dense.failure.message, /^Could not open the dense GPU device:/);
+    },
+  );
+});
+
 test('failure: an error in the middle of a frame reports the partial run', async () => {
   const spec = {
     fail: { call: 'matchFloatDescriptorsGpu', at: 1, message: 'synthetic matcher failure' },
