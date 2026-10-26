@@ -491,18 +491,19 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
         t.rejected += ids.length;
       },
       stats() {
+        // The shape of `KltStats` (`src/gpu/klt-tracker.ts`): 8 end reasons, 6 length bins.
         return {
           pushes: t.pushes,
           joins: t.joins,
           alive: alive(),
-          ended: t.rejected,
+          ended: [0, 1, 0, 0, 0, 0, 0, t.rejected],
           joined: t.matches,
           seeded: alive(),
           filledIn: 0,
           filtered: 2,
           matches: t.matches,
           rejected: t.rejected,
-          lengths: [0, 1, 2, t.pushes],
+          lengths: [1, 0, 2, t.pushes, 0, 0],
           meanLived: 2.5,
           msPush: 1.5,
           msSelect: 0.5,
