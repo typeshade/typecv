@@ -15,8 +15,10 @@
 //   gaps, ranked).
 // Both are dated records. This suite does not change them.
 //
-// Measured on 2026-10-26: typeshade d36ac502 (MEASURED_AT, the package.json pin; package version
-// 0.1.0), Node 22.22.0, the CPU tier (no WebGPU device).
+// Measured on 2026-10-26: typeshade 725b2969 (MEASURED_AT, the package.json pin; package version
+// 0.1.0), Node 22.22.0, the CPU tier (no WebGPU device). The pin bump from d36ac502, where #243
+// first measured the suite, read every probe again (#246; docs/library-structure.md, amendment 2).
+// No verdict changed.
 //
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
@@ -54,7 +56,7 @@ import { MARK, SOURCES } from './compiler-probes.sources.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 
 /** The typeshade commit whose verdicts the probes hold. */
-const MEASURED_AT = 'd36ac5027356b96e87a9ad900dfd8e6ea4ab55dc';
+const MEASURED_AT = '725b2969a9cac37400980c2c0058680368407602';
 const AT = `typeshade ${MEASURED_AT.slice(0, 8)}`;
 
 /**
