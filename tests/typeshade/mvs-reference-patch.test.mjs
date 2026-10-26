@@ -41,7 +41,7 @@ test('invocation-local MVS reference patches preserve scalar/f32 costs, candidat
     module,
     module.exports,
   );
-  const source = await readFile(new URL('../../src/gpu/mvs.shade.ts', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../../src/mvs/gpu/mvs.shade.ts', import.meta.url), 'utf8');
   // Inspect the uninstrumented shader. A pointer signature alone does not stop LICM from
   // materializing a whole patch field as a value before its source/plane guards.
   const compiled = module.exports.compile(source);

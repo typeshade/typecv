@@ -15,15 +15,15 @@ export { inverseDepthJacobian, initializeInverseDepth } from '../geometry/invers
 export { bundleAdjustInverseDepth } from '../sfm/depth/inverse-depth-bundle.ts';
 export { IncrementalSfmSession } from '../sfm/gpu/mapper.ts';
 export { InverseDepthTracker } from '../sfm/depth/inverse-depth-tracker.ts';
-export { planMvsViews } from './mvs-views.ts';
-export type { MvsScene, MvsViewPlan, MvsViewOptions } from './mvs-views.ts';
+export { planMvsViews } from '../mvs/gpu/mvs-views.ts';
+export type { MvsScene, MvsViewPlan, MvsViewOptions } from '../mvs/gpu/mvs-views.ts';
 export {
   decodeMvsNormal,
   mvsDepthMapsGpu,
   mvsPhotometricGpu,
   reconstructDense,
   reconstructDenseGpu,
-} from './mvs.ts';
+} from '../mvs/gpu/mvs.ts';
 export type {
   GpuDenseOptions,
   GpuDenseFusionProgress,
@@ -37,20 +37,26 @@ export type {
   MvsImage,
   MvsPhotometricOptions,
   MvsPhotometricResult,
-} from './mvs.ts';
-export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
-export { fuseTsdfGpu } from './tsdf.ts';
-export { completePlanarDepths } from './planar-depth.ts';
+} from '../mvs/gpu/mvs.ts';
+export { cleanDenseCloudGpu, gpuCleanPrimitives } from '../mvs/gpu/cloud-clean.ts';
+export { fuseTsdfGpu } from '../mvs/gpu/tsdf.ts';
+export { completePlanarDepths } from '../mvs/gpu/planar-depth.ts';
 /** @internal Consuming view-slot entry used by MVS and differential ownership tests. */
-export { completeOwnedPlanarDepths } from './planar-depth.ts';
-export type { TsdfGpuOptions, TsdfReport, TsdfProgress, TsdfPhase, TsdfPart } from './tsdf.ts';
-export { fuseTsdf, planTsdfVolume, tsdfSamples, tsdfViews } from '../reconstruction/tsdf.ts';
-export { labelDenseCloud } from '../reconstruction/dense-label.ts';
-export { labelLandmarks } from './mvs.ts';
-export type { DenseLabelOptions, DenseLabelReport } from '../reconstruction/dense-label.ts';
-export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruction/tsdf.ts';
-export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
-export { meshDenseCloudGpu } from './dense-mesh.ts';
+export { completeOwnedPlanarDepths } from '../mvs/gpu/planar-depth.ts';
+export type {
+  TsdfGpuOptions,
+  TsdfReport,
+  TsdfProgress,
+  TsdfPhase,
+  TsdfPart,
+} from '../mvs/gpu/tsdf.ts';
+export { fuseTsdf, planTsdfVolume, tsdfSamples, tsdfViews } from '../mvs/tsdf.ts';
+export { labelDenseCloud } from '../mvs/dense-label.ts';
+export { labelLandmarks } from '../mvs/gpu/mvs.ts';
+export type { DenseLabelOptions, DenseLabelReport } from '../mvs/dense-label.ts';
+export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../mvs/tsdf.ts';
+export { cleanCloudWith, voxelFrame } from '../mvs/cloud-clean.ts';
+export { meshDenseCloudGpu } from '../mvs/gpu/dense-mesh.ts';
 export { trackKltGpu, kltChunkSteps } from '../motion/gpu/klt-device.ts';
 export { createKltPairCache } from '../motion/gpu/klt-pair-cache.ts';
 export { expandObservationsGpu } from '../sfm/tracks/gpu/observation-expansion.ts';

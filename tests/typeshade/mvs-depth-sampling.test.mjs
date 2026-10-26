@@ -24,7 +24,7 @@ test('MVS reprojection preserves a slanted plane and rejects interpolation acros
     compiler,
     compiler.exports,
   );
-  const source = await readFile(new URL('../../src/gpu/mvs.shade.ts', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../../src/mvs/gpu/mvs.shade.ts', import.meta.url), 'utf8');
   const parsed = compiler.exports.compile(
     source +
       `

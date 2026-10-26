@@ -112,14 +112,9 @@ export {
   keepLargestClusters,
   removeStatisticalOutliers,
   voxelDownsample,
-} from './reconstruction/cloud-clean.ts';
-export { meshDenseCloud, MESH_DEFAULTS } from './reconstruction/dense-mesh.ts';
-export type {
-  DenseMesh,
-  DenseMeshResult,
-  MeshOptions,
-  MeshReport,
-} from './reconstruction/dense-mesh.ts';
+} from './mvs/cloud-clean.ts';
+export { meshDenseCloud, MESH_DEFAULTS } from './mvs/dense-mesh.ts';
+export type { DenseMesh, DenseMeshResult, MeshOptions, MeshReport } from './mvs/dense-mesh.ts';
 export type {
   CleanCloud,
   ClusterResult,
@@ -132,4 +127,4 @@ export type {
   OutlierResult,
   VoxelOptions,
   VoxelResult,
-} from './reconstruction/cloud-clean.ts';
+} from './mvs/cloud-clean.ts';

@@ -148,7 +148,7 @@ export type {
   GpuResidentFeatures,
 } from '../features/gpu/features.ts';
 
-export { reconstructDenseGpu } from './mvs.ts';
+export { reconstructDenseGpu } from '../mvs/gpu/mvs.ts';
 export type {
   GpuDenseOptions,
   GpuDenseDepthDiagnostic,
@@ -165,13 +165,13 @@ export type {
   MvsImage,
   TsdfOptions,
   TsdfReport,
-} from './mvs.ts';
+} from '../mvs/gpu/mvs.ts';
 export {
   cleanDenseCloudGpu,
   meanNeighbourDistancesGpu,
   removeStatisticalOutliersGpu,
   voxelDownsampleGpu,
-} from './cloud-clean.ts';
+} from '../mvs/gpu/cloud-clean.ts';
 export type {
   CleanCloud,
   DenseCleanOptions,
@@ -181,21 +181,21 @@ export type {
   OutlierResult,
   VoxelOptions,
   VoxelResult,
-} from '../reconstruction/cloud-clean.ts';
-export { meshDenseCloudGpu } from './dense-mesh.ts';
+} from '../mvs/cloud-clean.ts';
+export { meshDenseCloudGpu } from '../mvs/gpu/dense-mesh.ts';
+export type { DenseMesh, DenseMeshResult, MeshOptions, MeshReport } from '../mvs/dense-mesh.ts';
 export type {
-  DenseMesh,
-  DenseMeshResult,
-  MeshOptions,
-  MeshReport,
-} from '../reconstruction/dense-mesh.ts';
-export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
+  MvsScene,
+  MvsSceneLandmark,
+  MvsSceneView,
+  MvsViewOptions,
+} from '../mvs/gpu/mvs-views.ts';
 export type {
   MvsDepthResidency,
   MvsFusionResidency,
   MvsResidency,
   MvsResidencyMode,
-} from './mvs-residency.ts';
+} from '../mvs/gpu/mvs-residency.ts';
 
 export { extractFeaturesTiledGpu, featureTileRegions } from '../features/gpu/tiled-features.ts';
 export type {

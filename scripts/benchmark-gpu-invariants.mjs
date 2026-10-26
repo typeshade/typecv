@@ -26,7 +26,7 @@ const files = [
   'src/device/gpu/device.ts',
   'scripts/benchmark-gpu-invariants.mjs',
   'src/sfm/bundle/gpu/joint-focal.shade.ts',
-  'src/gpu/mvs.shade.ts',
+  'src/mvs/gpu/mvs.shade.ts',
   'tests/typeshade/geometry-cases.mjs',
   'tests/typeshade/mvs-cases.mjs',
 ];
