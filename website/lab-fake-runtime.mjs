@@ -285,7 +285,8 @@ export function createFakeRuntime(spec = {}, log = () => {}, elapse = async () =
     }
     register(id) {
       const [dx, dy] = shiftOf(id);
-      // The shapes of `RegisteredView` and `Pose` (`src/reconstruction/types.ts`).
+      // The shapes of `RegisteredView` (`src/contracts/scene.ts`) and `Pose`
+      // (`src/contracts/camera.ts`).
       this.views.set(id, {
         id,
         camera: { ...this.cameras.get(id) },
@@ -301,7 +302,7 @@ export function createFakeRuntime(spec = {}, log = () => {}, elapse = async () =
           b = pair.matches[k + 1];
         let point = this.points.get(a);
         if (!point) {
-          // The shape of `Landmark` and `LandmarkObservation` (`src/reconstruction/types.ts`).
+          // The shape of `Landmark` and `LandmarkObservation` (`src/contracts/scene.ts`).
           point = {
             trackId: a,
             xyz: Float64Array.from([
