@@ -66,6 +66,8 @@ Use Node.js 22.18+ or Node.js 24:
 ```sh
 npm ci
 npm run check                 # formatting, types, CPU/reference tests and builds
+npm run test:surface          # the declaration surface and the kernels' WGSL/GLSL digests, after a build
+npm run test:digests          # the sparse pipeline's characterization digests (Node 22), after a build
 npm run example               # current two-view SfM example
 npm run example:incremental   # current multi-view SfM example
 npx playwright install --only-shell chromium
@@ -75,6 +77,7 @@ npm run evaluate:p3p          # GPU P3P branch/reference comparison
 npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
 npm run benchmark:sfm:workgroups # specialize the SfM guided kernel at 64/128/256 lanes
 node scripts/profile-kernel-ir.mjs # inspect actual kernel IR and O0/O2 WGSL offline
+node scripts/import-graph.mjs # runtime import cycles and layering breaks (docs/library-structure.md 3.1)
 ```
 
 The public website is built from this repository. See [website development and
@@ -89,7 +92,13 @@ accompany their implementations.
 
 Current tests cover geometry, sparse reconstruction, compiled TypeShade P3P/scoring,
 resource lifetimes and actual WebGPU execution. GPU CI uses SwiftShader;
-physical-GPU performance remains unmeasured. The
+physical-GPU performance remains unmeasured. The characterization digests of the
+sparse pipeline (`npm run test:digests`), the declaration surface and the kernels'
+shader text (`npm run test:surface`) hold a structure change to the same outputs
+([library structure](docs/library-structure.md), phase 0). The digest fixtures hold
+Node 22's bits, since identity across Node majors is not established; CI compares
+them on Node 22, and its `digests` job compares a pull request's merge base and head
+on one runner for each Node major, SwiftShader included. The
 [controlled-input pyramid experiment](docs/experiments/incremental-pyramid/README.md)
 is one reconstruction case, not an evaluation of the entire computer vision
 scope. Accuracy, failure behavior and transfer-inclusive performance need

@@ -1,0 +1,3704 @@
+# The public declaration surface of typecv and typecv/gpu: docs/library-structure.md,
+# section 4, rule 2, and section 5, phase 0. Generated; do not edit.
+# Update: node scripts/api-surface.mjs --write
+
+== typecv (src/index.ts): 115 names, 45 values, 70 types
+AnchoredInverseDepth: interface (type-only export)
+BundleAdjustmentOptions: interface (type-only export)
+BundleAdjustmentPartition: interface (type-only export)
+BundleAdjustmentResult: interface (type-only export)
+BundleDirection: interface (type-only export)
+Camera: interface (type-only export)
+CameraIntrinsics: interface (type-only export)
+CameraObservationMask: interface (type-only export)
+CameraObservationSelection: interface (type-only export)
+CleanCloud: interface (type-only export)
+ClusterResult: interface (type-only export)
+DbscanOptions: interface (type-only export)
+DbscanResult: interface (type-only export)
+DenseCleanOptions: interface (type-only export)
+DenseCleanReport: interface (type-only export)
+DenseCleanResult: interface (type-only export)
+DenseMesh: interface (type-only export)
+DenseMeshResult: interface (type-only export)
+DepthSensitivityOptions: interface (type-only export)
+DepthTrackState: interface (type-only export)
+DepthTrackingInput: interface (type-only export)
+DepthTrackingResult: interface (type-only export)
+DetailedTrackTriangulation: type (type-only export)
+FOCAL_SEARCH_DEFAULTS: const
+FeatureObservation: interface (type-only export)
+FeatureTrack: interface (type-only export)
+FocalCandidate: interface (type-only export)
+FocalInitializationAttempt: interface (type-only export)
+FocalSearchFailure: interface (type-only export)
+FocalSearchOptions: interface (type-only export)
+FocalSearchResult: interface (type-only export)
+GeometryEstimationError: class
+ImageFeatures: interface (type-only export)
+ImagePairGeometry: type (type-only export)
+ImagePairOptions: interface (type-only export)
+ImagePairVerification: interface (type-only export)
+IncrementalOptions: interface (type-only export)
+IncrementalResult: interface (type-only export)
+InverseDepthBundleOptions: interface (type-only export)
+InverseDepthBundleResult: interface (type-only export)
+InverseDepthConstraint: interface (type-only export)
+InverseDepthLinearization: interface (type-only export)
+InverseDepthSnapshot: interface (type-only export)
+InverseDepthTracker: class
+InverseDepthTracking: interface (type-only export)
+InverseDepthTrackingOptions: interface (type-only export)
+Landmark: interface (type-only export)
+LandmarkObservation: interface (type-only export)
+MESH_DEFAULTS: const
+MeshOptions: interface (type-only export)
+MeshReport: interface (type-only export)
+ObservationExclusion: interface (type-only export)
+ObservationPathMask: interface (type-only export)
+OutlierOptions: interface (type-only export)
+OutlierResult: interface (type-only export)
+PairMatches: interface (type-only export)
+PairRotationEvidence: interface (type-only export)
+PairVerification: interface (type-only export)
+Pixel: type (type-only export)
+PnPOptions: interface (type-only export)
+PnPResult: interface (type-only export)
+Pose: interface (type-only export)
+ReconstructionInitializationError: class
+ReconstructionTracking: interface (type-only export)
+RegisteredView: interface (type-only export)
+RelativeRotationOptions: interface (type-only export)
+RelativeRotationResult: interface (type-only export)
+SparseReconstruction: interface (type-only export)
+TrackTriangulation: interface (type-only export)
+TrackTriangulationOptions: interface (type-only export)
+TriangulationObservation: interface (type-only export)
+TwoViewOptions: interface (type-only export)
+TwoViewResult: interface (type-only export)
+VoxelOptions: interface (type-only export)
+VoxelResult: interface (type-only export)
+assessTrackDepth: function
+buildTracks: function
+bundleAdjust: function
+bundleAdjustInverseDepth: function
+cameraCenter: function
+cameraMaskFromPixelPaths: function
+cameraMaskFromRegions: function
+cameraProjection: function
+cleanDenseCloud: function
+dbscan: function
+estimateHomography: function
+estimatePosePnP: function
+estimateRelativeRotation: function
+fitInverseDepth: function
+identityPose: function
+initializeInverseDepth: function
+inverseDepthJacobian: function
+inverseDepthPoint: function
+inverseDepthRecord: function
+inverseRangeUncertainty: function
+keepLargestClusters: function
+meshDenseCloud: function
+projectPoint: function
+reanchorInverseDepth: function
+reconstructIncremental: function
+reconstructTwoView: function
+refineIncremental: function
+removeStatisticalOutliers: function
+rescaleInverseDepth: function
+rotationExp: function
+sampsonSquared: function
+triangulate: function
+triangulateTrack: function
+triangulateTrackDetailed: function
+unprojectPixel: function
+validateCamera: function
+validatePose: function
+validateReconstruction: function
+verifyImagePair: function
+voxelDownsample: function
+
+-- AnchoredInverseDepth
+interface AnchoredInverseDepth {
+    readonly reference: Pose;
+    readonly parameters: Float64Array;
+}
+
+-- BundleAdjustmentOptions
+interface BundleAdjustmentOptions {
+    readonly directionalConstraints?: readonly BundleDirection[];
+    readonly iterations?: number;
+    readonly huberPx?: number;
+    readonly anchorViewId?: number;
+    readonly scaleViewId?: number;
+    readonly variableViewIds?: readonly number[];
+    readonly refineSharedFocal?: boolean;
+    readonly focalGroups?: ReadonlyMap<number, number>;
+    readonly stallTolerance?: number;
+}
+
+-- BundleAdjustmentPartition
+interface BundleAdjustmentPartition {
+    readonly components: readonly (readonly number[])[];
+    readonly fixedViewIds: readonly number[];
+    readonly deferredViewIds: readonly number[];
+    readonly sharedFocalDeferred: boolean;
+}
+
+-- BundleAdjustmentResult
+interface BundleAdjustmentResult {
+    readonly reconstruction: SparseReconstruction;
+    readonly directionalConstraints?: readonly BundleDirection[];
+    readonly diagnostics: {
+        readonly initialCost: number;
+        readonly finalCost: number;
+        readonly initialRmsePx: number;
+        readonly finalRmsePx: number;
+        readonly acceptedSteps: number;
+        readonly rejectedSteps: number;
+        readonly observations: number;
+        readonly baseline: number;
+        readonly directionalObservations?: number;
+        readonly pointParameters?: number;
+    };
+}
+
+-- BundleDirection
+interface BundleDirection {
+    readonly trackId: number;
+    readonly direction: Float64Array;
+    readonly observations: readonly LandmarkObservation[];
+}
+
+-- Camera
+interface Camera extends CameraIntrinsics {
+    readonly k1?: number;
+    readonly k2?: number;
+}
+
+-- CameraIntrinsics
+interface CameraIntrinsics {
+    readonly fx: number;
+    readonly fy: number;
+    readonly cx: number;
+    readonly cy: number;
+}
+
+-- CameraObservationMask
+interface CameraObservationMask {
+    readonly viewId: number;
+    readonly values: Uint8Array;
+    readonly source: 'manual' | 'geometry' | 'learned' | 'ground-truth';
+}
+
+-- CameraObservationSelection
+interface CameraObservationSelection {
+    readonly masks: readonly CameraObservationMask[];
+    readonly separatedPairs: readonly PairMatches[];
+    readonly inputMatchCount: number;
+    readonly backgroundMatchCount: number;
+    readonly unappliedViewIds: readonly number[];
+}
+
+-- CleanCloud
+interface CleanCloud {
+    readonly count: number;
+    readonly positions: Float32Array;
+    readonly colors?: Uint8Array;
+    readonly normals?: Int16Array;
+}
+
+-- ClusterResult
+interface ClusterResult extends DbscanResult {
+    readonly cloud: CleanCloud;
+    readonly removed: number;
+    readonly kept: readonly number[];
+}
+
+-- DbscanOptions
+interface DbscanOptions {
+    readonly eps: number;
+    readonly minPoints?: number;
+}
+
+-- DbscanResult
+interface DbscanResult {
+    readonly labels: Int32Array;
+    readonly clusters: number;
+    readonly sizes: Uint32Array;
+    readonly corePoints: number;
+}
+
+-- DenseCleanOptions
+interface DenseCleanOptions {
+    readonly outliers?: false | OutlierOptions;
+    readonly voxel?: false | VoxelOptions;
+    readonly cluster?: false | (Partial<DbscanOptions> & ClusterSelection & {
+        readonly epsFactor?: number;
+    });
+}
+
+-- DenseCleanReport
+interface DenseCleanReport {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly before: number;
+    readonly afterOutliers: number;
+    readonly afterVoxel: number;
+    readonly after: number;
+    readonly outlierThreshold: number;
+    readonly voxelSize: number;
+    readonly eps: number;
+    readonly clusters: number;
+    readonly keptClusters: number;
+    readonly ms: {
+        readonly outliers: number;
+        readonly voxel: number;
+        readonly cluster: number;
+    };
+}
+
+-- DenseCleanResult
+interface DenseCleanResult {
+    readonly cloud: CleanCloud;
+    readonly report: DenseCleanReport;
+}
+
+-- DenseMesh
+interface DenseMesh {
+    readonly vertexCount: number;
+    readonly faceCount: number;
+    readonly positions: Float32Array;
+    readonly colors: Uint8Array;
+    readonly indices: Uint32Array;
+}
+
+-- DenseMeshResult
+interface DenseMeshResult {
+    readonly mesh: DenseMesh;
+    readonly report: MeshReport;
+}
+
+-- DepthSensitivityOptions
+interface DepthSensitivityOptions {
+    readonly maxRelativeDepthStdDev?: number;
+    readonly pixelNoiseStdDevPx?: number;
+}
+
+-- DepthTrackState
+interface DepthTrackState {
+    readonly id: number;
+    readonly observations: readonly {
+        readonly viewId: number;
+        readonly featureId: number;
+        readonly pixel: readonly [
+            number,
+            number
+        ];
+    }[];
+    readonly status: 'bearing-only' | 'estimating' | 'finite';
+    readonly reason: 'translation-unavailable' | 'depth-unobservable' | 'joint-uncertainty-unavailable' | 'insufficient-observations' | 'uncertain-depth' | 'inconsistent-observations' | 'validated';
+    readonly referenceViewId: number;
+    readonly bearing: Float64Array;
+    readonly bearingCovariance?: Float64Array;
+    readonly bearingCovarianceConditionalOn?: 'fixed-intrinsics-anchor-observation' | 'joint-bundle-linearization';
+    readonly estimate?: AnchoredInverseDepth;
+    readonly covariance?: Float64Array;
+    readonly inverseRange?: {
+        readonly mean: number;
+        readonly stddev?: number;
+    };
+    readonly maxErrorPx?: number;
+}
+
+-- DepthTrackingInput
+interface DepthTrackingInput {
+    readonly tracks: readonly FeatureTrack[];
+    readonly images: readonly ImageFeatures[];
+    readonly reconstruction?: SparseReconstruction;
+    readonly cameraObservationMasks?: readonly CameraObservationMask[];
+}
+
+-- DepthTrackingResult
+interface DepthTrackingResult {
+    readonly reconstruction?: SparseReconstruction;
+    readonly snapshot: InverseDepthSnapshot;
+}
+
+-- DetailedTrackTriangulation
+type DetailedTrackTriangulation = {
+    readonly status: 0;
+    readonly track: TrackTriangulation;
+} | {
+    readonly status: 1 | 3 | 4 | 5;
+    readonly track?: undefined;
+};
+
+-- FOCAL_SEARCH_DEFAULTS
+const FOCAL_SEARCH_DEFAULTS: {
+    readonly views: 5;
+    readonly minRatio: 0.3;
+    readonly maxRatio: 3;
+    readonly step: 1.15;
+    readonly refineIterations: 25;
+};
+
+-- FeatureObservation
+interface FeatureObservation {
+    readonly viewId: number;
+    readonly featureId: number;
+}
+
+-- FeatureTrack
+interface FeatureTrack {
+    readonly id: number;
+    readonly observations: readonly FeatureObservation[];
+}
+
+-- FocalCandidate
+interface FocalCandidate {
+    readonly ratio: number;
+    readonly views: number;
+    readonly rmsePx: number;
+    readonly observations: number;
+    readonly modelParameters?: number;
+    readonly directionalObservations?: number;
+    readonly score: number;
+}
+
+-- FocalInitializationAttempt
+interface FocalInitializationAttempt {
+    readonly ratio: number;
+    readonly views: number;
+    readonly pairs: number;
+    readonly eligiblePairs: number;
+    readonly bestPair?: PairVerification;
+    readonly reasons: readonly {
+        readonly reason: string;
+        readonly pairs: number;
+    }[];
+    readonly failure: string;
+}
+
+-- FocalSearchFailure
+interface FocalSearchFailure {
+    readonly attempts: readonly FocalInitializationAttempt[];
+    readonly omittedAttempts: number;
+}
+
+-- FocalSearchOptions
+interface FocalSearchOptions {
+    readonly views?: number;
+    readonly minRatio?: number;
+    readonly maxRatio?: number;
+    readonly step?: number;
+    readonly refineIterations?: number;
+}
+
+-- FocalSearchResult
+interface FocalSearchResult {
+    readonly ratio: number;
+    readonly views: readonly number[];
+    readonly candidates: readonly FocalCandidate[];
+    readonly gridRatio: number;
+    readonly scoring?: 'directional-bic';
+    readonly refinements?: readonly (FocalCandidate & {
+        readonly initialRatio: number;
+    })[];
+}
+
+-- GeometryEstimationError
+class GeometryEstimationError extends Error {
+    constructor(message: string);
+}
+
+-- ImageFeatures
+interface ImageFeatures {
+    readonly id: number;
+    readonly camera: Camera;
+    readonly keypoints: Float64Array;
+}
+
+-- ImagePairGeometry
+type ImagePairGeometry = Pick<TwoViewResult, 'R' | 't' | 'inlierCount' | 'positiveDepthCount' | 'meanReprojectionErrorPx' | 'diagnostics'>;
+
+-- ImagePairOptions
+interface ImagePairOptions extends TwoViewOptions {
+    readonly homographyThresholdPx?: number;
+    readonly homographyIterations?: number;
+    readonly hypotheses?: TrialHypotheses;
+}
+
+-- ImagePairVerification
+interface ImagePairVerification {
+    readonly invertibleCount: number;
+    readonly homographyInlierCount: number;
+    readonly inlierRows: Uint32Array;
+    readonly geometry?: ImagePairGeometry;
+    readonly reason?: string;
+}
+
+-- IncrementalOptions
+interface IncrementalOptions extends DepthSensitivityOptions {
+    readonly depthTracking?: InverseDepthTracking;
+    readonly separateDirectionalObservations?: boolean;
+    readonly cameraObservationMasks?: readonly CameraObservationMask[];
+    readonly pairRefinementIterations?: number;
+    readonly rotationTracking?: boolean | RelativeRotationOptions;
+    readonly onReconstruction?: (model: SparseReconstruction) => void;
+    readonly seed?: number;
+    readonly ransacIterations?: number;
+    readonly maxErrorPx?: number;
+    readonly minInitialAngleDeg?: number;
+    readonly minTriangulationAngleDeg?: number;
+    readonly minPnPInliers?: number;
+    readonly minInitialPoints?: number;
+    readonly bundleIterations?: number;
+    readonly finalBundleIterations?: number;
+    readonly refineSharedFocal?: boolean;
+    readonly localBundleSize?: number;
+    readonly localBundleSubset?: boolean;
+    readonly globalBundleViewRatio?: number;
+    readonly globalBundlePointRatio?: number;
+    readonly globalBundleFrequency?: number;
+    readonly bundleStallTolerance?: number;
+    readonly initialPair?: readonly [
+        number,
+        number
+    ];
+    readonly preVerified?: readonly PreVerifiedPair[];
+    readonly focalGroups?: ReadonlyMap<number, number>;
+    readonly focalSearch?: boolean | FocalSearchOptions;
+}
+
+-- IncrementalResult
+interface IncrementalResult {
+    readonly inverseDepth?: InverseDepthSnapshot;
+    readonly observationSelection?: CameraObservationSelection;
+    readonly tracking?: ReconstructionTracking;
+    readonly reconstruction: SparseReconstruction;
+    readonly tracks: readonly FeatureTrack[];
+    readonly unregistered: readonly {
+        viewId: number;
+        reason: string;
+    }[];
+    readonly diagnostics: {
+        readonly initialPair: readonly [
+            number,
+            number
+        ];
+        readonly pairVerification: readonly PairVerification[];
+        readonly conflictingTrackEdges: number;
+        readonly registrationOrder: readonly number[];
+        readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
+        readonly bundlePartitions?: readonly BundleAdjustmentPartition[];
+        readonly meanReprojectionErrorPx: number;
+        readonly focalSearch?: FocalSearchResult;
+    };
+    readonly verifiedPairs?: readonly PairMatches[];
+}
+
+-- InverseDepthBundleOptions
+interface InverseDepthBundleOptions extends Pick<BundleAdjustmentOptions, 'iterations' | 'huberPx' | 'anchorViewId' | 'scaleViewId' | 'variableViewIds' | 'refineSharedFocal' | 'focalGroups'> {
+    readonly pixelNoiseStdDevPx?: number;
+    readonly maxCameraParameters?: number;
+    readonly solver?: 'auto' | 'dense' | 'sparse';
+    readonly maxSchurEntries?: number;
+    readonly maxFactorEntries?: number;
+    readonly measurementBatchSize?: number;
+}
+
+-- InverseDepthBundleResult
+interface InverseDepthBundleResult {
+    readonly reconstruction: SparseReconstruction;
+    readonly estimates: readonly (InverseDepthConstraint & {
+        readonly covariance?: Float64Array;
+        readonly bearingCovariance?: Float64Array;
+        readonly informationDeferred?: true;
+    })[];
+    readonly uncertainty: {
+        readonly poses: 'joint' | 'fixed-exterior';
+        readonly intrinsics: 'joint-focal' | 'fixed';
+        readonly anchorViewId: number;
+        readonly scaleViewId: number;
+        readonly observable: boolean;
+        readonly approximation: 'local-robust-Gaussian';
+    };
+    readonly diagnostics: {
+        readonly initialCost: number;
+        readonly finalCost: number;
+        readonly acceptedSteps: number;
+        readonly observations: number;
+        readonly cameraParameters: number;
+        readonly backend: string;
+        readonly measurementBatches?: number;
+        readonly measurementBatchSize?: number;
+        readonly linearSolver: 'dense' | 'sparse';
+        readonly schurEntries: number;
+        readonly factorEntries: number;
+        readonly cameraCovarianceEntries: number;
+        readonly pointCrossEntries: number;
+        readonly denseEquivalentCrossEntries: number;
+        readonly inputObservations: number;
+        readonly deferredTrackIds: readonly number[];
+    };
+}
+
+-- InverseDepthConstraint
+interface InverseDepthConstraint {
+    readonly trackId: number;
+    readonly point: AnchoredInverseDepth;
+    readonly referenceViewId?: number;
+    readonly observations: readonly LandmarkObservation[];
+    readonly directionOnly?: boolean;
+}
+
+-- InverseDepthLinearization
+interface InverseDepthLinearization {
+    readonly pixel: readonly [
+        number,
+        number
+    ];
+    readonly point: Float64Array;
+    readonly pose: Float64Array;
+    readonly focal: Float64Array;
+}
+
+-- InverseDepthSnapshot
+interface InverseDepthSnapshot {
+    readonly revision: number;
+    readonly tracks: readonly DepthTrackState[];
+    readonly uncertainty?: InverseDepthBundleResult['uncertainty'];
+    readonly assumptions: {
+        readonly pixelNoiseStdDevPx: number;
+        readonly huberPx: number;
+        readonly maxRelativeStddev: number;
+        readonly credibleSigma: number;
+        readonly minObservations: number;
+    };
+    readonly diagnostics: {
+        readonly bearingOnly: number;
+        readonly estimating: number;
+        readonly finite: number;
+        readonly uniqueObservations: number;
+        readonly backend: string;
+        readonly solver?: InverseDepthBundleResult['diagnostics'];
+    };
+}
+
+-- InverseDepthTracker
+class InverseDepthTracker implements InverseDepthTracking {
+    readonly protocol = "typecv-inverse-depth-tracker-v1";
+    private history;
+    private images;
+    private views;
+    private masks;
+    private current?;
+    private busy;
+    private beforeUpdate?;
+    readonly options: Readonly<InverseDepthTrackingOptions>;
+    constructor(options?: InverseDepthTrackingOptions);
+    snapshot(): InverseDepthSnapshot | undefined;
+    private begin;
+    update(input: DepthTrackingInput): DepthTrackingResult;
+    updateAsync(input: DepthTrackingInput, refine: (model: SparseReconstruction, constraints: readonly InverseDepthConstraint[], options: InverseDepthBundleOptions) => Promise<InverseDepthBundleResult>): Promise<DepthTrackingResult>;
+    private prepare;
+    private rebaseHistory;
+    private finish;
+}
+
+-- InverseDepthTracking
+interface InverseDepthTracking {
+    readonly protocol: 'typecv-inverse-depth-tracker-v1';
+    snapshot(): InverseDepthSnapshot | undefined;
+    update(input: DepthTrackingInput): DepthTrackingResult;
+    updateAsync(input: DepthTrackingInput, refine: (model: SparseReconstruction, constraints: readonly InverseDepthConstraint[], options: InverseDepthBundleOptions) => Promise<InverseDepthBundleResult>): Promise<DepthTrackingResult>;
+}
+
+-- InverseDepthTrackingOptions
+interface InverseDepthTrackingOptions extends InverseDepthBundleOptions {
+    readonly maxRelativeStddev?: number;
+    readonly credibleSigma?: number;
+    readonly minObservations?: number;
+    readonly maxErrorPx?: number;
+}
+
+-- Landmark
+interface Landmark {
+    readonly trackId: number;
+    readonly xyz: Float64Array;
+    readonly observations: readonly LandmarkObservation[];
+}
+
+-- LandmarkObservation
+interface LandmarkObservation {
+    readonly viewId: number;
+    readonly featureId: number;
+    readonly pixel: readonly [
+        number,
+        number
+    ];
+}
+
+-- MESH_DEFAULTS
+const MESH_DEFAULTS: {
+    readonly spacingFactor: 1.5;
+    readonly truncation: 2.5;
+    readonly minWeight: 1;
+};
+
+-- MeshOptions
+interface MeshOptions {
+    readonly voxelSize?: number;
+    readonly spacingFactor?: number;
+    readonly truncation?: number;
+    readonly minWeight?: number;
+}
+
+-- MeshReport
+interface MeshReport {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly points: number;
+    readonly voxelSize: number;
+    readonly radius: number;
+    readonly dims: readonly [
+        number,
+        number,
+        number
+    ];
+    readonly bricks: number;
+    readonly nodes: number;
+    readonly cubes: number;
+    readonly vertices: number;
+    readonly faces: number;
+    readonly ms: {
+        readonly lattice: number;
+        readonly field: number;
+        readonly cubes: number;
+        readonly vertices: number;
+    };
+}
+
+-- ObservationExclusion
+interface ObservationExclusion {
+    readonly left: number;
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+}
+
+-- ObservationPathMask
+interface ObservationPathMask {
+    readonly width: number;
+    readonly height: number;
+    readonly values: Uint8Array;
+    readonly source: CameraObservationMask['source'];
+}
+
+-- OutlierOptions
+interface OutlierOptions {
+    readonly k?: number;
+    readonly stdRatio?: number;
+}
+
+-- OutlierResult
+interface OutlierResult {
+    readonly cloud: CleanCloud;
+    readonly removed: number;
+    readonly mean: number;
+    readonly std: number;
+    readonly threshold: number;
+}
+
+-- PairMatches
+interface PairMatches {
+    readonly first: number;
+    readonly second: number;
+    readonly matches: Uint32Array;
+    readonly distances?: Float64Array;
+}
+
+-- PairRotationEvidence
+interface PairRotationEvidence {
+    readonly first: number;
+    readonly second: number;
+    readonly firstCamera: Camera;
+    readonly secondCamera: Camera;
+    readonly rotation: RelativeRotationResult;
+}
+
+-- PairVerification
+interface PairVerification {
+    readonly first: number;
+    readonly second: number;
+    readonly matches: number;
+    readonly inliers: number;
+    readonly homographyInliers: number;
+    readonly positiveDepthCount?: number;
+    readonly directionCompatibleCount?: number;
+    readonly medianAngleDeg: number;
+    readonly seedEligible: boolean;
+    readonly reason?: string;
+    readonly rotationInliers?: number;
+    readonly rotationErrorPx?: number;
+}
+
+-- Pixel
+type Pixel = readonly [
+    number,
+    number
+];
+
+-- PnPOptions
+interface PnPOptions {
+    readonly iterations?: number;
+    readonly thresholdPx?: number;
+    readonly confidence?: number;
+    readonly seed?: number;
+    readonly minInliers?: number;
+    readonly refinementIterations?: number;
+}
+
+-- PnPResult
+interface PnPResult {
+    readonly pose: Pose;
+    readonly inliers: Uint8Array;
+    readonly inlierCount: number;
+    readonly meanErrorPx: number;
+    readonly iterations: number;
+}
+
+-- Pose
+interface Pose {
+    readonly R: Float64Array;
+    readonly t: Float64Array;
+}
+
+-- ReconstructionInitializationError
+class ReconstructionInitializationError extends Error {
+    readonly inverseDepth?: InverseDepthSnapshot;
+    readonly pairVerification: readonly PairVerification[];
+    readonly focalSearch?: FocalSearchFailure;
+    readonly tracking?: ReconstructionTracking;
+    readonly observationSelection?: CameraObservationSelection;
+    constructor(pairVerification: readonly PairVerification[], message?: string, focalSearch?: FocalSearchFailure, tracking?: ReconstructionTracking, observationSelection?: CameraObservationSelection);
+}
+
+-- ReconstructionTracking
+interface ReconstructionTracking {
+    readonly pairs: readonly PairMatches[];
+    readonly rotations: readonly PairRotationEvidence[];
+    readonly tracks: readonly FeatureTrack[];
+    readonly untriangulatedTrackIds: readonly number[];
+    readonly depthDeferredTrackIds?: readonly number[];
+}
+
+-- RegisteredView
+interface RegisteredView {
+    readonly id: number;
+    readonly camera: Camera;
+    readonly pose: Pose;
+}
+
+-- RelativeRotationOptions
+interface RelativeRotationOptions {
+    readonly iterations?: number;
+    readonly maxErrorPx?: number;
+    readonly confidence?: number;
+    readonly minInliers?: number;
+    readonly minInlierRatio?: number;
+    readonly minSpreadDeg?: number;
+    readonly seed?: number;
+}
+
+-- RelativeRotationResult
+interface RelativeRotationResult {
+    readonly R: Float64Array;
+    readonly inlierRows: Uint32Array;
+    readonly invertibleCount: number;
+    readonly meanReprojectionErrorPx: number;
+    readonly spreadDeg: readonly [
+        number,
+        number
+    ];
+    readonly translation: 'unobservable';
+    readonly depth: 'not-estimated';
+}
+
+-- SparseReconstruction
+interface SparseReconstruction {
+    readonly views: readonly RegisteredView[];
+    readonly landmarks: readonly Landmark[];
+}
+
+-- TrackTriangulation
+interface TrackTriangulation {
+    readonly xyz: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly maxAngleDeg: number;
+    readonly meanErrorPx: number;
+}
+
+-- TrackTriangulationOptions
+interface TrackTriangulationOptions extends DepthSensitivityOptions {
+    readonly maxErrorPx?: number;
+    readonly minAngleDeg?: number;
+    readonly maxPairHypotheses?: number;
+}
+
+-- TriangulationObservation
+interface TriangulationObservation {
+    readonly camera: Camera;
+    readonly pose: Pose;
+    readonly pixel: Pixel;
+}
+
+-- TwoViewOptions
+interface TwoViewOptions {
+    readonly separateDirectionalObservations?: boolean;
+    readonly iterations?: number;
+    readonly threshold?: number;
+    readonly seed?: number;
+    readonly confidence?: number;
+    readonly minIterations?: number;
+    readonly refinementIterations?: number;
+    readonly huberPx?: number;
+    readonly minParallaxDeg?: number;
+    readonly maxReprojectionErrorPx?: number;
+}
+
+-- TwoViewResult
+interface TwoViewResult {
+    readonly diagnostics: {
+        readonly ransacIterations: number;
+        readonly refinementApplied: boolean;
+        readonly directionCompatibleCount?: number;
+        readonly medianParallaxDeg: number;
+        readonly meanReprojectionErrorBeforePx: number;
+        readonly meanReprojectionErrorAfterPx: number;
+    };
+    readonly validPoints: Uint8Array;
+    readonly E: Float64Array;
+    readonly R: Float64Array;
+    readonly t: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly points: Float64Array;
+    readonly inlierCount: number;
+    readonly positiveDepthCount: number;
+    readonly meanReprojectionErrorPx: number;
+}
+
+-- VoxelOptions
+interface VoxelOptions {
+    readonly voxelSize?: number;
+    readonly spacingFactor?: number;
+}
+
+-- VoxelResult
+interface VoxelResult {
+    readonly cloud: CleanCloud;
+    readonly voxelSize: number;
+}
+
+-- assessTrackDepth
+function assessTrackDepth(point: Float64Array, observations: readonly TriangulationObservation[], pixelNoiseStdDevPx?: number): {
+    readonly maxRelativeDepthStdDev: number;
+    readonly conditionalOn: 'fixed-poses-and-intrinsics';
+} | undefined;
+
+-- buildTracks
+function buildTracks(views: readonly ImageFeatures[], pairs: readonly PairMatches[]): {
+    tracks: FeatureTrack[];
+    conflictingEdges: number;
+    redundantEdges: number;
+};
+
+-- bundleAdjust
+function bundleAdjust(input: SparseReconstruction, options?: BundleAdjustmentOptions): BundleAdjustmentResult;
+
+-- bundleAdjustInverseDepth
+function bundleAdjustInverseDepth(input: SparseReconstruction, constraints?: readonly InverseDepthConstraint[], options?: InverseDepthBundleOptions): InverseDepthBundleResult;
+
+-- cameraCenter
+function cameraCenter(p: Pose): Float64Array;
+
+-- cameraMaskFromPixelPaths
+function cameraMaskFromPixelPaths(image: ImageFeatures, paths: ObservationPathMask, paddingPx?: number): CameraObservationMask;
+
+-- cameraMaskFromRegions
+function cameraMaskFromRegions(image: ImageFeatures, width: number, height: number, regions: readonly ObservationExclusion[], source: CameraObservationMask['source'], paddingPx?: number): CameraObservationMask;
+
+-- cameraProjection
+function cameraProjection(k: Camera, q: ArrayLike<number>): {
+    pixel: Pixel;
+    jacobian: Float64Array;
+} | undefined;
+
+-- cleanDenseCloud
+function cleanDenseCloud(cloud: CleanCloud, options?: DenseCleanOptions): Promise<DenseCleanResult>;
+
+-- dbscan
+function dbscan(positions: Float32Array, options: DbscanOptions): DbscanResult;
+
+-- estimateHomography
+function estimateHomography(matches: Float64Array, options?: {
+    thresholdPx?: number;
+    iterations?: number;
+    seed?: number;
+    confidence?: number;
+}): {
+    H: Float64Array;
+    inliers: Uint8Array;
+    inlierCount: number;
+    iterations: number;
+} | undefined;
+
+-- estimatePosePnP
+function estimatePosePnP(worldPoints: Float64Array, pixels: Float64Array, camera: Camera, options?: PnPOptions): PnPResult;
+
+-- estimateRelativeRotation
+function estimateRelativeRotation(matches: Float64Array, first: Camera, second: Camera, options?: RelativeRotationOptions): RelativeRotationResult | undefined;
+
+-- fitInverseDepth
+function fitInverseDepth(observations: readonly TriangulationObservation[], options?: {
+    iterations?: number;
+    pixelNoiseStdDevPx?: number;
+    huberPx?: number;
+}): {
+    point: AnchoredInverseDepth;
+    covariance: Float64Array<ArrayBufferLike> | undefined;
+    conditionalOn: "fixed-poses-and-intrinsics";
+    rmsePx: number;
+    maxErrorPx: number;
+    inverseRange: {
+        stddev?: number | undefined;
+        mean: number;
+    };
+};
+
+-- identityPose
+function identityPose(): Pose;
+
+-- initializeInverseDepth
+function initializeInverseDepth(o: TriangulationObservation, xyz?: ArrayLike<number>): AnchoredInverseDepth;
+
+-- inverseDepthJacobian
+function inverseDepthJacobian(camera: Camera, pose: Pose, p: AnchoredInverseDepth): InverseDepthLinearization | undefined;
+
+-- inverseDepthPoint
+function inverseDepthPoint(p: AnchoredInverseDepth): Float64Array | undefined;
+
+-- inverseDepthRecord
+function inverseDepthRecord(snapshot: InverseDepthSnapshot): {
+    format: "typecv-inverse-depth-v1";
+    units: "current-monocular-map-gauge";
+    pointParameters: "pinhole-a-b-inverse-Z";
+    rangeParameter: "inverse-Euclidean-range-from-fixed-reference-chart";
+    reference: "fixed-coordinate-chart-not-an-extra-pose-measurement";
+    revision: number;
+    assumptions: {
+        pixelNoiseStdDevPx: number;
+        huberPx: number;
+        maxRelativeStddev: number;
+        credibleSigma: number;
+        minObservations: number;
+    };
+    uncertainty: {
+        poses: "joint" | "fixed-exterior";
+        intrinsics: "joint-focal" | "fixed";
+        anchorViewId: number;
+        scaleViewId: number;
+        observable: boolean;
+        approximation: "local-robust-Gaussian";
+    } | undefined;
+    diagnostics: {
+        readonly bearingOnly: number;
+        readonly estimating: number;
+        readonly finite: number;
+        readonly uniqueObservations: number;
+        readonly backend: string;
+        readonly solver?: InverseDepthBundleResult["diagnostics"];
+    };
+    tracks: {
+        maxErrorPx?: number | null | undefined;
+        inverseRange?: {
+            mean: number;
+            stddev?: number;
+        } | undefined;
+        covariance?: number[] | undefined;
+        estimate?: {
+            parameters: number[];
+            reference: {
+                R: number[];
+                t: number[];
+            };
+        } | undefined;
+        observations: {
+            pixel: number[];
+            viewId: number;
+            featureId: number;
+        }[];
+        bearingCovariance?: number[] | undefined;
+        bearingCovarianceConditionalOn?: "fixed-intrinsics-anchor-observation" | "joint-bundle-linearization" | undefined;
+        id: number;
+        status: "bearing-only" | "estimating" | "finite";
+        reason: "translation-unavailable" | "depth-unobservable" | "joint-uncertainty-unavailable" | "insufficient-observations" | "uncertain-depth" | "inconsistent-observations" | "validated";
+        referenceViewId: number;
+        bearing: number[];
+    }[];
+};
+
+-- inverseRangeUncertainty
+function inverseRangeUncertainty(p: AnchoredInverseDepth, covariance?: Float64Array): {
+    stddev?: number | undefined;
+    mean: number;
+};
+
+-- keepLargestClusters
+function keepLargestClusters(cloud: CleanCloud, options: DbscanOptions & ClusterSelection): ClusterResult;
+
+-- meshDenseCloud
+function meshDenseCloud(cloud: CleanCloud, options?: MeshOptions): DenseMeshResult;
+
+-- projectPoint
+function projectPoint(camera: Camera, pose: Pose, X: ArrayLike<number>): Pixel | undefined;
+
+-- reanchorInverseDepth
+function reanchorInverseDepth(p: AnchoredInverseDepth, reference: Pose, covariance?: Float64Array): {
+    covariance?: Float64Array<ArrayBufferLike> | undefined;
+    point: {
+        reference: Pose;
+        parameters: Float64Array<ArrayBuffer>;
+    };
+};
+
+-- reconstructIncremental
+function reconstructIncremental(images: readonly ImageFeatures[], inputPairs: readonly PairMatches[], options?: IncrementalOptions): IncrementalResult;
+
+-- reconstructTwoView
+function reconstructTwoView(matchesPixels: Float64Array, K1: CameraIntrinsics, K2: CameraIntrinsics, options?: TwoViewOptions, hypotheses?: TrialHypotheses): TwoViewResult;
+
+-- refineIncremental
+function refineIncremental(images: readonly ImageFeatures[], inputPairs: readonly PairMatches[], initial: IncrementalResult, options?: IncrementalOptions): IncrementalResult;
+
+-- removeStatisticalOutliers
+function removeStatisticalOutliers(cloud: CleanCloud, options?: OutlierOptions): OutlierResult;
+
+-- rescaleInverseDepth
+function rescaleInverseDepth(p: AnchoredInverseDepth, scale: number, covariance?: Float64Array, origin?: Float64Array): {
+    covariance?: Float64Array<ArrayBufferLike> | undefined;
+    point: {
+        reference: {
+            R: Float64Array<ArrayBuffer>;
+            t: Float64Array<ArrayBuffer>;
+        };
+        parameters: Float64Array<ArrayBuffer>;
+    };
+};
+
+-- rotationExp
+function rotationExp(w: ArrayLike<number>): Float64Array;
+
+-- sampsonSquared
+function sampsonSquared(E: ArrayLike<number>, x: number, y: number, u: number, v: number): number;
+
+-- triangulate
+function triangulate(x: number, y: number, u: number, v: number, R: ArrayLike<number>, t: ArrayLike<number>): Float64Array | undefined;
+
+-- triangulateTrack
+function triangulateTrack(observations: readonly TriangulationObservation[], options?: TrackTriangulationOptions): TrackTriangulation | undefined;
+
+-- triangulateTrackDetailed
+function triangulateTrackDetailed(observations: readonly TriangulationObservation[], options?: TrackTriangulationOptions): DetailedTrackTriangulation;
+
+-- unprojectPixel
+function unprojectPixel(k: Camera, pixel: Pixel): Pixel | undefined;
+
+-- validateCamera
+function validateCamera(k: Camera): void;
+
+-- validatePose
+function validatePose(p: Pose): void;
+
+-- validateReconstruction
+function validateReconstruction(input: SparseReconstruction): void;
+
+-- verifyImagePair
+function verifyImagePair(matches: Float64Array, first: Camera, second: Camera, options?: ImagePairOptions): ImagePairVerification;
+
+-- voxelDownsample
+function voxelDownsample(cloud: CleanCloud, options?: VoxelOptions): VoxelResult;
+
+== typecv: 3 declarations that the names reference
+
+-- ClusterSelection
+interface ClusterSelection {
+    readonly keep?: number;
+    readonly minFraction?: number;
+}
+
+-- PreVerifiedPair
+interface PreVerifiedPair {
+    readonly verified: PairMatches;
+    readonly verification: PairVerification;
+    readonly geometry?: ImagePairGeometry;
+    readonly rejected?: boolean;
+}
+
+-- TrialHypotheses
+type TrialHypotheses = (trial: number) => Float64Array | undefined;
+
+== typecv/gpu (src/gpu/index.ts): 200 names, 77 values, 123 types
+BAG_OF_WORDS_VOCABULARY_ID: const
+BAG_OF_WORDS_WORDS: const
+CannyOptions: interface (type-only export)
+CannyResult: interface (type-only export)
+ChunkRate: interface (type-only export)
+ClaheOptions: interface (type-only export)
+CleanCloud: interface (type-only export)
+DenseCleanOptions: interface (type-only export)
+DenseCleanReport: interface (type-only export)
+DenseCleanResult: interface (type-only export)
+DenseLabelOptions: interface (type-only export)
+DenseLabelReport: interface (type-only export)
+DenseMesh: interface (type-only export)
+DenseMeshResult: interface (type-only export)
+DepthTrackState: interface (type-only export)
+DeviceDiagnostics: interface (type-only export)
+EpipolarScore: interface (type-only export)
+EpipolarSession: class
+ExpandedObservation: interface (type-only export)
+ExpandedObservationEdge: interface (type-only export)
+GLOBAL_DESCRIPTOR_KIND: const
+GLOBAL_DIMENSIONS: const
+GLOBAL_VOCABULARY_ID: const
+GLOBAL_WORDS: const
+GlobalAssignOptions: interface (type-only export)
+GlobalDescriptorKind: type (type-only export)
+GlobalDescriptorOptions: interface (type-only export)
+GpuBundleAdjustmentOptions: interface (type-only export)
+GpuBundleAdjustmentResult: interface (type-only export)
+GpuConsensusExecution: interface (type-only export)
+GpuDenseDepthDiagnostic: interface (type-only export)
+GpuDenseFusionProgress: interface (type-only export)
+GpuDenseOptions: interface (type-only export)
+GpuDensePoints: interface (type-only export)
+GpuDenseProgress: interface (type-only export)
+GpuDenseResult: interface (type-only export)
+GpuDenseStage: type (type-only export)
+GpuDenseView: interface (type-only export)
+GpuDenseViewEvent: type (type-only export)
+GpuDenseViewStatus: type (type-only export)
+GpuEssentialConsensus: interface (type-only export)
+GpuFeatureExecution: interface (type-only export)
+GpuFeatureMatches: interface (type-only export)
+GpuFeatureOptions: interface (type-only export)
+GpuFeatures: interface (type-only export)
+GpuFloatImageFeatures: interface (type-only export)
+GpuFloatImagePair: interface (type-only export)
+GpuFloatIncrementalOptions: interface (type-only export)
+GpuFloatIncrementalResult: interface (type-only export)
+GpuFloatMatchOptions: interface (type-only export)
+GpuFloatMatches: interface (type-only export)
+GpuGeometryExecution: interface (type-only export)
+GpuHomographyOptions: interface (type-only export)
+GpuHomographyResult: interface (type-only export)
+GpuImagePairOptions: interface (type-only export)
+GpuImagePairVerification: interface (type-only export)
+GpuImageSource: interface (type-only export)
+GpuIncrementalOptions: interface (type-only export)
+GpuIncrementalResult: interface (type-only export)
+GpuObservationResult: interface (type-only export)
+GpuOrbOptions: interface (type-only export)
+GpuP3pBatch: class
+GpuP3pResult: interface (type-only export)
+GpuP3pStatus: const
+GpuPnPOptions: interface (type-only export)
+GpuPnPResult: interface (type-only export)
+GpuResidentFeatures: interface (type-only export)
+GpuResidentFloatDescriptors: interface (type-only export)
+GpuResidentOrb: interface (type-only export)
+GpuResidentSift: interface (type-only export)
+GpuSiftExecution: interface (type-only export)
+GpuSiftGray: interface (type-only export)
+GpuSiftOptions: interface (type-only export)
+GpuTiledFeatureOptions: interface (type-only export)
+GpuTiledFeatures: interface (type-only export)
+GpuTriangulationOptions: interface (type-only export)
+GpuTriangulationResult: interface (type-only export)
+GpuTwoViewOptions: interface (type-only export)
+GpuTwoViewResult: interface (type-only export)
+GpuUndistortionResult: interface (type-only export)
+HoughLine: interface (type-only export)
+HoughLinesOptions: interface (type-only export)
+HoughLinesResult: interface (type-only export)
+HoughSegment: interface (type-only export)
+ImageRegion: interface (type-only export)
+IncrementalSfmSession: class
+InverseDepthBundleOptions: interface (type-only export)
+InverseDepthBundleResult: interface (type-only export)
+InverseDepthConstraint: interface (type-only export)
+InverseDepthSnapshot: interface (type-only export)
+InverseDepthTracker: class
+InverseDepthTracking: interface (type-only export)
+InverseDepthTrackingOptions: interface (type-only export)
+KLT_DEFAULTS_640: const
+KLT_DEFAULT_CAPACITY: const
+KLT_END: const
+KLT_LENGTH_EDGES: const
+KLT_MAX_CAPACITY: const
+KernelStatistic: interface (type-only export)
+KltFrame: type (type-only export)
+KltJoin: interface (type-only export)
+KltJoinInput: interface (type-only export)
+KltJoinPair: interface (type-only export)
+KltOptions: interface (type-only export)
+KltPushOptions: interface (type-only export)
+KltStats: interface (type-only export)
+KltStep: interface (type-only export)
+KltTracker: interface (type-only export)
+KltTrackerOptions: interface (type-only export)
+KltTracks: interface (type-only export)
+MeshOptions: interface (type-only export)
+MeshReport: interface (type-only export)
+MvsDepthResidency: interface (type-only export)
+MvsFusionResidency: interface (type-only export)
+MvsImage: interface (type-only export)
+MvsResidency: interface (type-only export)
+MvsResidencyMode: type (type-only export)
+MvsScene: interface (type-only export)
+MvsSceneLandmark: interface (type-only export)
+MvsSceneView: interface (type-only export)
+MvsViewOptions: interface (type-only export)
+ObservationAppendOptions: interface (type-only export)
+ObservationAppendRejection: type (type-only export)
+ObservationAppendResult: interface (type-only export)
+ObservationExpansionFrame: interface (type-only export)
+ObservationExpansionOptions: interface (type-only export)
+ObservationExpansionResult: interface (type-only export)
+OrbFeaturesCpu: interface (type-only export)
+OrbParameters: interface (type-only export)
+OutlierOptions: interface (type-only export)
+OutlierResult: interface (type-only export)
+ShadeDevice: class
+ShadeDeviceOptions: interface (type-only export)
+ShadePlanReport: interface (type-only export)
+SlicOptions: interface (type-only export)
+SlicResult: interface (type-only export)
+TsdfOptions: interface (type-only export)
+TsdfReport: interface (type-only export)
+VoxelOptions: interface (type-only export)
+VoxelResult: interface (type-only export)
+appendExpandedObservations: function
+assignWordsGpu: function
+assignWordsReference: function
+bagOfWordsDescriptor: function
+bagOfWordsDescriptorGpu: function
+bagOfWordsDescriptorReference: function
+bundleAdjustGpu: function
+bundleAdjustInverseDepthGpu: function
+canny: function
+cannyGpu: function
+cleanDenseCloudGpu: function
+cosineSimilarity: function
+createKltTracker: function
+equalizeGrayCpu: function
+equalizeGrayGpu: function
+estimateEssentialRansacGpu: function
+estimateHomographyGpu: function
+estimatePosePnPGpu: function
+evaluateObservationsGpu: function
+expandObservationsGpu: function
+extractFeaturesGpu: function
+extractFeaturesGpuPyramidResident: function
+extractFeaturesGpuResident: function
+extractFeaturesTiledGpu: function
+extractOrbCpu: function
+extractOrbGpuResident: function
+extractSiftGpuResident: function
+featureTileRegions: function
+globalDescriptorGpu: function
+globalDescriptorReference: function
+houghLines: function
+houghLinesGpu: function
+inverseDocumentFrequency: function
+kltOptionsFor: function
+kltReject: function
+kltResidentBytes: function
+matchFeaturesGpu: function
+matchFloatDescriptorsGpu: function
+matchResidentFeaturesGpu: function
+meanNeighbourDistancesGpu: function
+meshDenseCloudGpu: function
+parseVocabulary: function
+reconstructDenseGpu: function
+reconstructIncrementalFloatGpu: function
+reconstructIncrementalGpu: function
+reconstructTwoViewGpu: function
+refineIncrementalGpu: function
+removeStatisticalOutliersGpu: function
+slic: function
+slicGpu: function
+solveP3pBatchGpu: function
+triangulateTracksGpu: function
+undistortCorrespondencesGpu: function
+unprojectPixel: function
+verifyImagePairGpu: function
+vladDescriptorGpu: function
+vladDescriptorReference: function
+vladFromWords: function
+voxelDownsampleGpu: function
+wordHistogram: function
+
+-- BAG_OF_WORDS_VOCABULARY_ID
+const BAG_OF_WORDS_VOCABULARY_ID = "rootsift-512-v1";
+
+-- BAG_OF_WORDS_WORDS
+const BAG_OF_WORDS_WORDS = 512;
+
+-- CannyOptions
+interface CannyOptions {
+    readonly sigma?: number;
+    readonly thresholdMode?: 'quantile' | 'absolute';
+    readonly lowThreshold?: number;
+    readonly highThreshold?: number;
+    readonly hysteresis?: 'gpu' | 'cpu';
+}
+
+-- CannyResult
+interface CannyResult {
+    readonly width: number;
+    readonly height: number;
+    readonly edges: Uint8Array;
+    readonly count: number;
+    readonly low: number;
+    readonly high: number;
+    readonly hysteresisPasses: number;
+}
+
+-- ChunkRate
+interface from typeshade/src/runtime/chunk.ts
+
+-- ClaheOptions
+interface ClaheOptions {
+    readonly tiles?: number | readonly [
+        number,
+        number
+    ];
+    readonly clipLimit?: number;
+}
+
+-- CleanCloud
+interface CleanCloud {
+    readonly count: number;
+    readonly positions: Float32Array;
+    readonly colors?: Uint8Array;
+    readonly normals?: Int16Array;
+}
+
+-- DenseCleanOptions
+interface DenseCleanOptions {
+    readonly outliers?: false | OutlierOptions;
+    readonly voxel?: false | VoxelOptions;
+    readonly cluster?: false | (Partial<DbscanOptions> & ClusterSelection & {
+        readonly epsFactor?: number;
+    });
+}
+
+-- DenseCleanReport
+interface DenseCleanReport {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly before: number;
+    readonly afterOutliers: number;
+    readonly afterVoxel: number;
+    readonly after: number;
+    readonly outlierThreshold: number;
+    readonly voxelSize: number;
+    readonly eps: number;
+    readonly clusters: number;
+    readonly keptClusters: number;
+    readonly ms: {
+        readonly outliers: number;
+        readonly voxel: number;
+        readonly cluster: number;
+    };
+}
+
+-- DenseCleanResult
+interface DenseCleanResult {
+    readonly cloud: CleanCloud;
+    readonly report: DenseCleanReport;
+}
+
+-- DenseLabelOptions
+interface DenseLabelOptions {
+    readonly k?: number;
+    readonly confidenceCost?: number;
+    readonly confidenceScale?: number;
+    readonly visibilityCost?: number;
+    readonly visibilityScale?: number;
+    readonly noiseCost?: number;
+    readonly landmarkBias?: number;
+    readonly smoothness?: number;
+    readonly minComponent?: number;
+    readonly componentEdge?: number;
+}
+
+-- DenseLabelReport
+interface DenseLabelReport {
+    readonly points: number;
+    readonly cutByConfidence: number;
+    readonly cutByVisibility: number;
+    readonly removedByComponents: number;
+    readonly kept: number;
+    readonly supported: number;
+    readonly supportingLandmarks: number;
+    readonly components: number;
+    readonly keptComponents: number;
+    readonly largestKept: readonly number[];
+    readonly edges: number;
+    readonly flow: number;
+}
+
+-- DenseMesh
+interface DenseMesh {
+    readonly vertexCount: number;
+    readonly faceCount: number;
+    readonly positions: Float32Array;
+    readonly colors: Uint8Array;
+    readonly indices: Uint32Array;
+}
+
+-- DenseMeshResult
+interface DenseMeshResult {
+    readonly mesh: DenseMesh;
+    readonly report: MeshReport;
+}
+
+-- DepthTrackState
+interface DepthTrackState {
+    readonly id: number;
+    readonly observations: readonly {
+        readonly viewId: number;
+        readonly featureId: number;
+        readonly pixel: readonly [
+            number,
+            number
+        ];
+    }[];
+    readonly status: 'bearing-only' | 'estimating' | 'finite';
+    readonly reason: 'translation-unavailable' | 'depth-unobservable' | 'joint-uncertainty-unavailable' | 'insufficient-observations' | 'uncertain-depth' | 'inconsistent-observations' | 'validated';
+    readonly referenceViewId: number;
+    readonly bearing: Float64Array;
+    readonly bearingCovariance?: Float64Array;
+    readonly bearingCovarianceConditionalOn?: 'fixed-intrinsics-anchor-observation' | 'joint-bundle-linearization';
+    readonly estimate?: AnchoredInverseDepth;
+    readonly covariance?: Float64Array;
+    readonly inverseRange?: {
+        readonly mean: number;
+        readonly stddev?: number;
+    };
+    readonly maxErrorPx?: number;
+}
+
+-- DeviceDiagnostics
+interface DeviceDiagnostics {
+    readonly disposalRequested: boolean;
+    readonly destroyRequested: boolean | null;
+    readonly errorEventsAvailable: boolean;
+    readonly recentErrors: readonly {
+        readonly name: string;
+        readonly message: string;
+    }[];
+    readonly memory: {
+        readonly liveBytes: number;
+        readonly pooledBytes: number;
+        readonly peakLiveBytes: number;
+        readonly peakActiveBytes: number;
+        readonly workingBytes: number;
+        readonly pendingReads: number;
+    };
+}
+
+-- EpipolarScore
+interface EpipolarScore {
+    readonly bestIndex: number;
+    readonly inlierCount: number;
+    readonly msacCost: number;
+    readonly mask?: Uint8Array;
+    readonly modelStatistics?: Float32Array;
+    readonly report: ShadePlanReport;
+}
+
+-- EpipolarSession
+class EpipolarSession {
+    private readonly device;
+    private readonly normalized;
+    readonly count: number;
+    readonly capacity: number;
+    private closed;
+    private disposal?;
+    private constructor();
+    static create(device: ShadeDevice, pixels: Float64Array | Float32Array, cameraA: CameraIntrinsics, cameraB: CameraIntrinsics): Promise<EpipolarSession>;
+    score(models: Float64Array | Float32Array, threshold: number, options?: {
+        readMask?: boolean;
+        readStatistics?: boolean;
+    }): Promise<EpipolarScore>;
+    dispose(): Promise<void>;
+}
+
+-- ExpandedObservation
+interface ExpandedObservation {
+    readonly viewId: number;
+    readonly featureId: number;
+    readonly sourceViewId: number;
+    readonly sourceFeatureId: number;
+    readonly measuredPixel: readonly [
+        number,
+        number
+    ];
+    readonly ncc: number;
+    readonly forwardBackwardErrorPx: number;
+    readonly uniquenessMargin: number;
+    readonly prediction: 'none' | 'rotation' | 'finite' | 'surface';
+    readonly patchWarp?: readonly number[];
+    readonly surfaceSupport?: {
+        readonly points: number;
+        readonly maxRelativeDepthResidual: number;
+    };
+    readonly corroboration?: {
+        readonly status: 'unavailable';
+    } | {
+        readonly status: 'verified';
+        readonly viewId: number;
+        readonly featureId: number;
+        readonly measuredPixel: readonly [
+            number,
+            number
+        ];
+        readonly disagreementPx: number;
+        readonly ncc: number;
+        readonly forwardBackwardErrorPx: number;
+    };
+    readonly geometry: 'candidate';
+}
+
+-- ExpandedObservationEdge
+interface ExpandedObservationEdge extends ExpandedObservation {
+    readonly createdFeature: boolean;
+    readonly targetPixel: readonly [
+        number,
+        number
+    ];
+}
+
+-- GLOBAL_DESCRIPTOR_KIND
+const GLOBAL_DESCRIPTOR_KIND: GlobalDescriptorKind;
+
+-- GLOBAL_DIMENSIONS
+const GLOBAL_DIMENSIONS = 128;
+
+-- GLOBAL_VOCABULARY_ID
+const GLOBAL_VOCABULARY_ID = "rootsift-32-v1";
+
+-- GLOBAL_WORDS
+const GLOBAL_WORDS = 32;
+
+-- GlobalAssignOptions
+interface GlobalAssignOptions {
+    readonly chunkDescriptors?: number;
+}
+
+-- GlobalDescriptorKind
+type GlobalDescriptorKind = 'vlad' | 'bag-of-words';
+
+-- GlobalDescriptorOptions
+interface GlobalDescriptorOptions {
+    readonly kind?: GlobalDescriptorKind;
+    readonly idf?: ArrayLike<number>;
+}
+
+-- GpuBundleAdjustmentOptions
+interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
+    readonly maxCgIterations?: number;
+    readonly cgRelativeTolerance?: number;
+    readonly schurCache?: boolean;
+    readonly schurReduction?: 'auto' | 'serial' | 'cooperative';
+}
+
+-- GpuBundleAdjustmentResult
+interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
+    readonly cgIterations: number;
+    readonly linearSolverFailures: number;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- GpuConsensusExecution
+interface GpuConsensusExecution {
+    readonly backend: 'webgpu' | 'cpu';
+    readonly report: ShadePlanReport;
+    readonly applicationUploadBytes: number;
+    readonly hypothesisBatches: number;
+    readonly hypothesesScored: number;
+    readonly scoreDispatches: number;
+    readonly scoreSubmissions: number;
+    readonly applicationReadbackBytes: number;
+    readonly cpuStages: readonly string[];
+}
+
+-- GpuDenseDepthDiagnostic
+interface GpuDenseDepthDiagnostic {
+    readonly viewId: number;
+    readonly stage: 'photometric' | 'geometric-unfiltered' | 'geometric-filtered' | 'planar';
+    readonly width: number;
+    readonly height: number;
+    readonly depth: Float32Array;
+    readonly normal?: Uint32Array;
+    readonly cost?: Float32Array;
+    readonly costMeaning?: 'photometric' | 'photometric-geometric';
+    readonly confidence?: Float32Array;
+    readonly depthScaleToModel: number;
+    readonly camera: {
+        fx: number;
+        fy: number;
+        cx: number;
+        cy: number;
+    };
+    readonly sourceViewIds: readonly number[];
+    readonly pose: {
+        R: readonly number[];
+        t: readonly number[];
+    };
+}
+
+-- GpuDenseFusionProgress
+interface GpuDenseFusionProgress extends TsdfProgress {
+    readonly viewId?: number;
+}
+
+-- GpuDenseOptions
+interface GpuDenseOptions extends MvsViewOptions {
+    readonly boundaryAware?: boolean;
+    readonly minFiniteGain?: number;
+    readonly bestSources?: number;
+    readonly windowRadius?: number;
+    readonly windowStep?: number;
+    readonly photometricIterations?: number;
+    readonly geometricIterations?: number;
+    readonly bilateral?: boolean;
+    readonly seed?: number;
+    readonly minConsistentViews?: number;
+    readonly minConfidence?: number;
+    readonly fusion?: 'pixel' | 'tsdf';
+    readonly tsdf?: TsdfOptions;
+    readonly planarDepth?: boolean;
+    readonly labeling?: DenseLabelOptions;
+    readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
+    readonly onDepthDiagnostic?: (event: GpuDenseDepthDiagnostic) => void | Promise<void>;
+    readonly onProgress?: (event: GpuDenseProgress) => void;
+    readonly onFusionProgress?: (event: GpuDenseFusionProgress) => void;
+    readonly onFusionPreview?: (points: GpuDensePoints) => void | Promise<void>;
+    readonly signal?: AbortSignal;
+}
+
+-- GpuDensePoints
+interface GpuDensePoints {
+    readonly count: number;
+    readonly positions: Float32Array;
+    readonly colors: Uint8Array;
+    readonly normals: Int16Array;
+}
+
+-- GpuDenseProgress
+interface GpuDenseProgress {
+    readonly stage: GpuDenseStage;
+    readonly viewId: number;
+    readonly done: number;
+    readonly total: number;
+}
+
+-- GpuDenseResult
+interface GpuDenseResult {
+    readonly points: GpuDensePoints;
+    readonly views: readonly GpuDenseView[];
+    readonly residency?: MvsResidency;
+    readonly tsdf?: TsdfReport;
+    readonly planar?: PlanarDepthReport;
+    readonly labeling?: DenseLabelReport;
+    readonly report: ShadePlanReport;
+}
+
+-- GpuDenseStage
+type GpuDenseStage = 'photometric' | 'geometric' | 'fusion';
+
+-- GpuDenseView
+interface GpuDenseView {
+    readonly id: number;
+    readonly status: GpuDenseViewStatus;
+    readonly sources: readonly number[];
+    readonly depthPixels: number;
+    readonly firstPoint: number;
+    readonly points: number;
+}
+
+-- GpuDenseViewEvent
+type GpuDenseViewEvent = {
+    readonly type: 'depth';
+    readonly viewId: number;
+    readonly stage: 'photometric' | 'geometric';
+    readonly iteration?: number;
+    readonly width: number;
+    readonly height: number;
+    readonly depth: Float32Array;
+} | ({
+    readonly type: 'points';
+    readonly viewId: number;
+} & GpuDensePoints);
+
+-- GpuDenseViewStatus
+type GpuDenseViewStatus = 'done' | Exclude<MvsViewStatus, 'ready'>;
+
+-- GpuEssentialConsensus
+interface GpuEssentialConsensus {
+    readonly E: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly inlierCount: number;
+    readonly msacCost: number;
+    readonly ransacIterations: number;
+    readonly execution: GpuConsensusExecution;
+}
+
+-- GpuFeatureExecution
+interface GpuFeatureExecution {
+    readonly applicationUploadBytes: number;
+    readonly applicationReadbackBytes: number;
+    readonly residentSnapshotBytes?: number;
+}
+
+-- GpuFeatureMatches
+interface GpuFeatureMatches {
+    readonly matches: Uint32Array;
+    readonly distances: Float64Array;
+    readonly report: ShadePlanReport;
+    readonly execution?: GpuFeatureExecution;
+}
+
+-- GpuFeatureOptions
+interface GpuFeatureOptions {
+    readonly threshold?: number;
+    readonly maxFeatures?: number;
+    readonly smoothDescriptors?: boolean;
+}
+
+-- GpuFeatures
+interface GpuFeatures {
+    readonly keypoints: Float64Array;
+    readonly scores: Float32Array;
+    readonly descriptors: Uint32Array;
+    readonly capacity: number;
+    readonly report: ShadePlanReport;
+    readonly execution?: GpuFeatureExecution;
+}
+
+-- GpuFloatImageFeatures
+interface GpuFloatImageFeatures extends ImageFeatures {
+    readonly descriptors: GpuResidentFloatDescriptors;
+}
+
+-- GpuFloatImagePair
+interface GpuFloatImagePair {
+    readonly first: number;
+    readonly second: number;
+}
+
+-- GpuFloatIncrementalOptions
+interface GpuFloatIncrementalOptions extends GpuIncrementalOptions {
+    readonly matching?: GpuFloatMatchOptions;
+    readonly onMatchProgress?: (event: {
+        readonly first: number;
+        readonly second: number;
+        readonly index: number;
+        readonly total: number;
+        readonly phase: 'start' | 'complete';
+    }) => void;
+}
+
+-- GpuFloatIncrementalResult
+interface GpuFloatIncrementalResult extends GpuIncrementalResult {
+    readonly matching: {
+        readonly elapsedMs: number;
+        readonly pairs: readonly {
+            readonly first: number;
+            readonly second: number;
+            readonly matches: number;
+            readonly report: GpuFloatMatches['report'];
+            readonly execution: GpuFloatMatches['execution'];
+        }[];
+    };
+}
+
+-- GpuFloatMatchOptions
+interface GpuFloatMatchOptions {
+    readonly ratio?: number;
+    readonly maxDistance?: number;
+    readonly mutual?: boolean;
+    readonly epipolar?: GpuEpipolarGuide;
+}
+
+-- GpuFloatMatches
+interface GpuFloatMatches {
+    readonly matches: Uint32Array;
+    readonly distances: Float64Array;
+    readonly report: ShadePlanReport;
+    readonly execution: {
+        readonly applicationUploadBytes: number;
+        readonly applicationReadbackBytes: number;
+        readonly residentSnapshotBytes: number;
+    };
+}
+
+-- GpuGeometryExecution
+interface GpuGeometryExecution {
+    readonly backend: 'webgpu' | 'cpu';
+    readonly report: ShadePlanReport;
+    readonly applicationUploadBytes: number;
+    readonly applicationReadbackBytes: number;
+    readonly cpuStages: readonly string[];
+}
+
+-- GpuHomographyOptions
+interface GpuHomographyOptions {
+    readonly thresholdPx?: number;
+    readonly iterations?: number;
+    readonly minIterations?: number;
+    readonly seed?: number;
+    readonly confidence?: number;
+    readonly batchSize?: number;
+}
+
+-- GpuHomographyResult
+interface GpuHomographyResult {
+    readonly H: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly inlierCount: number;
+    readonly iterations: number;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- GpuImagePairOptions
+interface GpuImagePairOptions extends ImagePairOptions {
+    readonly batchSize?: number;
+}
+
+-- GpuImagePairVerification
+interface GpuImagePairVerification extends ImagePairVerification {
+    readonly execution: GpuConsensusExecution & {
+        readonly homographyIterations: number;
+    };
+}
+
+-- GpuImageSource
+interface GpuImageSource {
+    readonly width: number;
+    readonly height: number;
+    readRegion(region: ImageRegion): Promise<Uint8Array | Uint8ClampedArray> | Uint8Array | Uint8ClampedArray;
+}
+
+-- GpuIncrementalOptions
+interface GpuIncrementalOptions extends IncrementalOptions {
+    readonly windowSize?: number;
+    readonly historyBundleIterations?: number;
+    readonly onStage?: (stage: GpuIncrementalResult['execution']['stages'][number]) => void;
+    readonly schurCache?: boolean;
+    readonly pnpBatchSize?: number;
+    readonly onProgress?: (event: {
+        operation: ReconstructionJob['kind'];
+        index: number;
+        phase: 'start' | 'complete';
+    }) => void;
+}
+
+-- GpuIncrementalResult
+interface GpuIncrementalResult extends IncrementalResult {
+    readonly diagnostics: IncrementalResult['diagnostics'] & {
+        readonly historyRefinement?: {
+            readonly views: number;
+            readonly observations: number;
+            readonly initialCost: number;
+            readonly finalCost: number;
+            readonly deferred: boolean;
+        };
+    };
+    readonly execution: {
+        readonly backend: 'webgpu' | 'cpu';
+        readonly stages: readonly {
+            readonly operation: GpuMapperOperation;
+            readonly elapsedMs: number;
+            readonly execution: GpuGeometryExecution;
+            readonly problem?: {
+                readonly views: number;
+                readonly variableViewIds?: readonly number[];
+                readonly landmarks: number;
+                readonly observations: number;
+                readonly directionalConstraints?: number;
+                readonly directionalObservations?: number;
+            };
+        }[];
+        readonly pairConsensus: readonly GpuConsensusExecution[];
+        readonly gpuBundleAdjustments: number;
+        readonly cpuStages: readonly string[];
+    };
+}
+
+-- GpuObservationResult
+interface GpuObservationResult {
+    readonly depthRejected?: Uint8Array;
+    readonly masks: readonly Uint8Array[];
+    readonly inlierCount: number;
+    readonly meanErrorPx: number;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- GpuOrbOptions
+interface GpuOrbOptions {
+    readonly maxFeatures?: number;
+    readonly levels?: number;
+    readonly scaleFactor?: number;
+    readonly fastThreshold?: number;
+}
+
+-- GpuP3pBatch
+class GpuP3pBatch {
+    private readonly device;
+    private readonly outputs;
+    readonly count: number;
+    readonly report: ShadePlanReport;
+    private closed;
+    private disposal?;
+    private constructor();
+    read(): Promise<GpuP3pResult>;
+    dispose(): Promise<void>;
+}
+
+-- GpuP3pResult
+interface GpuP3pResult {
+    readonly poses: Float64Array;
+    readonly valid: Uint32Array;
+    readonly counts: Uint32Array;
+    readonly status: Uint32Array;
+}
+
+-- GpuP3pStatus
+const GpuP3pStatus: {
+    readonly success: 0;
+    readonly degenerateWorld: 1;
+    readonly degenerateBearings: 2;
+    readonly degeneratePolynomial: 3;
+    readonly noValidatedPose: 4;
+    readonly unresolvedBranches: 5;
+    readonly illConditionedWorld: 6;
+};
+
+-- GpuPnPOptions
+interface GpuPnPOptions extends PnPOptions {
+    readonly batchSize?: number;
+    readonly minIterations?: number;
+}
+
+-- GpuPnPResult
+interface GpuPnPResult extends PnPResult {
+    readonly candidatesEvaluated: number;
+    readonly hypothesisBatches: number;
+    readonly refinementAcceptedSteps: number;
+    readonly refinementRejectedSteps: number;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- GpuResidentFeatures
+interface GpuResidentFeatures {
+    readonly count: number;
+    readonly capacity: number;
+    readonly report: ShadePlanReport;
+    readonly execution: GpuFeatureExecution;
+    readKeypoints(): Promise<Float64Array>;
+    read(): Promise<GpuFeatures>;
+    dispose(): Promise<void>;
+}
+
+-- GpuResidentFloatDescriptors
+interface GpuResidentFloatDescriptors {
+    readonly descriptors: Resident<Float32Array>;
+    readonly count: number;
+    readonly dimensions: number;
+    readonly elements: number;
+}
+
+-- GpuResidentOrb
+interface GpuResidentOrb extends GpuResidentFeatures {
+    readonly requested: number;
+    readonly levels: number;
+    readDetails(): Promise<Float32Array>;
+}
+
+-- GpuResidentSift
+interface GpuResidentSift {
+    readonly count: number;
+    readonly requested: number;
+    readonly capacity: number;
+    readonly octaves: number;
+    readonly report: ShadePlanReport;
+    readonly execution: GpuSiftExecution;
+    readonly descriptors: GpuResidentFloatDescriptors;
+    readKeypoints(): Promise<Float64Array>;
+    readDetails(): Promise<Float32Array>;
+    readonly gray?: GpuSiftGray;
+    dispose(): Promise<void>;
+}
+
+-- GpuSiftExecution
+interface GpuSiftExecution {
+    readonly applicationUploadBytes: number;
+    readonly applicationReadbackBytes: number;
+}
+
+-- GpuSiftGray
+interface GpuSiftGray {
+    readonly levels: number;
+    readonly width: number;
+    readonly height: number;
+    readonly buffer: Resident<Float32Array>;
+    take(): Resident<Float32Array>;
+}
+
+-- GpuSiftOptions
+interface GpuSiftOptions {
+    readonly octaves?: number;
+    readonly sigma?: number;
+    readonly peakThreshold?: number;
+    readonly edgeThreshold?: number;
+    readonly maxFeatures?: number;
+    readonly maxOrientations?: 1 | 2;
+    readonly rootSift?: boolean;
+    readonly firstOctave?: -1 | 0;
+    readonly clahe?: boolean | ClaheOptions;
+    readonly grayForKlt?: {
+        readonly levels: number;
+    };
+}
+
+-- GpuTiledFeatureOptions
+interface GpuTiledFeatureOptions extends GpuFeatureOptions {
+    readonly tileEdge?: number;
+    readonly onTile?: (event: {
+        completed: number;
+        total: number;
+    }) => void;
+}
+
+-- GpuTiledFeatures
+interface GpuTiledFeatures extends GpuFeatures {
+    readonly tiling: {
+        readonly sourceWidth: number;
+        readonly sourceHeight: number;
+        readonly tiles: number;
+        readonly halo: number;
+        readonly peakRegionBytes: number;
+        readonly totalGroups: number;
+        readonly groupsTruncated: boolean;
+    };
+}
+
+-- GpuTriangulationOptions
+interface GpuTriangulationOptions extends DepthSensitivityOptions {
+    readonly maxErrorPx?: number;
+    readonly minAngleDeg?: number;
+    readonly maxPairHypotheses?: number;
+    readonly refinementIterations?: number;
+}
+
+-- GpuTriangulationResult
+interface GpuTriangulationResult {
+    readonly tracks: readonly (TrackTriangulation | undefined)[];
+    readonly status: Uint32Array;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- GpuTwoViewOptions
+interface GpuTwoViewOptions extends TwoViewOptions {
+    readonly batchSize?: number;
+}
+
+-- GpuTwoViewResult
+interface GpuTwoViewResult extends TwoViewResult {
+    readonly execution: GpuConsensusExecution;
+}
+
+-- GpuUndistortionResult
+interface GpuUndistortionResult {
+    readonly pixels: Float64Array;
+    readonly indices: Uint32Array;
+    readonly execution: GpuGeometryExecution;
+}
+
+-- HoughLine
+interface HoughLine {
+    readonly rho: number;
+    readonly theta: number;
+    readonly votes: number;
+}
+
+-- HoughLinesOptions
+interface HoughLinesOptions extends CannyOptions {
+    readonly thetaBins?: number;
+    readonly threshold?: number;
+    readonly minDistance?: number;
+    readonly minAngle?: number;
+    readonly maxLines?: number;
+    readonly segments?: boolean;
+    readonly minLineLength?: number;
+    readonly maxLineGap?: number;
+}
+
+-- HoughLinesResult
+interface HoughLinesResult extends CannyResult {
+    readonly thetaBins: number;
+    readonly rhoCount: number;
+    readonly maxRho: number;
+    readonly accumulator: Uint32Array;
+    readonly lines: readonly HoughLine[];
+    readonly segments: readonly HoughSegment[];
+}
+
+-- HoughSegment
+interface HoughSegment {
+    readonly x1: number;
+    readonly y1: number;
+    readonly x2: number;
+    readonly y2: number;
+    readonly line: number;
+}
+
+-- ImageRegion
+interface ImageRegion {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+-- IncrementalSfmSession
+class IncrementalSfmSession {
+    private device;
+    private images;
+    private pairs;
+    private state;
+    private result?;
+    private busy;
+    private options;
+    private history;
+    private seen;
+    private unregistered;
+    private focal?;
+    private trackingState?;
+    private selectionState?;
+    constructor(device: ShadeDevice, options?: GpuIncrementalOptions);
+    get focalSearch(): FocalSearchResult | undefined;
+    get activeViewIds(): readonly number[];
+    get tracking(): ReconstructionTracking | undefined;
+    get observationSelection(): CameraObservationSelection | undefined;
+    add(image: ImageFeatures, pairs: readonly PairMatches[], cameraObservationMask?: CameraObservationMask): Promise<GpuIncrementalResult | undefined>;
+    finish(): Promise<GpuIncrementalResult>;
+    private update;
+}
+
+-- InverseDepthBundleOptions
+interface InverseDepthBundleOptions extends Pick<BundleAdjustmentOptions, 'iterations' | 'huberPx' | 'anchorViewId' | 'scaleViewId' | 'variableViewIds' | 'refineSharedFocal' | 'focalGroups'> {
+    readonly pixelNoiseStdDevPx?: number;
+    readonly maxCameraParameters?: number;
+    readonly solver?: 'auto' | 'dense' | 'sparse';
+    readonly maxSchurEntries?: number;
+    readonly maxFactorEntries?: number;
+    readonly measurementBatchSize?: number;
+}
+
+-- InverseDepthBundleResult
+interface InverseDepthBundleResult {
+    readonly reconstruction: SparseReconstruction;
+    readonly estimates: readonly (InverseDepthConstraint & {
+        readonly covariance?: Float64Array;
+        readonly bearingCovariance?: Float64Array;
+        readonly informationDeferred?: true;
+    })[];
+    readonly uncertainty: {
+        readonly poses: 'joint' | 'fixed-exterior';
+        readonly intrinsics: 'joint-focal' | 'fixed';
+        readonly anchorViewId: number;
+        readonly scaleViewId: number;
+        readonly observable: boolean;
+        readonly approximation: 'local-robust-Gaussian';
+    };
+    readonly diagnostics: {
+        readonly initialCost: number;
+        readonly finalCost: number;
+        readonly acceptedSteps: number;
+        readonly observations: number;
+        readonly cameraParameters: number;
+        readonly backend: string;
+        readonly measurementBatches?: number;
+        readonly measurementBatchSize?: number;
+        readonly linearSolver: 'dense' | 'sparse';
+        readonly schurEntries: number;
+        readonly factorEntries: number;
+        readonly cameraCovarianceEntries: number;
+        readonly pointCrossEntries: number;
+        readonly denseEquivalentCrossEntries: number;
+        readonly inputObservations: number;
+        readonly deferredTrackIds: readonly number[];
+    };
+}
+
+-- InverseDepthConstraint
+interface InverseDepthConstraint {
+    readonly trackId: number;
+    readonly point: AnchoredInverseDepth;
+    readonly referenceViewId?: number;
+    readonly observations: readonly LandmarkObservation[];
+    readonly directionOnly?: boolean;
+}
+
+-- InverseDepthSnapshot
+interface InverseDepthSnapshot {
+    readonly revision: number;
+    readonly tracks: readonly DepthTrackState[];
+    readonly uncertainty?: InverseDepthBundleResult['uncertainty'];
+    readonly assumptions: {
+        readonly pixelNoiseStdDevPx: number;
+        readonly huberPx: number;
+        readonly maxRelativeStddev: number;
+        readonly credibleSigma: number;
+        readonly minObservations: number;
+    };
+    readonly diagnostics: {
+        readonly bearingOnly: number;
+        readonly estimating: number;
+        readonly finite: number;
+        readonly uniqueObservations: number;
+        readonly backend: string;
+        readonly solver?: InverseDepthBundleResult['diagnostics'];
+    };
+}
+
+-- InverseDepthTracker
+class InverseDepthTracker implements InverseDepthTracking {
+    readonly protocol = "typecv-inverse-depth-tracker-v1";
+    private history;
+    private images;
+    private views;
+    private masks;
+    private current?;
+    private busy;
+    private beforeUpdate?;
+    readonly options: Readonly<InverseDepthTrackingOptions>;
+    constructor(options?: InverseDepthTrackingOptions);
+    snapshot(): InverseDepthSnapshot | undefined;
+    private begin;
+    update(input: DepthTrackingInput): DepthTrackingResult;
+    updateAsync(input: DepthTrackingInput, refine: (model: SparseReconstruction, constraints: readonly InverseDepthConstraint[], options: InverseDepthBundleOptions) => Promise<InverseDepthBundleResult>): Promise<DepthTrackingResult>;
+    private prepare;
+    private rebaseHistory;
+    private finish;
+}
+
+-- InverseDepthTracking
+interface InverseDepthTracking {
+    readonly protocol: 'typecv-inverse-depth-tracker-v1';
+    snapshot(): InverseDepthSnapshot | undefined;
+    update(input: DepthTrackingInput): DepthTrackingResult;
+    updateAsync(input: DepthTrackingInput, refine: (model: SparseReconstruction, constraints: readonly InverseDepthConstraint[], options: InverseDepthBundleOptions) => Promise<InverseDepthBundleResult>): Promise<DepthTrackingResult>;
+}
+
+-- InverseDepthTrackingOptions
+interface InverseDepthTrackingOptions extends InverseDepthBundleOptions {
+    readonly maxRelativeStddev?: number;
+    readonly credibleSigma?: number;
+    readonly minObservations?: number;
+    readonly maxErrorPx?: number;
+}
+
+-- KLT_DEFAULTS_640
+const KLT_DEFAULTS_640: KltOptions;
+
+-- KLT_DEFAULT_CAPACITY
+const KLT_DEFAULT_CAPACITY = 1024;
+
+-- KLT_END
+const KLT_END: {
+    readonly alive: 0;
+    readonly outOfFrame: 1;
+    readonly lowStructure: 2;
+    readonly noConvergence: 3;
+    readonly forwardBackward: 4;
+    readonly residual: 5;
+    readonly epipolar: 6;
+    readonly age: 7;
+};
+
+-- KLT_LENGTH_EDGES
+const KLT_LENGTH_EDGES: readonly [
+    2,
+    3,
+    5,
+    9,
+    17
+];
+
+-- KLT_MAX_CAPACITY
+const KLT_MAX_CAPACITY = 8192;
+
+-- KernelStatistic
+interface KernelStatistic {
+    readonly name: string;
+    readonly groups: number;
+    readonly dispatches: number;
+    readonly timedGroups: number;
+    readonly gpuNs: number;
+}
+
+-- KltFrame
+type KltFrame = {
+    readonly gray: ArrayLike<number>;
+} | {
+    readonly rgba: Uint8Array | Uint8ClampedArray;
+} | {
+    readonly sift: GpuResidentSift;
+};
+
+-- KltJoin
+interface KltJoin {
+    readonly frameId: number;
+    readonly pairs: readonly KltJoinPair[];
+    readonly joined: number;
+    readonly seeded: number;
+    readonly filledIn: number;
+    readonly filtered: number;
+    readonly alive: number;
+    readonly ms: number;
+}
+
+-- KltJoinInput
+interface KltJoinInput {
+    readonly frameId: number;
+    readonly keypoints: ArrayLike<number>;
+    readonly views?: Iterable<number>;
+}
+
+-- KltJoinPair
+interface KltJoinPair {
+    readonly first: number;
+    readonly second: number;
+    readonly matches: Uint32Array;
+    readonly tracks: Uint32Array;
+}
+
+-- KltOptions
+interface KltOptions {
+    readonly levels: number;
+    readonly halfWindow: number;
+    readonly maxIterations: number;
+    readonly epsilonPx: number;
+    readonly minEigThreshold: number;
+    readonly fbThresholdPx: number;
+    readonly nccThreshold: number;
+    readonly photometric: 0 | 1 | 2;
+    readonly qualityLevel: number;
+    readonly minDistancePx: number;
+    readonly maxAgeFrames: number;
+    readonly joinRadiusPx: number;
+    readonly capacity: number;
+}
+
+-- KltPushOptions
+interface KltPushOptions {
+    readonly keyframe?: boolean;
+    readonly select?: boolean;
+    readonly frameId?: number;
+}
+
+-- KltStats
+interface KltStats {
+    readonly pushes: number;
+    readonly ended: readonly number[];
+    readonly joins: number;
+    readonly joined: number;
+    readonly seeded: number;
+    readonly filledIn: number;
+    readonly filtered: number;
+    readonly matches: number;
+    readonly rejected: number;
+    readonly alive: number;
+    readonly lengths: readonly number[];
+    readonly meanLived: number;
+    readonly msPush: number;
+    readonly msSelect: number;
+    readonly msJoin: number;
+}
+
+-- KltStep
+interface KltStep {
+    readonly frame: number;
+    readonly tracked: number;
+    readonly alive: number;
+    readonly ended: readonly number[];
+    readonly selected: number;
+    readonly appended: number;
+    readonly filtered?: number;
+    readonly maxEigen: number;
+    readonly trackChunks: readonly number[];
+    readonly eigenChunks: readonly number[];
+    readonly msTrack: number;
+    readonly msSelect: number;
+}
+
+-- KltTracker
+interface KltTracker {
+    readonly width: number;
+    readonly height: number;
+    readonly options: KltOptions;
+    readonly residentBytes: number;
+    push(frame: KltFrame, push?: KltPushOptions): Promise<KltStep>;
+    join(keyframe: KltJoinInput): Promise<KltJoin>;
+    reject(trackIds: Iterable<number>): Promise<number>;
+    stats(): KltStats;
+    tracks(): KltTracks;
+    readEigenMap(): Promise<Float32Array>;
+    dispose(): Promise<void>;
+}
+
+-- KltTrackerOptions
+interface KltTrackerOptions {
+    readonly options?: Partial<KltOptions>;
+    readonly chunkTracks?: number;
+    readonly minChunkTracks?: number;
+    readonly batchPasses?: boolean;
+    readonly fillIn?: boolean;
+}
+
+-- KltTracks
+interface KltTracks {
+    readonly count: number;
+    readonly id: Uint32Array;
+    readonly x: Float32Array;
+    readonly y: Float32Array;
+    readonly seedFrame: Uint32Array;
+    readonly seedX: Float32Array;
+    readonly seedY: Float32Array;
+    readonly seedKeypoint: Uint32Array;
+    readonly age: Uint32Array;
+}
+
+-- MeshOptions
+interface MeshOptions {
+    readonly voxelSize?: number;
+    readonly spacingFactor?: number;
+    readonly truncation?: number;
+    readonly minWeight?: number;
+}
+
+-- MeshReport
+interface MeshReport {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly points: number;
+    readonly voxelSize: number;
+    readonly radius: number;
+    readonly dims: readonly [
+        number,
+        number,
+        number
+    ];
+    readonly bricks: number;
+    readonly nodes: number;
+    readonly cubes: number;
+    readonly vertices: number;
+    readonly faces: number;
+    readonly ms: {
+        readonly lattice: number;
+        readonly field: number;
+        readonly cubes: number;
+        readonly vertices: number;
+    };
+}
+
+-- MvsDepthResidency
+interface MvsDepthResidency {
+    readonly mode: MvsResidencyMode;
+    readonly slots: number;
+    readonly elements: number;
+    readonly bytes: number;
+    readonly largestArray: number;
+}
+
+-- MvsFusionResidency
+interface MvsFusionResidency {
+    readonly mode: MvsResidencyMode;
+    readonly slots: number;
+    readonly chunk: number;
+    readonly bytes: number;
+    readonly largestArray: number;
+}
+
+-- MvsImage
+interface MvsImage {
+    readonly rgba: Uint8Array | Uint8ClampedArray;
+    readonly width: number;
+    readonly height: number;
+    readonly observationMask?: ObservationPathMask;
+}
+
+-- MvsResidency
+interface MvsResidency {
+    readonly budgetBytes: number;
+    readonly bindingBytes: number;
+    readonly photometric: MvsDepthResidency;
+    readonly geometric: MvsDepthResidency;
+    readonly fusion: MvsFusionResidency;
+    readonly peakBytes: number;
+}
+
+-- MvsResidencyMode
+type MvsResidencyMode = 'window' | 'streamed';
+
+-- MvsScene
+interface MvsScene {
+    readonly views: readonly MvsSceneView[];
+    readonly landmarks: readonly MvsSceneLandmark[];
+}
+
+-- MvsSceneLandmark
+interface MvsSceneLandmark {
+    readonly xyz: ArrayLike<number>;
+    readonly observations: readonly {
+        readonly viewId: number;
+        readonly pixel: readonly [
+            number,
+            number
+        ];
+    }[];
+}
+
+-- MvsSceneView
+interface MvsSceneView {
+    readonly id: number;
+    readonly width?: number;
+    readonly height?: number;
+    readonly pose: {
+        readonly R: ArrayLike<number>;
+        readonly t: ArrayLike<number>;
+    };
+    readonly camera: {
+        readonly fx: number;
+        readonly fy: number;
+        readonly cx: number;
+        readonly cy: number;
+        readonly k1?: number;
+        readonly k2?: number;
+    };
+}
+
+-- MvsViewOptions
+interface MvsViewOptions {
+    readonly maxSources?: number;
+    readonly minSharedLandmarks?: number;
+    readonly fullAngleDeg?: number;
+    readonly minAngleDeg?: number;
+    readonly minLandmarks?: number;
+    readonly nearStretch?: number;
+    readonly farStretch?: number;
+    readonly fusionViews?: number;
+}
+
+-- ObservationAppendOptions
+interface ObservationAppendOptions {
+    readonly maxErrorPx: number;
+}
+
+-- ObservationAppendRejection
+type ObservationAppendRejection = 'unavailableWitness' | 'nonIndependentWitness' | 'sourceNotOriginal' | 'witnessNotOriginalPoint' | 'sourceGeometry' | 'witnessGeometry' | 'unregisteredTarget' | 'targetOwned' | 'alreadyObserved' | 'targetViewConflict' | 'nonpositiveProjection' | 'reprojection' | 'conflictingTargetView' | 'conflictingTargetFeature' | 'redundant';
+
+-- ObservationAppendResult
+interface ObservationAppendResult {
+    readonly reconstruction: SparseReconstruction;
+    readonly admitted: readonly {
+        readonly edgeIndex: number;
+        readonly trackId: number;
+        readonly errorPx: number;
+    }[];
+    readonly diagnostics: {
+        readonly candidates: number;
+        readonly appended: number;
+        readonly rejected: Readonly<Record<ObservationAppendRejection, number>>;
+    };
+}
+
+-- ObservationExpansionFrame
+interface ObservationExpansionFrame extends ImageFeatures {
+    readonly width: number;
+    readonly height: number;
+    readonly gray: Float32Array;
+    readonly validMask?: Uint8Array;
+    readonly shotId?: number | string;
+}
+
+-- ObservationExpansionOptions
+interface ObservationExpansionOptions {
+    readonly pyramidCache?: boolean | 'pair';
+    readonly batchPasses?: boolean;
+    readonly geometryPatchWarp?: boolean;
+    readonly surfacePatchWarp?: boolean;
+    readonly multiViewConsistency?: boolean | 'required';
+    readonly maxConsistencyErrorPx?: number;
+    readonly radius?: number;
+    readonly maxSeedsPerFrame?: number;
+    readonly maxNewPerFrame?: number;
+    readonly seedSpacingPx?: number;
+    readonly joinRadiusPx?: number;
+    readonly klt?: Partial<KltOptions>;
+    readonly chunkTracks?: number;
+    readonly verifiedPairs?: readonly PairMatches[];
+    readonly initialModel?: SparseReconstruction;
+    readonly rotations?: readonly PairRotationEvidence[];
+    readonly uniquenessMargin?: number;
+    readonly ambiguityRadiusPx?: number;
+}
+
+-- ObservationExpansionResult
+interface ObservationExpansionResult {
+    readonly images: ImageFeatures[];
+    readonly candidatePairs: PairMatches[];
+    readonly newEdges: ExpandedObservationEdge[];
+    readonly newObservations: ExpandedObservation[];
+    readonly diagnostics: {
+        readonly attempts: number;
+        readonly measuredEdges: number;
+        readonly addedEdges: number;
+        readonly newCoordinates: number;
+        readonly rejected: Readonly<Record<string, number>>;
+        readonly elapsedMs: number;
+        readonly trackingMs: number;
+        readonly geometryPlanningMs: number;
+        readonly hostValidationMs: number;
+        readonly uploadBytes: number;
+        readonly readbackBytes: number;
+        readonly residentSnapshotBytes: number;
+        readonly reads: number;
+        readonly surfaceProposals: number;
+        readonly corroboration: Readonly<Record<'verified' | 'unavailable' | 'rejected', number>>;
+        readonly cache?: ReturnType<ReturnType<typeof createKltPairCache>['statistics']>;
+    };
+}
+
+-- OrbFeaturesCpu
+interface OrbFeaturesCpu {
+    readonly count: number;
+    readonly keypoints: Float64Array;
+    readonly details: Float32Array;
+    readonly descriptors: Uint32Array;
+    readonly requested: number;
+}
+
+-- OrbParameters
+interface OrbParameters {
+    readonly maxFeatures: number;
+    readonly levels: number;
+    readonly scaleFactor: number;
+    readonly fastThreshold: number;
+}
+
+-- OutlierOptions
+interface OutlierOptions {
+    readonly k?: number;
+    readonly stdRatio?: number;
+}
+
+-- OutlierResult
+interface OutlierResult {
+    readonly cloud: CleanCloud;
+    readonly removed: number;
+    readonly mean: number;
+    readonly std: number;
+    readonly threshold: number;
+}
+
+-- ShadeDevice
+class ShadeDevice {
+    private readonly onProgress;
+    readonly backend: 'webgpu' | 'cpu';
+    readonly fp64Flavor: 'float' | 'integer';
+    readonly boundedSubmissions: boolean;
+    readonly solverCheckpoints: boolean;
+    readonly lost?: Promise<{
+        message: string;
+        reason: string;
+        diagnostics: DeviceDiagnostics;
+    }>;
+    readonly maxModelsPerBatch: number;
+    readonly maxDispatchesPerSubmission: number;
+    readonly timeBudgetMs: number;
+    readonly chunkTimingSamples: number;
+    readonly workingBytes: number;
+    readonly bindingBytes: number;
+    readonly bufferBytes: number;
+    readonly adapterLimits: boolean;
+    readonly maxKernelElements: number;
+    get maxWorkgroups(): number;
+    readonly maxWorkgroupSize: number;
+    readonly workgroupStorageBytes: number;
+    private readonly shade;
+    private readonly diagnosticTracker;
+    private readonly active;
+    private readonly activeF32Lengths;
+    private readonly workingReclaimers;
+    private reclaimingWorking;
+    private readonly history;
+    private readonly kernelRows;
+    private kernelsDropped;
+    private readonly warmed;
+    occupancyFloors: boolean;
+    private readonly gpuMsPerUnit;
+    private readonly lowered;
+    private readonly sinceTimed;
+    private uploads;
+    private downloads;
+    private reads;
+    private pendingReads;
+    private readWaves;
+    private snapshotBytes;
+    private tail;
+    private closing;
+    private closed;
+    private disposal?;
+    private owned?;
+    private constructor();
+    static open(options?: ShadeDeviceOptions): Promise<ShadeDevice>;
+    private times;
+    private observe;
+    private settled;
+    get chunkRates(): Readonly<Record<string, ChunkRate>>;
+    get kernelStatistics(): {
+        rows: readonly KernelStatistic[];
+        dropped: number;
+    };
+    get reports(): readonly ShadePlanReport[];
+    get info(): DeviceInfo;
+    get diagnostics(): DeviceDiagnostics;
+    get statistics(): {
+        liveBuffers: number;
+        liveBytes: number;
+        pooledBytes: number;
+        allocations: number;
+        reuses: number;
+        applicationUploadBytes: number;
+        applicationReadbackBytes: number;
+        kernels: readonly KernelStatistic[];
+        kernelsDropped: number;
+        reads: number;
+        readWaves: number;
+        residentSnapshotBytes: number;
+    };
+    private allocateTyped;
+    private collect;
+    resetKernelStatistics(): void;
+    private record;
+    dispose(): Promise<void>;
+}
+
+-- ShadeDeviceOptions
+interface ShadeDeviceOptions {
+    readonly backend?: 'webgpu' | 'cpu';
+    readonly gpuDevice?: object;
+    readonly gpuTimestamps?: boolean;
+    readonly adapterLimits?: boolean;
+    readonly occupancyFloors?: boolean;
+    readonly poolBytes?: number;
+    readonly workingBytes?: number;
+    readonly maxModelsPerBatch?: number;
+    readonly boundedSubmissions?: boolean;
+    readonly solverCheckpoints?: boolean;
+    readonly maxDispatchesPerSubmission?: number;
+    readonly fp64Flavor?: 'float' | 'integer' | 'auto';
+    readonly onProgress?: (event: {
+        kernel: string;
+        phase: 'start' | 'complete';
+    }) => void;
+    readonly timeBudgetMs?: number;
+    readonly chunkTimingSamples?: number;
+}
+
+-- ShadePlanReport
+interface ShadePlanReport {
+    readonly tier: 'cpu' | 'webgl2' | 'webgpu';
+    readonly dispatches: number;
+    readonly submissions: number;
+    readonly completed?: boolean;
+    readonly groups: readonly {
+        readonly calls: readonly string[];
+        readonly fused: boolean;
+        readonly why?: string;
+        readonly workgroupShapes?: readonly (readonly [
+            number,
+            number,
+            number
+        ])[];
+        readonly gpuTime?: number;
+        readonly indirect?: true;
+    }[];
+    readonly chunks?: Readonly<Record<string, ChunkRate>>;
+}
+
+-- SlicOptions
+interface SlicOptions {
+    readonly nSegments?: number;
+    readonly compactness?: number;
+    readonly maxIterations?: number;
+    readonly enforceConnectivity?: boolean;
+    readonly minSizeFactor?: number;
+}
+
+-- SlicResult
+interface SlicResult {
+    readonly width: number;
+    readonly height: number;
+    readonly labels: Uint32Array;
+    readonly count: number;
+}
+
+-- TsdfOptions
+interface TsdfOptions {
+    readonly visibility?: 'ray-count' | 'view-weighted';
+    readonly voxelScale?: number;
+    readonly levels?: number;
+    readonly truncation?: number;
+    readonly minWeight?: number;
+    readonly carveRatio?: number;
+    readonly percentile?: number;
+    readonly minViews?: number;
+    readonly carveSpan?: number;
+}
+
+-- TsdfReport
+interface TsdfReport {
+    readonly voxel: number;
+    readonly levels: number;
+    readonly blocks: number;
+    readonly passes: number;
+    readonly tableSlots: number;
+    readonly peakBytes: number;
+    readonly uploadBytes: number;
+    readonly hostViewStagingBytes?: number;
+    readonly allocationPixels?: number;
+    readonly reusedBoxTables?: number;
+    readonly inlineVoteResetGroups?: number;
+    readonly queuedViewUploads?: TsdfUploadWindowReport;
+    readonly hostTimings?: {
+        readonly volumePlanningMs: number;
+        readonly boxPlanningMs: number;
+        readonly boxTableMs: number;
+        readonly viewUploadMs: number;
+        readonly sortingMs: number;
+    };
+    readonly report: ShadePlanReport;
+}
+
+-- VoxelOptions
+interface VoxelOptions {
+    readonly voxelSize?: number;
+    readonly spacingFactor?: number;
+}
+
+-- VoxelResult
+interface VoxelResult {
+    readonly cloud: CleanCloud;
+    readonly voxelSize: number;
+}
+
+-- appendExpandedObservations
+function appendExpandedObservations(model: SparseReconstruction, originalImages: readonly ImageFeatures[], expansion: Pick<ObservationExpansionResult, 'images' | 'newEdges'>, options: ObservationAppendOptions): ObservationAppendResult;
+
+-- assignWordsGpu
+function assignWordsGpu(device: ShadeDevice, descriptors: GpuResidentFloatDescriptors | Float32Array, vocabulary: Float32Array, options?: GlobalAssignOptions): Promise<Uint32Array>;
+
+-- assignWordsReference
+function assignWordsReference(descriptors: Float32Array, vocabulary: Float32Array, dimensions?: number): Uint32Array;
+
+-- bagOfWordsDescriptor
+function bagOfWordsDescriptor(histogram: ArrayLike<number>, idf?: ArrayLike<number>): Float32Array;
+
+-- bagOfWordsDescriptorGpu
+function bagOfWordsDescriptorGpu(device: ShadeDevice, descriptors: GpuResidentFloatDescriptors | Float32Array, vocabulary: Float32Array, idf?: ArrayLike<number>, options?: GlobalAssignOptions): Promise<Float32Array>;
+
+-- bagOfWordsDescriptorReference
+function bagOfWordsDescriptorReference(descriptors: Float32Array, vocabulary: Float32Array, idf?: ArrayLike<number>, dimensions?: number): Float32Array;
+
+-- bundleAdjustGpu
+function bundleAdjustGpu(device: ShadeDevice, input: SparseReconstruction, options?: GpuBundleAdjustmentOptions): Promise<GpuBundleAdjustmentResult>;
+
+-- bundleAdjustInverseDepthGpu
+function bundleAdjustInverseDepthGpu(device: ShadeDevice, model: SparseReconstruction, constraints?: readonly InverseDepthConstraint[], options?: InverseDepthBundleOptions): Promise<{
+    diagnostics: {
+        backend: string;
+        measurementBatches: number;
+        measurementBatchSize: number;
+        initialCost: number;
+        finalCost: number;
+        acceptedSteps: number;
+        observations: number;
+        cameraParameters: number;
+        linearSolver: "dense" | "sparse";
+        schurEntries: number;
+        factorEntries: number;
+        cameraCovarianceEntries: number;
+        pointCrossEntries: number;
+        denseEquivalentCrossEntries: number;
+        inputObservations: number;
+        deferredTrackIds: readonly number[];
+    };
+    reconstruction: SparseReconstruction;
+    estimates: readonly (InverseDepthConstraint & {
+        readonly covariance?: Float64Array;
+        readonly bearingCovariance?: Float64Array;
+        readonly informationDeferred?: true;
+    })[];
+    uncertainty: {
+        readonly poses: "joint" | "fixed-exterior";
+        readonly intrinsics: "joint-focal" | "fixed";
+        readonly anchorViewId: number;
+        readonly scaleViewId: number;
+        readonly observable: boolean;
+        readonly approximation: "local-robust-Gaussian";
+    };
+}>;
+
+-- canny
+function canny(rgba: ArrayLike<number>, width: number, height: number, options?: CannyOptions): CannyResult;
+
+-- cannyGpu
+function cannyGpu(device: ShadeDevice, rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: CannyOptions): Promise<CannyResult>;
+
+-- cleanDenseCloudGpu
+function cleanDenseCloudGpu(device: ShadeDevice, cloud: CleanCloud, options?: DenseCleanOptions): Promise<DenseCleanResult>;
+
+-- cosineSimilarity
+function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number;
+
+-- createKltTracker
+function createKltTracker(device: ShadeDevice, width: number, height: number, tracker?: KltTrackerOptions): Promise<KltTracker>;
+
+-- equalizeGrayCpu
+function equalizeGrayCpu(gray: ArrayLike<number>, width: number, height: number, options?: boolean | ClaheOptions): Float32Array;
+
+-- equalizeGrayGpu
+function equalizeGrayGpu(device: ShadeDevice, gray: Float32Array, width: number, height: number, options?: boolean | ClaheOptions): Promise<Float32Array>;
+
+-- estimateEssentialRansacGpu
+function estimateEssentialRansacGpu(device: ShadeDevice, matchesPixels: Float64Array, K1: Camera, K2: Camera, options?: GpuTwoViewOptions): Promise<GpuEssentialConsensus>;
+
+-- estimateHomographyGpu
+function estimateHomographyGpu(device: ShadeDevice, matches: Float64Array, options?: GpuHomographyOptions): Promise<GpuHomographyResult | undefined>;
+
+-- estimatePosePnPGpu
+function estimatePosePnPGpu(device: ShadeDevice, worldPoints: Float64Array, pixels: Float64Array, camera: Camera, options?: GpuPnPOptions): Promise<GpuPnPResult>;
+
+-- evaluateObservationsGpu
+function evaluateObservationsGpu(device: ShadeDevice, model: SparseReconstruction, maxErrorPx?: number, options?: DepthSensitivityOptions): Promise<GpuObservationResult>;
+
+-- expandObservationsGpu
+function expandObservationsGpu(device: ShadeDevice, frames: readonly ObservationExpansionFrame[], pairs: readonly PairMatches[], options?: ObservationExpansionOptions): Promise<ObservationExpansionResult>;
+
+-- extractFeaturesGpu
+function extractFeaturesGpu(device: ShadeDevice, rgbaInput: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: GpuFeatureOptions): Promise<GpuFeatures>;
+
+-- extractFeaturesGpuPyramidResident
+function extractFeaturesGpuPyramidResident(device: ShadeDevice, rgbaInput: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: GpuFeatureOptions): Promise<GpuResidentFeatures>;
+
+-- extractFeaturesGpuResident
+function extractFeaturesGpuResident(device: ShadeDevice, rgbaInput: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: GpuFeatureOptions): Promise<GpuResidentFeatures>;
+
+-- extractFeaturesTiledGpu
+function extractFeaturesTiledGpu(device: ShadeDevice, source: GpuImageSource, options?: GpuTiledFeatureOptions): Promise<GpuTiledFeatures>;
+
+-- extractOrbCpu
+function extractOrbCpu(rgba: ArrayLike<number>, width: number, height: number, options?: Partial<OrbParameters>): OrbFeaturesCpu;
+
+-- extractOrbGpuResident
+function extractOrbGpuResident(device: ShadeDevice, rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: GpuOrbOptions): Promise<GpuResidentOrb>;
+
+-- extractSiftGpuResident
+function extractSiftGpuResident(device: ShadeDevice, rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: GpuSiftOptions): Promise<GpuResidentSift>;
+
+-- featureTileRegions
+function featureTileRegions(width: number, height: number, edge?: number): Generator<{
+    core: ImageRegion;
+    read: ImageRegion;
+}>;
+
+-- globalDescriptorGpu
+function globalDescriptorGpu(device: ShadeDevice, descriptors: GpuResidentFloatDescriptors | Float32Array, vocabulary: Float32Array, options?: GlobalDescriptorOptions & GlobalAssignOptions): Promise<Float32Array>;
+
+-- globalDescriptorReference
+function globalDescriptorReference(descriptors: Float32Array, vocabulary: Float32Array, options?: GlobalDescriptorOptions, dimensions?: number): Float32Array;
+
+-- houghLines
+function houghLines(rgba: ArrayLike<number>, width: number, height: number, options?: HoughLinesOptions): HoughLinesResult;
+
+-- houghLinesGpu
+function houghLinesGpu(device: ShadeDevice, rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: HoughLinesOptions): Promise<HoughLinesResult>;
+
+-- inverseDocumentFrequency
+function inverseDocumentFrequency(histograms: readonly ArrayLike<number>[], words?: number): Float32Array;
+
+-- kltOptionsFor
+function kltOptionsFor(width: number, overrides?: Partial<KltOptions>): KltOptions;
+
+-- kltReject
+function kltReject(verdicts: ReadonlyMap<number, {
+    inlier: number;
+    outlier: number;
+}>): Uint32Array;
+
+-- kltResidentBytes
+function kltResidentBytes(width: number, height: number, options: KltOptions): number;
+
+-- matchFeaturesGpu
+function matchFeaturesGpu(device: ShadeDevice, first: GpuFeatures, second: GpuFeatures, options?: {
+    readonly ratio?: number;
+    readonly maxDistance?: number;
+}): Promise<GpuFeatureMatches>;
+
+-- matchFloatDescriptorsGpu
+function matchFloatDescriptorsGpu(device: ShadeDevice, first: GpuResidentFloatDescriptors, second: GpuResidentFloatDescriptors, options?: GpuFloatMatchOptions): Promise<GpuFloatMatches>;
+
+-- matchResidentFeaturesGpu
+function matchResidentFeaturesGpu(device: ShadeDevice, first: GpuResidentFeatures, second: GpuResidentFeatures, options?: {
+    readonly ratio?: number;
+    readonly maxDistance?: number;
+}): Promise<GpuFeatureMatches>;
+
+-- meanNeighbourDistancesGpu
+function meanNeighbourDistancesGpu(device: ShadeDevice, positions: Float32Array, k: number): Promise<Float32Array>;
+
+-- meshDenseCloudGpu
+function meshDenseCloudGpu(device: ShadeDevice, cloud: CleanCloud, options?: MeshOptions): Promise<DenseMeshResult>;
+
+-- parseVocabulary
+function parseVocabulary(bytes: ArrayBuffer | Uint8Array, words?: number, dimensions?: number): Float32Array;
+
+-- reconstructDenseGpu
+function reconstructDenseGpu(device: ShadeDevice, scene: MvsScene, images: ReadonlyMap<number, MvsImage>, options?: GpuDenseOptions): Promise<GpuDenseResult>;
+
+-- reconstructIncrementalFloatGpu
+function reconstructIncrementalFloatGpu(device: ShadeDevice, images: readonly GpuFloatImageFeatures[], pairs: readonly GpuFloatImagePair[], options?: GpuFloatIncrementalOptions): Promise<GpuFloatIncrementalResult>;
+
+-- reconstructIncrementalGpu
+function reconstructIncrementalGpu(device: ShadeDevice, images: readonly ImageFeatures[], pairs: readonly PairMatches[], options?: GpuIncrementalOptions): Promise<GpuIncrementalResult>;
+
+-- reconstructTwoViewGpu
+function reconstructTwoViewGpu(device: ShadeDevice, matchesPixels: Float64Array, K1: Camera, K2: Camera, options?: GpuTwoViewOptions): Promise<GpuTwoViewResult>;
+
+-- refineIncrementalGpu
+function refineIncrementalGpu(device: ShadeDevice, images: readonly ImageFeatures[], pairs: readonly PairMatches[], initial: IncrementalResult, options?: GpuIncrementalOptions): Promise<GpuIncrementalResult>;
+
+-- removeStatisticalOutliersGpu
+function removeStatisticalOutliersGpu(device: ShadeDevice, cloud: CleanCloud, options?: OutlierOptions): Promise<OutlierResult>;
+
+-- slic
+function slic(rgba: ArrayLike<number>, width: number, height: number, options?: SlicOptions): SlicResult;
+
+-- slicGpu
+function slicGpu(device: ShadeDevice, rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, options?: SlicOptions): Promise<SlicResult>;
+
+-- solveP3pBatchGpu
+function solveP3pBatchGpu(device: ShadeDevice, packed: Float64Array): Promise<GpuP3pBatch>;
+
+-- triangulateTracksGpu
+function triangulateTracksGpu(device: ShadeDevice, tracks: readonly (readonly TriangulationObservation[])[], options?: GpuTriangulationOptions): Promise<GpuTriangulationResult>;
+
+-- undistortCorrespondencesGpu
+function undistortCorrespondencesGpu(device: ShadeDevice, input: Float64Array, first: Camera, second: Camera): Promise<GpuUndistortionResult>;
+
+-- unprojectPixel
+function unprojectPixel(k: Camera, pixel: Pixel): Pixel | undefined;
+
+-- verifyImagePairGpu
+function verifyImagePairGpu(device: ShadeDevice, matches: Float64Array, first: Camera, second: Camera, options?: GpuImagePairOptions): Promise<GpuImagePairVerification>;
+
+-- vladDescriptorGpu
+function vladDescriptorGpu(device: ShadeDevice, descriptors: GpuResidentFloatDescriptors | Float32Array, vocabulary: Float32Array, options?: GlobalAssignOptions): Promise<Float32Array>;
+
+-- vladDescriptorReference
+function vladDescriptorReference(descriptors: Float32Array, vocabulary: Float32Array, dimensions?: number): Float32Array;
+
+-- vladFromWords
+function vladFromWords(descriptors: Float32Array, vocabulary: Float32Array, assigned: ArrayLike<number>, dimensions?: number): Float32Array;
+
+-- voxelDownsampleGpu
+function voxelDownsampleGpu(device: ShadeDevice, cloud: CleanCloud, options?: VoxelOptions): Promise<VoxelResult>;
+
+-- wordHistogram
+function wordHistogram(assigned: ArrayLike<number>, words?: number): Uint32Array;
+
+== typecv/gpu: 60 declarations that the names reference
+
+-- AnchoredInverseDepth
+interface AnchoredInverseDepth {
+    readonly reference: Pose;
+    readonly parameters: Float64Array;
+}
+
+-- BundleAdjustmentOptions
+interface BundleAdjustmentOptions {
+    readonly directionalConstraints?: readonly BundleDirection[];
+    readonly iterations?: number;
+    readonly huberPx?: number;
+    readonly anchorViewId?: number;
+    readonly scaleViewId?: number;
+    readonly variableViewIds?: readonly number[];
+    readonly refineSharedFocal?: boolean;
+    readonly focalGroups?: ReadonlyMap<number, number>;
+    readonly stallTolerance?: number;
+}
+
+-- BundleAdjustmentPartition
+interface BundleAdjustmentPartition {
+    readonly components: readonly (readonly number[])[];
+    readonly fixedViewIds: readonly number[];
+    readonly deferredViewIds: readonly number[];
+    readonly sharedFocalDeferred: boolean;
+}
+
+-- BundleAdjustmentResult
+interface BundleAdjustmentResult {
+    readonly reconstruction: SparseReconstruction;
+    readonly directionalConstraints?: readonly BundleDirection[];
+    readonly diagnostics: {
+        readonly initialCost: number;
+        readonly finalCost: number;
+        readonly initialRmsePx: number;
+        readonly finalRmsePx: number;
+        readonly acceptedSteps: number;
+        readonly rejectedSteps: number;
+        readonly observations: number;
+        readonly baseline: number;
+        readonly directionalObservations?: number;
+        readonly pointParameters?: number;
+    };
+}
+
+-- BundleDirection
+interface BundleDirection {
+    readonly trackId: number;
+    readonly direction: Float64Array;
+    readonly observations: readonly LandmarkObservation[];
+}
+
+-- Camera
+interface Camera extends CameraIntrinsics {
+    readonly k1?: number;
+    readonly k2?: number;
+}
+
+-- CameraIntrinsics
+interface CameraIntrinsics {
+    readonly fx: number;
+    readonly fy: number;
+    readonly cx: number;
+    readonly cy: number;
+}
+
+-- CameraObservationMask
+interface CameraObservationMask {
+    readonly viewId: number;
+    readonly values: Uint8Array;
+    readonly source: 'manual' | 'geometry' | 'learned' | 'ground-truth';
+}
+
+-- CameraObservationSelection
+interface CameraObservationSelection {
+    readonly masks: readonly CameraObservationMask[];
+    readonly separatedPairs: readonly PairMatches[];
+    readonly inputMatchCount: number;
+    readonly backgroundMatchCount: number;
+    readonly unappliedViewIds: readonly number[];
+}
+
+-- ClusterSelection
+interface ClusterSelection {
+    readonly keep?: number;
+    readonly minFraction?: number;
+}
+
+-- DbscanOptions
+interface DbscanOptions {
+    readonly eps: number;
+    readonly minPoints?: number;
+}
+
+-- DepthSensitivityOptions
+interface DepthSensitivityOptions {
+    readonly maxRelativeDepthStdDev?: number;
+    readonly pixelNoiseStdDevPx?: number;
+}
+
+-- DepthTrackingInput
+interface DepthTrackingInput {
+    readonly tracks: readonly FeatureTrack[];
+    readonly images: readonly ImageFeatures[];
+    readonly reconstruction?: SparseReconstruction;
+    readonly cameraObservationMasks?: readonly CameraObservationMask[];
+}
+
+-- DepthTrackingResult
+interface DepthTrackingResult {
+    readonly reconstruction?: SparseReconstruction;
+    readonly snapshot: InverseDepthSnapshot;
+}
+
+-- FeatureObservation
+interface FeatureObservation {
+    readonly viewId: number;
+    readonly featureId: number;
+}
+
+-- FeatureTrack
+interface FeatureTrack {
+    readonly id: number;
+    readonly observations: readonly FeatureObservation[];
+}
+
+-- FocalCandidate
+interface FocalCandidate {
+    readonly ratio: number;
+    readonly views: number;
+    readonly rmsePx: number;
+    readonly observations: number;
+    readonly modelParameters?: number;
+    readonly directionalObservations?: number;
+    readonly score: number;
+}
+
+-- FocalSearchOptions
+interface FocalSearchOptions {
+    readonly views?: number;
+    readonly minRatio?: number;
+    readonly maxRatio?: number;
+    readonly step?: number;
+    readonly refineIterations?: number;
+}
+
+-- FocalSearchResult
+interface FocalSearchResult {
+    readonly ratio: number;
+    readonly views: readonly number[];
+    readonly candidates: readonly FocalCandidate[];
+    readonly gridRatio: number;
+    readonly scoring?: 'directional-bic';
+    readonly refinements?: readonly (FocalCandidate & {
+        readonly initialRatio: number;
+    })[];
+}
+
+-- GpuEpipolarGuide
+interface GpuEpipolarGuide {
+    readonly fundamental: ArrayLike<number>;
+    readonly firstPoints: ArrayLike<number>;
+    readonly secondPoints: ArrayLike<number>;
+    readonly maxLinePx?: number;
+    readonly kernel?: 'tiled' | 'scalar';
+}
+
+-- GpuMapperOperation
+type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
+
+-- ImageFeatures
+interface ImageFeatures {
+    readonly id: number;
+    readonly camera: Camera;
+    readonly keypoints: Float64Array;
+}
+
+-- ImagePairGeometry
+type ImagePairGeometry = Pick<TwoViewResult, 'R' | 't' | 'inlierCount' | 'positiveDepthCount' | 'meanReprojectionErrorPx' | 'diagnostics'>;
+
+-- ImagePairOptions
+interface ImagePairOptions extends TwoViewOptions {
+    readonly homographyThresholdPx?: number;
+    readonly homographyIterations?: number;
+}
+
+-- ImagePairVerification
+interface ImagePairVerification {
+    readonly invertibleCount: number;
+    readonly homographyInlierCount: number;
+    readonly inlierRows: Uint32Array;
+    readonly geometry?: ImagePairGeometry;
+    readonly reason?: string;
+}
+
+-- IncrementalOptions
+interface IncrementalOptions extends DepthSensitivityOptions {
+    readonly depthTracking?: InverseDepthTracking;
+    readonly separateDirectionalObservations?: boolean;
+    readonly cameraObservationMasks?: readonly CameraObservationMask[];
+    readonly pairRefinementIterations?: number;
+    readonly rotationTracking?: boolean | RelativeRotationOptions;
+    readonly onReconstruction?: (model: SparseReconstruction) => void;
+    readonly seed?: number;
+    readonly ransacIterations?: number;
+    readonly maxErrorPx?: number;
+    readonly minInitialAngleDeg?: number;
+    readonly minTriangulationAngleDeg?: number;
+    readonly minPnPInliers?: number;
+    readonly minInitialPoints?: number;
+    readonly bundleIterations?: number;
+    readonly finalBundleIterations?: number;
+    readonly refineSharedFocal?: boolean;
+    readonly localBundleSize?: number;
+    readonly localBundleSubset?: boolean;
+    readonly globalBundleViewRatio?: number;
+    readonly globalBundlePointRatio?: number;
+    readonly globalBundleFrequency?: number;
+    readonly bundleStallTolerance?: number;
+    readonly initialPair?: readonly [
+        number,
+        number
+    ];
+    readonly preVerified?: readonly PreVerifiedPair[];
+    readonly focalGroups?: ReadonlyMap<number, number>;
+    readonly focalSearch?: boolean | FocalSearchOptions;
+}
+
+-- IncrementalResult
+interface IncrementalResult {
+    readonly inverseDepth?: InverseDepthSnapshot;
+    readonly observationSelection?: CameraObservationSelection;
+    readonly tracking?: ReconstructionTracking;
+    readonly reconstruction: SparseReconstruction;
+    readonly tracks: readonly FeatureTrack[];
+    readonly unregistered: readonly {
+        viewId: number;
+        reason: string;
+    }[];
+    readonly diagnostics: {
+        readonly initialPair: readonly [
+            number,
+            number
+        ];
+        readonly pairVerification: readonly PairVerification[];
+        readonly conflictingTrackEdges: number;
+        readonly registrationOrder: readonly number[];
+        readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
+        readonly bundlePartitions?: readonly BundleAdjustmentPartition[];
+        readonly meanReprojectionErrorPx: number;
+        readonly focalSearch?: FocalSearchResult;
+    };
+    readonly verifiedPairs?: readonly PairMatches[];
+}
+
+-- KltCacheFrame
+interface KltCacheFrame {
+    readonly id: number;
+    readonly width: number;
+    readonly height: number;
+    readonly gray: Float32Array;
+}
+
+-- KltGpuOptions
+interface KltGpuOptions {
+    readonly affineWarps?: ArrayLike<number>;
+    readonly readBack?: boolean;
+    readonly compactOutput?: boolean;
+    readonly batchPasses?: boolean;
+    readonly initialTargets?: ArrayLike<number>;
+    readonly chunkTracks?: number;
+    readonly minChunkTracks?: number;
+}
+
+-- KltGpuResult
+interface KltGpuResult {
+    readonly records: Float32Array;
+    readonly forward: Float32Array;
+    readonly ncc?: Float32Array;
+    readonly back: Float32Array;
+    readonly pyramids?: {
+        gray: Float32Array[];
+        grad: Float32Array[];
+    };
+    readonly report: ShadePlanReport;
+    readonly trackChunks: readonly number[];
+}
+
+-- KltPairCache
+interface KltPairCache {
+    track(from: KltCacheFrame, to: KltCacheFrame, points: ArrayLike<number>, options: KltOptions, gpu?: KltGpuOptions): Promise<KltGpuResult>;
+    statistics(): KltPairCacheStatistics;
+    dispose(): Promise<void>;
+}
+
+-- KltPairCacheOptions
+interface KltPairCacheOptions {
+    readonly capacity?: number;
+}
+
+-- KltPairCacheStatistics
+interface KltPairCacheStatistics {
+    readonly hits: number;
+    readonly misses: number;
+    readonly evictions: number;
+    readonly pyramidBuilds: number;
+    readonly pyramidAllocations: number;
+    readonly bufferReuses: number;
+    readonly frames: number;
+    readonly residentBytes: number;
+    readonly peakFrames: number;
+    readonly peakResidentBytes: number;
+}
+
+-- Landmark
+interface Landmark {
+    readonly trackId: number;
+    readonly xyz: Float64Array;
+    readonly observations: readonly LandmarkObservation[];
+}
+
+-- LandmarkObservation
+interface LandmarkObservation {
+    readonly viewId: number;
+    readonly featureId: number;
+    readonly pixel: readonly [
+        number,
+        number
+    ];
+}
+
+-- MvsViewStatus
+type MvsViewStatus = 'ready' | 'noSource' | 'fewLandmarks';
+
+-- ObservationPathMask
+interface ObservationPathMask {
+    readonly width: number;
+    readonly height: number;
+    readonly values: Uint8Array;
+    readonly source: CameraObservationMask['source'];
+}
+
+-- PairMatches
+interface PairMatches {
+    readonly first: number;
+    readonly second: number;
+    readonly matches: Uint32Array;
+    readonly distances?: Float64Array;
+}
+
+-- PairRotationEvidence
+interface PairRotationEvidence {
+    readonly first: number;
+    readonly second: number;
+    readonly firstCamera: Camera;
+    readonly secondCamera: Camera;
+    readonly rotation: RelativeRotationResult;
+}
+
+-- PairVerification
+interface PairVerification {
+    readonly first: number;
+    readonly second: number;
+    readonly matches: number;
+    readonly inliers: number;
+    readonly homographyInliers: number;
+    readonly positiveDepthCount?: number;
+    readonly directionCompatibleCount?: number;
+    readonly medianAngleDeg: number;
+    readonly seedEligible: boolean;
+    readonly reason?: string;
+    readonly rotationInliers?: number;
+    readonly rotationErrorPx?: number;
+}
+
+-- Pixel
+type Pixel = readonly [
+    number,
+    number
+];
+
+-- PlanarDepthReport
+interface PlanarDepthReport {
+    readonly filled: number;
+    readonly perView: readonly number[];
+    readonly peakBytes: number;
+    readonly report: ShadePlanReport;
+    readonly hostMaps?: PlanarHostMaps;
+}
+
+-- PlanarHostMaps
+interface PlanarHostMaps {
+    readonly inputBytes: number;
+    readonly peakRetainedBytes: number;
+    readonly peakExtraOriginalViews: number;
+    readonly retiredOriginalViews: number;
+    readonly reorderedViews: number;
+}
+
+-- PnPOptions
+interface PnPOptions {
+    readonly iterations?: number;
+    readonly thresholdPx?: number;
+    readonly confidence?: number;
+    readonly seed?: number;
+    readonly minInliers?: number;
+    readonly refinementIterations?: number;
+}
+
+-- PnPResult
+interface PnPResult {
+    readonly pose: Pose;
+    readonly inliers: Uint8Array;
+    readonly inlierCount: number;
+    readonly meanErrorPx: number;
+    readonly iterations: number;
+}
+
+-- Pose
+interface Pose {
+    readonly R: Float64Array;
+    readonly t: Float64Array;
+}
+
+-- PreVerifiedPair
+interface PreVerifiedPair {
+    readonly verified: PairMatches;
+    readonly verification: PairVerification;
+    readonly geometry?: ImagePairGeometry;
+    readonly rejected?: boolean;
+}
+
+-- ReconstructionTracking
+interface ReconstructionTracking {
+    readonly pairs: readonly PairMatches[];
+    readonly rotations: readonly PairRotationEvidence[];
+    readonly tracks: readonly FeatureTrack[];
+    readonly untriangulatedTrackIds: readonly number[];
+    readonly depthDeferredTrackIds?: readonly number[];
+}
+
+-- RegisteredView
+interface RegisteredView {
+    readonly id: number;
+    readonly camera: Camera;
+    readonly pose: Pose;
+}
+
+-- RelativeRotationOptions
+interface RelativeRotationOptions {
+    readonly iterations?: number;
+    readonly maxErrorPx?: number;
+    readonly confidence?: number;
+    readonly minInliers?: number;
+    readonly minInlierRatio?: number;
+    readonly minSpreadDeg?: number;
+    readonly seed?: number;
+}
+
+-- RelativeRotationResult
+interface RelativeRotationResult {
+    readonly R: Float64Array;
+    readonly inlierRows: Uint32Array;
+    readonly invertibleCount: number;
+    readonly meanReprojectionErrorPx: number;
+    readonly spreadDeg: readonly [
+        number,
+        number
+    ];
+    readonly translation: 'unobservable';
+    readonly depth: 'not-estimated';
+}
+
+-- SparseReconstruction
+interface SparseReconstruction {
+    readonly views: readonly RegisteredView[];
+    readonly landmarks: readonly Landmark[];
+}
+
+-- TrackTriangulation
+interface TrackTriangulation {
+    readonly xyz: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly maxAngleDeg: number;
+    readonly meanErrorPx: number;
+}
+
+-- TriangulationObservation
+interface TriangulationObservation {
+    readonly camera: Camera;
+    readonly pose: Pose;
+    readonly pixel: Pixel;
+}
+
+-- TsdfPhase
+type TsdfPhase = 'allocate' | 'assign' | 'integrate' | 'carve' | 'count' | 'extract' | 'readback' | 'sort';
+
+-- TsdfProgress
+interface TsdfProgress {
+    readonly phase: TsdfPhase;
+    readonly pass: number;
+    readonly passes: number;
+    readonly view: number;
+    readonly views: number;
+    readonly done: number;
+    readonly total: number;
+    readonly phaseDone?: number;
+    readonly phaseTotal?: number;
+    readonly points: number;
+}
+
+-- TsdfUploadWindowReport
+interface TsdfUploadWindowReport {
+    readonly limitBytes: number;
+    readonly peakSubmittedBytes: number;
+    readonly drainCount: number;
+}
+
+-- TwoViewOptions
+interface TwoViewOptions {
+    readonly separateDirectionalObservations?: boolean;
+    readonly iterations?: number;
+    readonly threshold?: number;
+    readonly seed?: number;
+    readonly confidence?: number;
+    readonly minIterations?: number;
+    readonly refinementIterations?: number;
+    readonly huberPx?: number;
+    readonly minParallaxDeg?: number;
+    readonly maxReprojectionErrorPx?: number;
+}
+
+-- TwoViewResult
+interface TwoViewResult {
+    readonly diagnostics: {
+        readonly ransacIterations: number;
+        readonly refinementApplied: boolean;
+        readonly directionCompatibleCount?: number;
+        readonly medianParallaxDeg: number;
+        readonly meanReprojectionErrorBeforePx: number;
+        readonly meanReprojectionErrorAfterPx: number;
+    };
+    readonly validPoints: Uint8Array;
+    readonly E: Float64Array;
+    readonly R: Float64Array;
+    readonly t: Float64Array;
+    readonly inliers: Uint8Array;
+    readonly points: Float64Array;
+    readonly inlierCount: number;
+    readonly positiveDepthCount: number;
+    readonly meanReprojectionErrorPx: number;
+}
+
+-- createKltPairCache
+function createKltPairCache(device: ShadeDevice, options?: KltPairCacheOptions): KltPairCache;

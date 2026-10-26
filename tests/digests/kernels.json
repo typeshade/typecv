@@ -1,0 +1,261 @@
+{
+  "update": "node scripts/kernel-digests.mjs --write",
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4"
+  },
+  "compiler": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+  "modules": {
+    "bundle.shade.ts": {
+      "wgsl": "7eb332ea74a69b98eb5c72026198f3435f78575f9c5a4602130b02f4f2d9080e",
+      "wgslInteger": "d644c4d2dc04ffb5110f14e880958bd4268ddc5a0a6c4a700f716fa1b39dcff7",
+      "glsl": "94dac7debf31440b89899e624a422cef3126a9d82ac75fecf0a4555729ba4420",
+      "entries": 29,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 29
+    },
+    "clahe.shade.ts": {
+      "wgsl": "e06c5f4bedec203dd181e884c7f0ebe2261e62f3e00895f83939fc2e6f1e4b99",
+      "glsl": "59508e7de148fb874e50ba11911a507c949d88fce237c6f28b22f8d4036be3be",
+      "entries": 3,
+      "kernelFunctions": 0,
+      "glslPrograms": 3,
+      "withoutGlsl": 0
+    },
+    "cloud-knn.shade.ts": {
+      "wgsl": "9bee864246329fa73255cef753a8fb911e93811d6441c0b31c57aafe769e0143",
+      "glsl": "f04d315bc7bec3a3d226b1bffc85e826d120245a0c3e351c6e127ba707e9083a",
+      "entries": 1,
+      "kernelFunctions": 0,
+      "glslPrograms": 1,
+      "withoutGlsl": 0
+    },
+    "cloud-voxel.shade.ts": {
+      "wgsl": "d002c7387ed77fc60ca3cd2c26cb5968dc66373f6de2e678a454e58d430563fe",
+      "glsl": "0e1bf8f435420681caa111c7d9c51523e965e9f2e573978f6f079e192af1b05e",
+      "entries": 1,
+      "kernelFunctions": 0,
+      "glslPrograms": 1,
+      "withoutGlsl": 0
+    },
+    "consensus.shade.ts": {
+      "wgsl": "78c4d8fd0ee5536773af0a20a4dea8c40a9925a95d7f897479490b7e4088041e",
+      "wgslInteger": "833e05a9613dc8056a468a66e2100e468239291317fa7f93f27c432922c9dabf",
+      "glsl": "25cc78337a71017d29cccc8a329163c289b3af96eb2b11d8aab5b8b1edc1f4a7",
+      "entries": 7,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 7
+    },
+    "dense-mesh.shade.ts": {
+      "wgsl": "fe99d315efe1ea791c1af8e3f9f0a0fe7a58881024b084bf56c5c958c1fbca7f",
+      "glsl": "76b6c2d9730e53e73487e449d4f77be4dbeef3b524dee4573334fd546740eb96",
+      "entries": 4,
+      "kernelFunctions": 0,
+      "glslPrograms": 4,
+      "withoutGlsl": 0
+    },
+    "epipolar.shade.ts": {
+      "wgsl": "610961a46b070654b611d8fc11fa4dff9dcfc39ea0fba544f5eaca466c16fa5b",
+      "glsl": "5d7ef9d8728698cbbc336aae462ffa6bc598900c49cd61234721cde6082cb1c3",
+      "entries": 0,
+      "kernelFunctions": 8,
+      "glslPrograms": 7,
+      "withoutGlsl": 1
+    },
+    "features.shade.ts": {
+      "wgsl": "365dbeb8d70563f33c2e2b0f30398c102390d1c0a843b6b7acb68bdcb3624820",
+      "glsl": "c8e88b15de7f342f2bca2877cf13212958c9615719207ec48cfe52c6b0a0eea5",
+      "entries": 13,
+      "kernelFunctions": 0,
+      "glslPrograms": 13,
+      "withoutGlsl": 0
+    },
+    "float-matching.shade.ts": {
+      "wgsl": "b31574bafdc1fe1749a41a0e37a3e822b00e7e6b1f3974f5c428d59feb9c5058",
+      "glsl": "3213304498ef7a4be09a3cea28837baa35a326513966b38947b47667ce72c98a",
+      "entries": 7,
+      "kernelFunctions": 0,
+      "glslPrograms": 7,
+      "withoutGlsl": 0
+    },
+    "global-descriptor.shade.ts": {
+      "wgsl": "d004f0cf98efe8c105ddcb1c09d66e633cfc851a69475e669d6788667f9a1c74",
+      "glsl": "c2fa639cf7265c91b42427d855159ba5557b0bfe82401c5dde6d0fc3942cd32e",
+      "entries": 1,
+      "kernelFunctions": 0,
+      "glslPrograms": 1,
+      "withoutGlsl": 0
+    },
+    "hough.shade.ts": {
+      "wgsl": "a796feb4eac06270235ec2ae5884299706a31f89054d51f929e5fd980b19e131",
+      "glsl": "351478deed86445bf5ebe3f0f5639cddf647ad7598cedd309dcd8266471baa84",
+      "entries": 9,
+      "kernelFunctions": 0,
+      "glslPrograms": 9,
+      "withoutGlsl": 0
+    },
+    "inverse-depth.shade.ts": {
+      "wgsl": "f469f50e4e38a1d14fb20a40eba371f647b05499f842387534547d8859d701f6",
+      "wgslInteger": "684035d84d9e45353a685d71ce2dcc98b609f12915fb1666675adfb5b4c425e7",
+      "glsl": "83e068d766c89a6d92d397ebfb40e3974f9f36444e5f714e27cd046416cab1d9",
+      "entries": 1,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 1
+    },
+    "joint-focal.shade.ts": {
+      "wgsl": "e248b73dffb2bd79e922c9d0ff4562ce5662b48a5530cc3920c1e21ec7912f77",
+      "wgslInteger": "567de92361af62df695453fdb366278e00a4fab97306b6c3975357bb02695997",
+      "glsl": "dde4c13e70fdb3a061bab294e7a1cd1c8b87a8a0c63180d4242e3d4fe0c87d01",
+      "entries": 39,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 39
+    },
+    "klt.shade.ts": {
+      "wgsl": "37fadf6f1084bb5c14d93c662fbcae197e41f668e6f2ea535ff3ebd53fc0ee38",
+      "glsl": "171633d38e6d11058205269d8c65a11f36e7eef934c4cf324b2334a563fe7aee",
+      "entries": 10,
+      "kernelFunctions": 0,
+      "glslPrograms": 10,
+      "withoutGlsl": 0
+    },
+    "mvs.shade.ts": {
+      "wgsl": "e9543d103dbe705375186ab91b919b2caf3e2ee400079e27208c5c2152213c85",
+      "glsl": "01d3af84dec1514b6a861489db6c031ac32142422fdf8b58bd1cbe596bfbd6aa",
+      "entries": 22,
+      "kernelFunctions": 0,
+      "glslPrograms": 22,
+      "withoutGlsl": 0
+    },
+    "numerics.shade.ts": {
+      "wgsl": "1cdcabfaaafeab8f2517d1a5c11efe07080b592a0b3c84b65654581a84d302b3",
+      "entries": 0,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 0
+    },
+    "observation-evaluation.shade.ts": {
+      "wgsl": "65e60b89cfd4b2c29f57f2d9fd8db7b0ca4371e44057f32d5d7ad6d9e0ef05ff",
+      "wgslInteger": "80d6ed8f2c314e43a26bce39106ecd74b8a28cc0fa69071b668332f644ecbb07",
+      "glsl": "c291711df5266617935b807bb21b3dd4fb2c19125109c06b93d19e8ca0d94a2e",
+      "entries": 4,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 4
+    },
+    "orb.shade.ts": {
+      "wgsl": "9697bb71a25278d21038afe02dc9221da13218bbe9575b9ba0a3c51ec1fc8334",
+      "glsl": "de892a000e3f378063feb1ba6e6078f2b7bc785425594a15848a6659e381ac5c",
+      "entries": 12,
+      "kernelFunctions": 0,
+      "glslPrograms": 12,
+      "withoutGlsl": 0
+    },
+    "p3p.shade.ts": {
+      "wgsl": "63e047ba9d8a928f4dd83a09f53d782a4e2a24b4ca7f75108617829bb9110337",
+      "wgslInteger": "3802dd62dfbdba939b85fb1afe0152927da4d0035132c0bc5480b6dfc60b7732",
+      "glsl": "09c7f32daa68c80aec4ebdb8a0edc6c85c9206fea4fd2e1bbbd92977d3d06d5e",
+      "entries": 1,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 1
+    },
+    "pair-models.shade.ts": {
+      "wgsl": "95c3328dee31fcc9a6b086e13378ac9deab1d041f07a2d5025759d2716a260c4",
+      "wgslInteger": "5a3270addb6d0fd2607cba709d6b3b95bde8e9bf24e3391c2c1aed16935eb026",
+      "glsl": "38c86d8d69a107af69bc86398ad71e6bd6d4b26404f2786d72a84af6912f5a39",
+      "entries": 8,
+      "kernelFunctions": 0,
+      "glslPrograms": 3,
+      "withoutGlsl": 5
+    },
+    "pair-preparation.shade.ts": {
+      "wgsl": "67f10a27b4aead5ca3f05916c61e4bb6fb44b2bc3ff8709bf9fe1ac21bcb043b",
+      "wgslInteger": "749a09a96f4c137b0c9aba7ab4ec046a864a5ca6dfbf164e8668182866f81e91",
+      "glsl": "894177bf6d427c5e6636157dcb960a4cdd49c36cbfa5cfe186d372955d552540",
+      "entries": 8,
+      "kernelFunctions": 0,
+      "glslPrograms": 6,
+      "withoutGlsl": 2
+    },
+    "planar-depth.shade.ts": {
+      "wgsl": "e0c9dfd8ffbd20ab0ed693410a9c0e752400880d1c075f656ebcb183eca06392",
+      "glsl": "f8c2d52354077d4ee4088e7d9522923d0f5f1588c2f2c68ca7bec2da800c5024",
+      "entries": 4,
+      "kernelFunctions": 0,
+      "glslPrograms": 4,
+      "withoutGlsl": 0
+    },
+    "pnp.shade.ts": {
+      "wgsl": "b9d9ae9d6aec79742829df11fd9371cdf2e28fd90ccbf022ad127ad2cf9b35cb",
+      "wgslInteger": "bc70a0e531d34389c006752b66cd4c1cb2376a8bb31014825bfb6470c516085d",
+      "glsl": "538afdbad24edb83b351f0534440e00f56c4e034ef025fd7aacec89359020443",
+      "entries": 18,
+      "kernelFunctions": 0,
+      "glslPrograms": 2,
+      "withoutGlsl": 16
+    },
+    "projective.shade.ts": {
+      "wgsl": "c27b07e194d5d34babd756c1a3a43702026d5c6a44b2008b6eea880d9ebe0909",
+      "entries": 0,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 0
+    },
+    "recovery.shade.ts": {
+      "wgsl": "f9b8066ae4ef6ee618520388abde0a93f0745b94207d319737addcd2bf35a0ce",
+      "wgslInteger": "37e759682ee1927934f2a868fab48717417c3495bfeee7d94a359acbdaf14b69",
+      "glsl": "a42ca20019320239147ecff8c60757060cc5ce049ccebcb0f990a7a2d9981e90",
+      "entries": 16,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 16
+    },
+    "scan.shade.ts": {
+      "wgsl": "88f33e39bc366c2dd036cd3374ac8dc1214b93e1063dc1c4671c8a9ac07ce85e",
+      "glsl": "f973122775c74404120286e66772608ddc3b1b17a9b4827d44d73a6a9a3dc80b",
+      "entries": 3,
+      "kernelFunctions": 0,
+      "glslPrograms": 3,
+      "withoutGlsl": 0
+    },
+    "sift.shade.ts": {
+      "wgsl": "7f0766e177f140a658eac591138cab7bb5631fa73c1c48a3059561c37af7b525",
+      "glsl": "0ff844d4665decbad2df53a436646468f9e179023a058a10b6ccfcdd88729253",
+      "entries": 12,
+      "kernelFunctions": 0,
+      "glslPrograms": 12,
+      "withoutGlsl": 0
+    },
+    "slic.shade.ts": {
+      "wgsl": "12951553fae5119f85b1a8d58515835fc74446b378ff3169714242956208a1db",
+      "glsl": "55cd508df6d71e2549f32c0dfa02faa25dccfdb80eaffc83a20014bd567c8050",
+      "entries": 4,
+      "kernelFunctions": 0,
+      "glslPrograms": 4,
+      "withoutGlsl": 0
+    },
+    "triangulation.shade.ts": {
+      "wgsl": "3cfade1c57b1437fb4b4b0de8b7029503f233b66e8080060a7a1144e67207fd4",
+      "wgslInteger": "5e174d12a7cd1fb4206dbec9457693d082e9ec31e9f8d739c72dfa61be4e2a2e",
+      "glsl": "d4487e69cb7e112855937d17e504db2c37ba4e54d9ff6761695b44692464ac13",
+      "entries": 7,
+      "kernelFunctions": 0,
+      "glslPrograms": 0,
+      "withoutGlsl": 7
+    },
+    "tsdf.shade.ts": {
+      "wgsl": "2eb2a1d42cca4246c009d99c7521918e50689093e67bced6c45ce0c959d299c1",
+      "glsl": "a9e90539a07ad1693660488059f7d7867e13dc1424afa0a9556d59541fe43cf3",
+      "entries": 7,
+      "kernelFunctions": 0,
+      "glslPrograms": 7,
+      "withoutGlsl": 0
+    }
+  }
+}

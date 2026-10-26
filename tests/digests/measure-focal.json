@@ -1,0 +1,162 @@
+{
+  "description": "The baseline of docs/library-structure.md, section 5, phase 0: what `node scripts/measure-focal.mjs` prints with its defaults (the samples south-building, gerrard-hall, person-hall and graham-hall, the starts 0.5, 0.8 and 1.2, distortion on, no focal search), one row per line, each without its `ms` field, which is a wall time. Phase 2 requires the same output. Update: TYPECV_DIGEST_UPDATE=1 node --test tests/digests/measure-focal.test.ts",
+  "command": "node scripts/measure-focal.mjs",
+  "starts": [
+    0.5,
+    0.8,
+    1.2
+  ],
+  "rows": [
+    {
+      "sample": "south-building",
+      "truth": 0.833,
+      "start": 0.5,
+      "final": 0.568,
+      "errorPct": -31.8,
+      "views": 12,
+      "points": 5307,
+      "rmsePx": 0.403,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "south-building",
+      "truth": 0.833,
+      "start": 0.8,
+      "final": 0.832,
+      "errorPct": -0.2,
+      "views": 12,
+      "points": 5770,
+      "rmsePx": 0.157,
+      "accepted": 8,
+      "rejected": 0
+    },
+    {
+      "sample": "south-building",
+      "truth": 0.833,
+      "start": 1.2,
+      "final": 1.105,
+      "errorPct": 32.6,
+      "views": 12,
+      "points": 5635,
+      "rmsePx": 0.343,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "gerrard-hall",
+      "truth": 0.683,
+      "start": 0.5,
+      "final": 0.578,
+      "errorPct": -15.5,
+      "views": 12,
+      "points": 7497,
+      "rmsePx": 0.273,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "gerrard-hall",
+      "truth": 0.683,
+      "start": 0.8,
+      "final": 0.75,
+      "errorPct": 9.7,
+      "views": 12,
+      "points": 7864,
+      "rmsePx": 0.199,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "gerrard-hall",
+      "truth": 0.683,
+      "start": 1.2,
+      "final": 1.077,
+      "errorPct": 57.6,
+      "views": 12,
+      "points": 7571,
+      "rmsePx": 0.403,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "person-hall",
+      "truth": 0.684,
+      "start": 0.5,
+      "final": 0.58,
+      "errorPct": -15.1,
+      "views": 12,
+      "points": 12108,
+      "rmsePx": 0.246,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "person-hall",
+      "truth": 0.684,
+      "start": 0.8,
+      "final": 0.731,
+      "errorPct": 6.9,
+      "views": 12,
+      "points": 12253,
+      "rmsePx": 0.187,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "person-hall",
+      "truth": 0.684,
+      "start": 1.2,
+      "final": 1.108,
+      "errorPct": 62.1,
+      "views": 12,
+      "points": 12221,
+      "rmsePx": 0.371,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "graham-hall",
+      "truth": 0.69,
+      "start": 0.5,
+      "final": 0.572,
+      "errorPct": -17.1,
+      "views": 12,
+      "points": 5325,
+      "rmsePx": 0.35,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "graham-hall",
+      "truth": 0.69,
+      "start": 0.8,
+      "final": 0.722,
+      "errorPct": 4.6,
+      "views": 12,
+      "points": 5285,
+      "rmsePx": 0.371,
+      "accepted": 6,
+      "rejected": 2
+    },
+    {
+      "sample": "graham-hall",
+      "truth": 0.69,
+      "start": 1.2,
+      "final": 1.032,
+      "errorPct": 49.5,
+      "views": 12,
+      "points": 4337,
+      "rmsePx": 0.473,
+      "accepted": 6,
+      "rejected": 2
+    }
+  ],
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
+    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+  }
+}

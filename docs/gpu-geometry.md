@@ -363,6 +363,7 @@ resident plan; see the [initialization guide](gpu-initialization.md).
 
 ```sh
 npm run check
+npm run test:digests   # the characterization digests of docs/library-structure.md, phase 0 (Node 22)
 npm run test:webgpu
 # Reuse the prepared free-video experiment; raw media is not downloaded by tests.
 node scripts/benchmark-geometry.mjs data/pyramid/sequence/sequence.json data/pyramid/gpu-model.json > data/pyramid/gpu-geometry.json

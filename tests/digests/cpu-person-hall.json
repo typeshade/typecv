@@ -1,0 +1,130 @@
+{
+  "update": "TYPECV_DIGEST_UPDATE=1 node --test tests/digests/person-hall.test.ts",
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
+    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+  },
+  "cases": {
+    "focalSearchSteps/person-hall/start-1.2": {
+      "output": "ca0e2bad20890d1568b615c4a5dcd0db9b26f43992ba520e204c70ecf166cb8f",
+      "parts": {
+        "candidates": "8732413b03d82a60d5641d5ecb966972d08bf3898dedf92fa6a32e8d92b13b4b",
+        "gridRatio": "b3f6d017336021f2b588c4ad7e99b7ce096cb6fb1344a5b6ef43e0842a046a0d",
+        "ratio": "bf866528cdbcc1edf091b62d309cf093c1df5cf133153be071bbe59bb12aa391",
+        "views": "d1db22c01a65fe980dd64b9b84a2573236f64e737d242e04de003d142f672399"
+      },
+      "trace": "8aa5d22a1a84bdf4741b84af8624171d29b254cce1e7fb47c7594e1bd4e836d9",
+      "requests": {
+        "bundle": 60,
+        "observations": 108,
+        "pnp": 36,
+        "triangulation": 81,
+        "verifyPair": 120
+      },
+      "summary": {
+        "views": 5,
+        "throws": 0
+      }
+    },
+    "reconstructComponent/person-hall/lab-known-matches": {
+      "output": "3b8e0d5e9f5ef5076f5a4c0bd49c5ff2b1a196252be0e887b11d70773d7be0f3",
+      "parts": {
+        "graph": "f7d18fa0d7a091974ea0dcc4190d349ceb702913d119520a0fe0272b93e57e5b",
+        "result": "50aaad08cd6b241d63a86b7211afcc9dad87667f910bc2976cd28b64ec999c87"
+      },
+      "trace": "c1321557cdf9199d04f0e9ffbda035edae00be89ec25d00dac04bc44a48b729d",
+      "requests": {
+        "bundle": 12,
+        "observations": 22,
+        "pnp": 10,
+        "triangulation": 21
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 12217,
+        "observations": 52126,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncremental/person-hall/lab": {
+      "output": "50aaad08cd6b241d63a86b7211afcc9dad87667f910bc2976cd28b64ec999c87",
+      "parts": {
+        "diagnostics": "1cd8000228013920420bcee4a6b6f34eaaf7466dd870b39fa27bcc67816a38b0",
+        "reconstruction": "ef6909ea803d0c30987e88f53b80bc2ada24ab433394d0d5e24579a53213ed2c",
+        "tracking": "de9bd8633a18173b17a6d8c0f27ec78ef797a3bb4cb8acf76908c0f13443f4dc",
+        "tracks": "4e5b6c5ac71b11a065b12f040daf9c7a19ad0f532fd5f0391968c6ed5b5a5d7f",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
+        "verifiedPairs": "daa3f1111a68b2c879e6bdffa72c3aafebf2342f3d985c8836834a908dee511f"
+      },
+      "trace": "c67d013204537ac7a9b139fd1dcee0f561e7aee59d42dba811d764d3f6a57087",
+      "requests": {
+        "bundle": 12,
+        "observations": 22,
+        "pnp": 10,
+        "triangulation": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 12217,
+        "observations": 52126,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "reconstructIncrementalScene/person-hall/lab": {
+      "output": "ac29c57e46428c4934ffa67645640519023a82efc85ef3daef9383263be52700",
+      "parts": {
+        "diagnostics": "56ebd23b158ab0c3e4f08d7001c0d16a221bf3b4553f7713e1b8f6ff131268e7",
+        "reconstruction": "6abee929b5d66b97c4a420ab0ad2b4a0edcfbcbb7d11541c685cbb4e447fd076",
+        "tracking": "de9bd8633a18173b17a6d8c0f27ec78ef797a3bb4cb8acf76908c0f13443f4dc",
+        "tracks": "4e5b6c5ac71b11a065b12f040daf9c7a19ad0f532fd5f0391968c6ed5b5a5d7f",
+        "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392"
+      },
+      "trace": "ba9f3e39549f903557a532e3318a0d1c52c2277c2ece57ac52ed44ebddf295f1",
+      "requests": {
+        "bundle": 12,
+        "continue": 10,
+        "filter": 11,
+        "measure": 1,
+        "pnp": 10,
+        "register": 12,
+        "snapshot": 1,
+        "triangulate": 21,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 12217,
+        "observations": 52126,
+        "unregistered": 0,
+        "throws": 0
+      }
+    },
+    "refineIncremental/person-hall/lab-near-then-all": {
+      "output": "e0ec8e8f23a22a34c938209bc3defb00a769ba96279cc3d943b10e0a2c2187e1",
+      "parts": {
+        "initial": "33de1803f68508d288fdecc54adbb88e5d016ed2b2b67f2ecfc25b6c21c6ccdc",
+        "refined": "6d42c8f0722a7c637f0ebf3d3b69d875e03a73bee1d1ade4519910da111d1c13"
+      },
+      "trace": "4091d25bfdf99d62dfd074830a3781d6f6ad06cb07cd2c7e304c73a6debe546b",
+      "requests": {
+        "bundle": 1,
+        "observations": 14,
+        "triangulation": 2,
+        "verifyPair": 66
+      },
+      "summary": {
+        "views": 12,
+        "landmarks": 12218,
+        "observations": 52204,
+        "unregistered": 0,
+        "throws": 0
+      }
+    }
+  }
+}
