@@ -10,7 +10,7 @@ type Resident<T extends Float32Array | Uint32Array> = T extends Float32Array
   ? ReturnType<ShadeDevice['allocate']>
   : ReturnType<ShadeDevice['allocateU32']>;
 import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
-import { packRgba } from '../../features/gpu/sift.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 import {
   houghBlur,
   houghCollect,

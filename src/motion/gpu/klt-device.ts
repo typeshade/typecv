@@ -2,14 +2,9 @@ import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice, ShadePlanReport } from '../../device/gpu/device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
 import { readTogether } from '../../device/gpu/readback.ts';
-import {
-  kltInitialRecords,
-  kltAffineRecords,
-  kltLayout,
-  kltSeedRecords,
-  type KltLayout,
-  type KltOptions,
-} from './klt.ts';
+import { kltInitialRecords, kltAffineRecords, kltSeedRecords, type KltOptions } from './klt.ts';
+import { kltLayout } from '../../image/gpu/pyramid-layout.ts';
+import type { KltLayout } from '../../image/gpu/pyramid-layout.ts';
 
 export interface KltGpuOptions {
   /** Forward row-major 2x2 patch-offset warps, one per point. Optional; identity by default. */

@@ -26,13 +26,14 @@ import {
   kltAssignNearest,
   kltCellGrid,
   kltOccupancy,
-  kltLayout,
   kltOptionsFor,
   kltReason,
   type KltOptions,
 } from './klt.ts';
+import { kltLayout } from '../../image/gpu/pyramid-layout.ts';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
-import { packRgba, type GpuResidentSift } from '../../features/gpu/sift.ts';
+import type { GpuResidentSift } from '../../features/gpu/sift.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 
 /** A frame the tracker takes: a gray image in [0, 1], RGBA bytes, or a SIFT result's gray. */
 export type KltFrame =

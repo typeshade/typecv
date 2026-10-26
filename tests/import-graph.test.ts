@@ -84,16 +84,13 @@ test('every file of src/ has an area of section 3.1 or is an entry point', () =>
   assert.equal(areaOf('src/gpu/new-module.ts'), undefined);
 });
 
-test('six imports break the layering rule, five of them at run time (section 3.1)', () => {
+test('three imports break the layering rule, two of them at run time (section 3.1)', () => {
   const breaks = layeringBreaks(graph).map(
     (found) =>
       `${found.typeOnly ? 'type-only' : 'runtime'} ${found.from} (${found.fromArea}) -> ` +
       `${found.to} (${found.toArea})`,
   );
   assert.deepEqual(breaks, [
-    'runtime src/analysis/gpu/hough.ts (analysis) -> src/features/gpu/sift.ts (features)',
-    'runtime src/analysis/gpu/slic.ts (analysis) -> src/features/gpu/sift.ts (features)',
-    'runtime src/features/gpu/sift.ts (features) -> src/motion/gpu/klt.ts (motion)',
     'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
     'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/validation.ts (sfm)',
     'runtime src/mvs/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',

@@ -1,6 +1,6 @@
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
-import { packRgba } from '../../features/gpu/sift.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 import { slicAssign, slicSeeds, slicToLab, slicUpdate } from './slic.shade.ts';
 
 /** Options of `slic` and `slicGpu`, with the defaults of scikit-image's `segmentation.slic`. */
