@@ -40,6 +40,7 @@ identified separately throughout these documents.
 - [Calibrated relative rotation, retained 2D observations and deferred structure](rotation-tracking.md)
 - [Rotation tracking A/B results and calibrated default policy](rotation-tracking-comparison.md)
 - [Initial pose/depth quality and foreground observation selection](structure-quality.md)
+- [Chimney Rock record 58532c69: focal calibration, relief collapse and the dense stage (diagnosis)](chimney-rock-58532c69.md)
 
 ## Experiments
 
