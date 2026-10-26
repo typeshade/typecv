@@ -1,0 +1,32 @@
+{"t":"in","at":250,"data":{"type":"multiStart","id":1,"query":{"canonical":true,"maxKeyframesPerVideo":60,"maxFeatures":{"$":"undefined"}},"analysisEdge":640,"firstOctave":0,"clahe":false,"budget":{"$":"undefined"},"fp64":{"$":"undefined"},"dense":false,"denseGpuTimestamps":{"$":"undefined"},"denseClean":false,"denseFusion":"tsdf","denseQuality":{},"denseMesh":false}}
+{"t":"out","data":{"id":1,"type":"preparing","phase":"runtime"}}
+{"t":"call","fn":"import","args":["/runtime/internal/gpu.js"]}
+{"t":"out","data":{"id":1,"type":"preparing","phase":"vocabulary"}}
+{"t":"call","fn":"fetch","args":["/runtime/vocabulary/rootsift-32-v1.bin"]}
+{"t":"call","fn":"parseVocabulary","args":[4,32]}
+{"t":"out","data":{"id":1,"type":"preparing","phase":"adapter"}}
+{"t":"call","fn":"navigator.gpu.requestAdapter","args":[]}
+{"t":"out","data":{"id":1,"type":"preparing","phase":"device"}}
+{"t":"call","fn":"ShadeDevice.open","args":[{"backend":"webgpu","fp64Flavor":"auto","timeBudgetMs":{"$":"undefined"},"adapterLimits":true,"workingBytes":134217728,"poolBytes":33554432,"solverCheckpoints":true,"onProgress":{"$":"function"}}]}
+{"t":"out","data":{"id":1,"type":"preparing","phase":"session"}}
+{"t":"out","data":{"id":1,"type":"multiReady","adapter":{"vendor":"typecv-test","architecture":"fake","device":"transcript","description":"Deterministic fake adapter","fallbackAdapter":false,"limits":{"maxStorageBufferBindingSize":134217728,"maxBufferSize":268435456,"maxComputeWorkgroupStorageSize":32768,"maxComputeInvocationsPerWorkgroup":256,"maxStorageBuffersPerShaderStage":10},"features":["shader-f16","timestamp-query"]},"maxFeatures":4096}}
+{"t":"in","at":500,"data":{"type":"multiVideo","id":1,"video":{"videoId":"aaaaaaaaaaaaaaaa","label":"sample-a","durationSeconds":2,"focalRatio":0.8}}}
+{"t":"out","data":{"id":1,"type":"videoStarted","videoId":"aaaaaaaaaaaaaaaa"}}
+{"t":"in","at":750,"data":{"type":"multiFrame","id":1,"videoId":"aaaaaaaaaaaaaaaa","frame":{"id":0,"width":128,"height":96,"time":0,"pixels":{"$":"Uint8ClampedArray","length":49152,"sha256":"702780f719aa2d96850a2612872773692db151adecdb5c02d09d7f747036a481"}}}}
+{"t":"call","fn":"extractSiftGpuResident","args":[0,128,96,{"maxFeatures":4096,"firstOctave":0,"clahe":false}]}
+{"t":"out","data":{"id":1,"type":"progress","detail":"siftPyramid (start)"}}
+{"t":"call","fn":"sift.readKeypoints","args":[0]}
+{"t":"call","fn":"describeKeyframeGpu","args":[0,4096]}
+{"t":"out","data":{"id":1,"type":"features","videoId":"aaaaaaaaaaaaaaaa","frameId":0,"time":0,"points":{"$":"Float64Array","values":[107.25,52,20,55.75,49,37.5,41.75,77.25,47.25,55.5,107.5,40,49.75,60.75,78,73,71.5,26.25,37.25,53.5,94,62.25,48,68.75,12.25,54.5,35,82.75,98.5,82.5,55,34,22.5,79.75,118.75,80,83.5,34,114.25,15,65.25,36,52.5,16.5,98.5,67.75,11.75,28.75]}}}
+{"t":"out","data":{"id":1,"type":"frameComplete","videoId":"aaaaaaaaaaaaaaaa","frameId":0,"time":0,"elapsedMs":0,"keyframe":true,"features":24}}
+{"t":"call","fn":"sift.dispose","args":[0]}
+{"t":"in","at":1000,"data":{"type":"multiFrame","id":1,"videoId":"aaaaaaaaaaaaaaaa","frame":{"id":1,"width":128,"height":96,"time":0.6,"pixels":{"$":"Uint8ClampedArray","length":49152,"sha256":"e2204d2e2d60f8a1e9cdbad59eea4cc6faa62008ff7c1d5ac74853a817808c7a"}}}}
+{"t":"call","fn":"extractSiftGpuResident","args":[2,128,96,{"maxFeatures":4096,"firstOctave":0,"clahe":false}]}
+{"t":"out","data":{"id":1,"type":"progress","detail":"siftPyramid (start)"}}
+{"t":"call","fn":"sift.readKeypoints","args":[2]}
+{"t":"call","fn":"describeKeyframeGpu","args":[2,4096]}
+{"t":"out","data":{"id":1,"type":"error","message":"WebGPU device lost during the multi-video job: synthetic device loss [destroyed]"}}
+{"t":"out","data":{"id":1,"type":"features","videoId":"aaaaaaaaaaaaaaaa","frameId":1,"time":0.6,"points":{"$":"Float64Array","values":[115.25,52,28,55.75,57,37.5,49.75,77.25,55.25,55.5,115.5,40,57.75,60.75,86,73,79.5,26.25,45.25,53.5,102,62.25,56,68.75,20.25,54.5,43,82.75,106.5,82.5,63,34,30.5,79.75,126.75,80,91.5,34,122.25,15,73.25,36,60.5,16.5,106.5,67.75,19.75,28.75]}}}
+{"t":"out","data":{"id":1,"type":"frameComplete","videoId":"aaaaaaaaaaaaaaaa","frameId":1,"time":0.6,"elapsedMs":0,"keyframe":true,"features":24}}
+{"t":"call","fn":"sift.dispose","args":[2]}
+{"t":"end","at":1000,"timers":[]}
