@@ -13,6 +13,11 @@ TypeCV's pinned dependency and the main ref observed during this review, and
 TypeNN `61259c3733148a8665466163ae1c5c2b920b129c`. TypeCV's starting revision is
 `a627acabade9f3597f03885be2584124f2b18779`.
 
+2026-10-26: TypeCV's pin moved from TypeShade `d36ac502` to
+`725b2969a9cac37400980c2c0058680368407602` in pull request #246. The gate of
+that pull request validated the bump; its description lists each check, the
+commit it ran on and its result. This review was not repeated at that pin.
+
 Primary sources below identify delivered behavior. The probe results establish
 only the small cases executed here; they do not establish completed GPU SfM.
 
