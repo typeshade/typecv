@@ -3176,3 +3176,25 @@ These numerical regressions establish arithmetic correctness on their inputs; th
 establish reconstruction accuracy, completeness or physical-GPU throughput.
 Reconstruction quality requires a separate comparison on fixed ground truth that reports
 accuracy, coverage and error tails together.
+
+### 10.15 Keep nonpositive-confidence depths out of TSDF volume planning
+
+The volume planner now excludes a positive depth with explicit nonpositive confidence from
+its sample count, footprint percentile and level bounds. Absent confidence still means 1.
+Allocation and integration already give these observations zero weight; they must not force
+supported surfaces onto a coarser grid through the volume's block-key capacity limit.
+This is a stronger planning invariant than the earlier rule, which used all positive depths.
+
+A CPU reference regression uses an 8 × 8 plane at depth 2 with focal length 1000. One remote
+depth at camera center (1000, 1000, 0), with confidence exactly zero, previously doubled the
+voxel from 0.004 to 0.008 and reduced the trusted surface from 16 points to 4. The same input
+now retains the original volume and all extracted attributes. A zero-depth control retains
+the same result; a positive-confidence remote observation still affects the grid. Tests also
+cover the footprint percentile, an entirely unsupported input, absent confidence, input
+immutability, and positive f32 values around fixed-point and grazing boundaries.
+
+Every positive confidence remains eligible for planning, including observations whose angle
+or rounded integration weight would be zero. The host does not reproduce the shader's normal,
+cosine or rounding arithmetic to decide those boundaries. No depth, normal, weight formula,
+quality threshold or shader changes. This correction establishes the planning invariant; it
+does not establish a reconstruction-quality gain on a dataset or diagnose a particular video.
