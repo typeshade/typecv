@@ -444,6 +444,35 @@ test('failure: an initialization failure at the end keeps its pair evidence', as
   );
 });
 
+test('uncaught errors: the error and rejection listeners report the run once', async () => {
+  const spec = { shift: { 0: [0, 0], 1: [8, 0] } };
+  await transcript(
+    'uncaught',
+    spec,
+    async (h) => {
+      await h.send(start(1));
+      for (const [id, time] of [0, 0.5].entries()) await h.send(frame(1, id, time, spec));
+      await h.raise(
+        'error',
+        {
+          message: 'late error',
+          filename: 'https://lab.typecv.test/sfm.worker.js',
+          lineno: 7,
+          colno: 3,
+        },
+        'late error',
+      );
+      // The run has failed once: a later rejection reports nothing more.
+      await h.raise('unhandledrejection', {}, 'late rejection');
+    },
+    (h) => {
+      const errors = posted(h, 'error');
+      assert.equal(errors.length, 1);
+      assert.match(errors[0].message, /^Uncaught error in the worker: late error at /);
+    },
+  );
+});
+
 test('loss: a device loss while the worker waits for the next request', async () => {
   const spec = { shift: { 0: [0, 0], 1: [8, 0] } };
   await transcript(

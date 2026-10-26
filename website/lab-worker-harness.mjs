@@ -295,6 +295,21 @@ export class WorkerHarness {
     await this.idle();
   }
 
+  /**
+   * Deliver an `error` or `unhandledrejection` event to the worker's listeners, as the browser does
+   * for an error that no handler caught. `fields` are the event's fields; `error` names an error
+   * of the worker's realm for `event.error` (`error`) or `event.reason` (`unhandledrejection`).
+   */
+  async raise(type, fields = {}, error) {
+    this.events.push({ t: 'raise', at: this.now, type, fields: canonical(fields), error });
+    const made =
+      error === undefined ? undefined : vm.runInContext('(m) => new Error(m)', this.context)(error);
+    const event = this.copy(fields);
+    if (made) event[type === 'error' ? 'error' : 'reason'] = made;
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+    await this.idle();
+  }
+
   /** Let a dense MVS that holds at `spec.denseHold` go on. */
   async release() {
     this.events.push({ t: 'release', at: this.now });
