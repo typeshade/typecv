@@ -512,7 +512,7 @@ computes the count. A step without a loop depends on 0094's decision D7.
      The fixtures are a gate of identity on one runner, not of equality across majors.
 
    **Disposition** (amendment 3). The owner accepts the proposal by merging this amendment. The
-   gate change is its own pull request, #GATEPR. The fix is established when 32 consecutive
+   gate change is its own pull request, #249. The fix is established when 32 consecutive
    `digests (24)` jobs are green. **Inference.** At an unchanged rate of 1 in 11, 32 green runs in a
    row have a chance of (10/11)^32, about 0.047. Until then, a red `digests (24)` on an unrelated
    change is run again once, and the run is recorded on its pull request. A V8 bug report follows
@@ -712,7 +712,7 @@ requests named).
 | Phase 0 Characterize | #242, merged as `091a3e9` | done |
 | Phase 1a Build selection | #247, merged as `3e2777b` | done; open item 1 closed by this amendment, item 2 moved to 1b (the phase 1 row) |
 | The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open: 0085's TypeCV product work and the sentinel step (the paragraphs above) |
-| The Node 24 gate change | #GATEPR (section 4, rule 2) | a draft that waits for this amendment; its deviation open until 32 green `digests (24)` jobs |
+| The Node 24 gate change | #249 (section 4, rule 2) | a draft that waits for this amendment; its deviation open until 32 green `digests (24)` jobs |
 | Phases 1b, 1c and 2 to 11 | none | no pull request |
 
 ## 6. Compiler changes this programme asks for
@@ -998,5 +998,5 @@ recorded here by amendment.
   pin range), pull request #245.
 - 2026-10-26: amendment 3 (phase 1a delivered in #247 with its `.prettierignore` deviation, the pin
   bump of #246 to `725b2969`, the Node 24 investigation of 2026-10-26 and its gate change in
-  #GATEPR, the `focalGrid` fact of rule 2, the list that change 0094 asks of section 3.6, the status
-  of the programme), pull request #AMENDPR.
+  #249, the `focalGrid` fact of rule 2, the list that change 0094 asks of section 3.6, the status
+  of the programme), pull request #248.
