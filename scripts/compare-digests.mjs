@@ -20,10 +20,13 @@ import { join } from 'node:path';
 const FIELDS = ['output', 'trace', 'requests', 'plan', 'steps'];
 
 const read = (file) => JSON.parse(readFileSync(file, 'utf8')).cases ?? {};
-/** The configuration a digest file records (Node, V8, platform, commit), if any. */
+/** The configuration a digest file records (Node, V8, platform, commit, flags), if any. */
 const configurationOf = (file) => JSON.parse(readFileSync(file, 'utf8')).configuration;
+/** The flags of the process, where the file records them (tests/typeshade/digest-fixture.mjs). */
+const flags = (c) =>
+  Array.isArray(c.execArgv) ? `; execArgv ${c.execArgv.join(' ') || 'none'}` : '';
 const describe = (c) =>
-  c ? `Node ${c.node} (V8 ${c.v8}, ${c.platform}) at ${c.commit}` : 'unknown';
+  c ? `Node ${c.node} (V8 ${c.v8}, ${c.platform}${flags(c)}) at ${c.commit}` : 'unknown';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /** The comparison of two digest directories: the differences, and what the base did not run. */

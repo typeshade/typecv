@@ -92,3 +92,25 @@ test('digest files that ran on two Node versions fail', () => {
     rmSync(d.root, { recursive: true, force: true });
   }
 });
+
+test('the configuration lines name the flags of a run where its digest files record them', () => {
+  const d = directories({}, {});
+  try {
+    const at = (execArgv?: string[]) => ({
+      configuration: { node: 'v24.21.0', v8: '13.6', platform: 'linux x64', commit: 'c', execArgv },
+      cases: { one: record('x') },
+    });
+    writeFileSync(join(d.base, 'a.json'), JSON.stringify(at()));
+    writeFileSync(join(d.head, 'a.json'), JSON.stringify(at(['--single-threaded'])));
+    const out = execFileSync(process.execPath, ['scripts/compare-digests.mjs', d.base, d.head], {
+      encoding: 'utf8',
+    });
+    assert.match(
+      out,
+      /^Head: Node v24\.21\.0 \(V8 13\.6, linux x64; execArgv --single-threaded\) at c$/m,
+    );
+    assert.match(out, /^Base: Node v24\.21\.0 \(V8 13\.6, linux x64\) at c$/m);
+  } finally {
+    rmSync(d.root, { recursive: true, force: true });
+  }
+});

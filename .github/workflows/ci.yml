@@ -108,7 +108,9 @@ jobs:
     # (TYPECV_DIGEST_OUT) and compares nothing itself. The job runs on every Node major of the
     # check job: the CPU-tier digests are not known to be equal across majors (on 09894a7 the
     # focal-search digests of Node 24 differed from Node 22's), so each major compares its own
-    # base and head.
+    # base and head. On Node 24 both `node --test` steps run with `--single-threaded`, since two
+    # scene digests were not deterministic within one process of V8 13.6 (docs/library-structure.md,
+    # section 4, rule 2, amendment 3); each digest file records the flags of its process.
     #
     # The base runs the head's tests against the base's library: a worktree of the merge base gets
     # the head's tests/ and the base's build. So the job also works when the base has no digest
@@ -126,6 +128,7 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      DIGEST_NODE_FLAGS: ${{ matrix.node == 24 && '--single-threaded' || '' }}
       DIGEST_TESTS: >-
         tests/digests/cpu-scenes.test.ts tests/digests/scenes.test.ts
         tests/digests/south-building.test.ts tests/digests/gerrard-hall.test.ts
@@ -148,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
-          TYPECV_DIGEST_OUT="$RUNNER_TEMP/digests/head" node --test $DIGEST_TESTS
+          TYPECV_DIGEST_OUT="$RUNNER_TEMP/digests/head" node $DIGEST_NODE_FLAGS --test $DIGEST_TESTS
       - name: Digests of the merge base, with the head's tests
         run: |
           set -euo pipefail
@@ -165,7 +168,7 @@ jobs:
             npx playwright install --only-shell chromium
           fi
           npm run build || echo "::warning::The merge base does not build; its device digests are reported as not run."
-          TYPECV_DIGEST_OUT="$RUNNER_TEMP/digests/base" node --test $DIGEST_TESTS ||
+          TYPECV_DIGEST_OUT="$RUNNER_TEMP/digests/base" node $DIGEST_NODE_FLAGS --test $DIGEST_TESTS ||
             echo "::warning::A digest test failed on the merge base; its cases are reported as not run."
       - name: Compare the digests of the merge base and the head
         run: node scripts/compare-digests.mjs "$RUNNER_TEMP/digests/base" "$RUNNER_TEMP/digests/head"
