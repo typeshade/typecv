@@ -1,16 +1,18 @@
 # TypeCV's use of TypeShade: compute entries versus kernel functions
 
-Status: done. Read-only audit, 2026-10-26. No file of either repository was changed.
+Record: a read-only audit of 2026-10-26 by a Claude Code sub-agent at the coordinator's request, kept as the evidence of [`../library-structure.md`](../library-structure.md) sections 3.6 and 6. No file of either repository was changed. It read the code on the branch of #239 at `bac4261`, whose `src/` equals `main` at `5e1c95c`, with the compiler pin `d36ac502`.
 
-Record: a read-only audit written on 2026-10-26 by a Claude Code sub-agent at the coordinator's request, kept as the evidence of [`../library-structure.md`](../library-structure.md) section 3.6 and section 6. The numbers are those of `main` at `5e1c95c` with the compiler pin `d36ac502`.
+Revised on 2026-10-26 after the review of #241. The revision corrects the configuration, the count of indirect entries (12, not 11; §1, §2, §6) and a table row of §5.
+
 Each statement carries a label: **Fact** (read in a source, counted by a script, or measured by
 a compiler probe) or **Inference** (a conclusion from facts). A file:line names the evidence.
 
 ## 0. Configuration and method
 
-- **Fact.** TypeCV: `bac4261` on branch `claude/3d-depth-gradient-collapse-ab4nf7`. `src/`,
-  `tests/`, `docs/` and `package.json` have no local change (`git status`). The `scripts/` files of
-  pull request #239 were in progress beside this audit; the audit did not read them.
+- **Fact.** TypeCV: `bac4261` on branch `claude/3d-depth-gradient-collapse-ab4nf7`, the branch of
+  #239. `src/`, `tests/`, `docs/` and `package.json` have no local change (`git status`). `src/`
+  equals `main` at `5e1c95c`. The `scripts/` files of pull request #239 were in progress beside
+  this audit; the audit did not read them.
 - **Fact.** TypeShade pin: `d36ac502` (`package.json`), installed as `node_modules/typeshade`.
   `kernel-lower.ts`, `parallel-loop.ts`, `host-kernel.ts`, the surface document and the design
   rules there are byte-identical to that commit.
@@ -58,7 +60,7 @@ a compiler probe) or **Inference** (a conclusion from facts). A file:line names 
   12 entries with atomics; 136 one-invocation-per-element maps.
 - **Inference.** Most entries are intentional. Four needs force them today:
   1. Device-side control without a host round trip: the 56 single-invocation steps, counters
-     read by later dispatches, and 11 entries that dispatch indirectly. A kernel function computes its trip
+     read by later dispatches, and 12 entries that dispatch indirectly. A kernel function computes its trip
      count on the host and returns its reductions and its push count to the host.
   2. Workgroup memory and barriers (29 entries). Rule 8.22 R6 refuses both in a kernel loop (P8).
   3. Atomics with a returned value or compare-exchange (TSDF and cloud hashing). The proof
@@ -124,10 +126,10 @@ counts, K = `{ constants }`. Every host path ends in `ShadeDevice.plan` → `sha
 | `global-descriptor.shade.ts` | 51 | 0/1/0/0/0 | 0 | 0 | 0 | 0 | g | 0 | no | PS, Ch |
 | **Total** | 13,186 | 56/136/29/12/18 | 8 | 33 | 37 | 48 | | 5 | 13 files | |
 
-- **Fact.** The 11 indirect entries: `preparePairModels`, `appendPairModelRows`,
-  `solvePairModelNull`, `finishPairModels`, `scorePairModels`, `scorePairModelsOracle`
-  (`src/gpu/pair-estimation.ts:345-441`), and `samplePnP`, `solveP3p`, `scorePnP`,
-  `scorePnPOracle`, `selectPnP` (`src/gpu/pnp.ts:258-305`).
+- **Fact.** The 12 indirect entries: `preparePairModels`, `appendPairModelRows`,
+  `appendPairModelRowsInPlace`, `solvePairModelNull`, `finishPairModels`, `scorePairModels`,
+  `scorePairModelsOracle` (`src/gpu/pair-estimation.ts:345-441`), and `samplePnP`, `solveP3p`,
+  `scorePnP`, `scorePnPOracle`, `selectPnP` (`src/gpu/pnp.ts:258-305`).
 - **Fact.** `{ constants }` (0084) is passed at `src/gpu/bundle.ts:313,593` and
   `src/gpu/joint-focal.ts:231`.
 - **Fact.** In a plan, an entry call is a group of its own (surface §67; §71 fact F8). So TypeCV's
@@ -238,7 +240,7 @@ plan gives the bits of the calls run apart).
 | Conversion | Effect on the bits | Proof it needs |
 | --- | --- | --- |
 | A map, one element per iteration, sequential arithmetic in the body | **Inference:** none; the same IR runs, the CPU tier is the same generated code | CPU-tier outputs of old and new equal (`deepEqual`); the family's WebGPU test unchanged |
-| An exact fold: integer count, `max`/`min` of non-NaN values, `|`, `&` | **Inference:** none in any order. A kernel `max` starts from the lowest finite f32 and then combines the variable's own start, so `let m = 0.` keeps today's 0 floor | as above; add a case with ties and with zeros |
+| An exact fold: integer count, `max`/`min` of non-NaN values, `\|`, `&` | **Inference:** none in any order. A kernel `max` starts from the lowest finite f32 and then combines the variable's own start, so `let m = 0.` keeps today's 0 floor | as above; add a case with ties and with zeros |
 | Compaction by `push` instead of flag, scan and scatter | **Inference:** none; both keep the sequential order | as above; the counts and the row order equal |
 | Atomic append to `push` (TSDF extract, Hough collect) | **Inference:** device order becomes sequential; the host sort and the vote counts keep the final results | as above, plus the readback count |
 | A floating-point sum (BA metrics, PnP and consensus costs, observation errors) | **Inference:** changes on both tiers (tree of 256 against 64-tree plus blocks); afterwards CPU = WebGPU bit for bit. Ties in `c === count && e < cost` (`consensus.shade.ts:182`) can pick another model | a behaviour change: owner decision under TypeCV Rule 2.2; new digests for `PREVIOUS_RESULTS` (`tests/typeshade/pair-batch.test.mjs:82`, `pnp-batch.test.mjs:44`) |
@@ -268,7 +270,7 @@ plan gives the bits of the calls run apart).
 | 5 | G-J: a partial write into a `Resident` | `write(value)` replaces the whole array (surface §65). `mvsCopyF32`, `mvsCopyU32` (`mvs.shade.ts:1418-1433`) and their staging buffers copy a view into a slot | `write(value, { offset })` on the queue | ~40 |
 | 6 | G-E: proof forms | R3 refuses `out[base + i]` with a loop-invariant `base`, several fields at a runtime stride `s * i + c`, a nested record `(i * S + s) * K + c`, and two record forms in one loop (P9b, P20, P30) | accept an injective offset (`i + base`), offsets `c < s` checked by the call as `a * i + c` is, and nested affine records | enabler |
 | 7 | G-F: the idle-lane scaffold | the map entry returns past the trip count before the body (`kernel-lower.ts:756-767`); TypeCV rule `gpu-sfm.md:684-699` and A1 | an iteration scaffold that clamps the index and masks the writes, as TypeCV's rule does | enabler |
-| 8 | G-D: indirect counts for kernel calls | a kernel call takes no workgroup argument (host view of P1); 11 TypeCV entries dispatch indirectly | a kernel call whose trip count is read from a `Resident` (shares G-C's lowering) | enabler |
+| 8 | G-D: indirect counts for kernel calls | a kernel call takes no workgroup argument (host view of P1); 12 TypeCV entries dispatch indirectly | a kernel call whose trip count is read from a `Resident` (shares G-C's lowering) | enabler |
 | 9 | min and max scatter | surface §65 lists them; P11 and P20 refuse `a[k] = min(a[k], e)` | the form the surface states, or a surface correction | bug |
 | 10 | G-H: device-resident hashing | 0080 `Map` and `Set` apply records on the host (`kernel-lower.ts` `lowerCollections`); TSDF and cloud claim slots by compare-exchange | not recommended now; the entries are correct | 0 |
 | 11 | Sort and unique on the device | `typeshade/algorithms` lists sort as "Not yet" (surface §72). Mesh weld, Hough peaks, TSDF points and the cloud grid sort on the host | a stable sort and a unique in the common module | 0 (transfers) |

@@ -1,18 +1,18 @@
 # Audit: structure of the lab's reconstruction orchestration
 
-Record: a read-only audit written on 2026-10-26 by a Claude Code sub-agent at the coordinator's request, kept as the evidence of [`../library-structure.md`](../library-structure.md). It changed no file and proposes no behaviour change. The numbers are those of `main` at `5e1c95c`.
+Record: a read-only audit written on 2026-10-26 by a Claude Code sub-agent at the coordinator's request, kept as the evidence of [`../library-structure.md`](../library-structure.md). It changed no file and proposes no behaviour change. It read the code on the branch of #239 at `bac4261`, whose `src/` and `website/src/` equal `main` at `5e1c95c`. Where #239 changes a count over `tests/`, `docs/` or `scripts/`, the count is restated for `5e1c95c`.
 
+Revised on 2026-10-26 after the review of #241. The revision corrects the configuration below, the test count of the checks, the importers of `run-record.ts` (1) and the copies of the mapper controls (3.4). In section 7 it corrects the document mentions, the test count of the common gate and the number of `*Override()` helpers.
 
-Read-only structural audit. No repository file was changed. It proposes no behaviour change.
-
-**Configuration.** Repository `/home/user/typecv`, branch `claude/3d-depth-gradient-collapse-ab4nf7`.
+**Configuration.** Repository `typeshade/typecv`, branch `claude/3d-depth-gradient-collapse-ab4nf7` (the branch of #239).
 The audit started at `d944125`. HEAD moved to `bac4261` during the audit: another actor committed
 `350a6fe` and `bac4261` (scripts/record_analysis, docs/chimney-rock-58532c69.md).
 `git diff d944125 bac4261 -- website src package.json` is 0 lines. The audited files are the same at both commits.
+`src/` and `website/src/` at `bac4261` equal `main` at `5e1c95c`. `tests/`, `docs/` and `scripts/` do not: #239 adds three test files, eight scripts with `scripts/record_analysis/`, and a record.
 Tools: Node 22.22.0, `codebase-memory-mcp` (index, outlines, `trace_path`), grep and sed. Date: 2026-10-26.
 
 **Checks that ran (observed results).**
-- `npm test` (tests/*.test.ts): 445 tests, 445 pass, 0 fail, 115 s.
+- `npm test` (tests/*.test.ts): 445 tests, 445 pass, 0 fail, 115 s. Fifteen of them are in the three test files that #239 adds. On `main` at `5e1c95c` the same command ran 430 tests, 430 pass, 0 fail, 114 s (re-run on 2026-10-26 for the review of #241).
 - The 36 website test files that need no browser (`node --test` on the `test:website` list without the
   `*-browser`, `site` and `result-page` files): 249 tests, 249 pass, 0 fail, 102 s.
 - `node --experimental-strip-types -e "import('website/src/workers/sfm.worker.ts')"` fails with
@@ -40,7 +40,7 @@ F, unless a cell says (I). Lines from `wc -l`. "Importers" are production import
 | `lib/multi-video-stages.ts`, `lib/multi-video-activity.ts`, `lib/multi-video-input.ts` | 226, 133, 30 | Stage board model; view-graph activity model; file `videoId` and duration probe (uses the DOM) | board and activity functions | `SfmLab`, panels, the job; tests |
 | `lib/dense-run.ts` | 545 | Dense defaults (11-61), `DenseJob`, `denseWorkingBytes` (115-117), `keepFrame`, `runDense` (263-545) through the `DenseRunContext` port (189-224), `endDense` (227-261) | `DENSE_LAB_OPTIONS`, `DENSE_LAB_FUSION`, `DENSE_CLEAN_OPTIONS`, `denseCleanDefault`, `runDense`, `endDense`, … | `sfm.worker`, `workers/multi-video`, the job; `dense-run.test`, `gpu-loss-context.test` |
 | `lib/dense-activity.ts`, `dense-cloud.ts`, `dense-geometry.ts`, `dense-quality.ts`, `dense-reason.ts`, `depth-archive.ts` | 144, 257, 14, 18, 73, 227 | Activity text; PLY writing, budgets and previews; three.js geometry; `?denseBoundary`/`?denseFiniteGain` parser; reason text; tar.gz depth artifacts | pure helpers, except `dense-geometry` (three.js) | `SfmLab`, `SfmViewer`, `DenseActivity`, `dense-run`; tests |
-| `lib/run-record.ts` | 1885 | The record format: constants (1-69), types (71-651), validators (653-1455), builders (1461-1834), text summaries (1572-1585, 1838-1885). Section 5 has the detail. | `RUN_RECORD_FORMAT(S)`, `RunRecord*`, `runRecordProblem`, `gpuRecord`, `chunkRecord`, `denseRecord`, `sumDenseRecords`, `reportGpuMs`, `kltLine`, `denseLine`, … | 11 `website/src` modules (incl. `SfmLab.tsx` and the worker), the collector `website/worker.mjs:4-9`, 2 scripts, 11 test files and `record-fixture.mjs` |
+| `lib/run-record.ts` | 1885 | The record format: constants (1-69), types (71-651), validators (653-1455), builders (1461-1834), text summaries (1572-1585, 1838-1885). Section 5 has the detail. | `RUN_RECORD_FORMAT(S)`, `RunRecord*`, `runRecordProblem`, `gpuRecord`, `chunkRecord`, `denseRecord`, `sumDenseRecords`, `reportGpuMs`, `kltLine`, `denseLine`, … | 11 `website/src` modules (incl. `SfmLab.tsx` and the worker), the collector `website/worker.mjs:4-9`, 1 script on `5e1c95c` (`reassemble-result-files.mjs`; #239 adds `fetch-record-files.mjs`), 11 test files and `record-fixture.mjs` |
 | `lib/send-record.ts`, `result-export.ts`, `result-file-sources.ts` | 316, 89, 43 | Result-file plan, upload and record post; `typecv-reconstruction-v1` JSON and PLY; files for each component | — | `SfmLab`, `TriangulationProbe`; tests |
 | `lib/probe-plan.ts`, `lib/probe-record.ts` | 88, 288 | Probe plan in `localStorage`; probe format and validator. Its validator helpers `finite`, `count` and `text` (133-138) copy those of `run-record.ts:653-658`. | — | probe worker and page, collector |
 | `lib/keyframe-gate.ts` | 135 | `PhaseGate`, `PHASE_GATE_OPTIONS`, `?gate=` parser. No DOM. | yes | `sfm.worker`, the job, `SfmLab`, `scripts/measure-keyframe-gate.mjs`, `scripts/measure-klt-agreement.mjs` |
@@ -134,7 +134,7 @@ reuses `workerRef` (2451-2453), and nothing disposes the module-level `device` o
 
 | What | Copies |
 |---|---|
-| Mapper controls (500, 3, 1, 0.5, 4, 8, true) | `LAB_OPTIONS` (sfm.worker.ts:125-157); `MAPPER` (workers/multi-video.ts:59-67); the record's pseudo options (SfmLab.tsx:684-697); `LAB` (scripts/measure-focal.mjs:87-94, "LAB_OPTIONS in website/src/workers/sfm.worker.ts"); partial copies in 9 more scripts, e.g. `measure-video-sfm-performance.mjs:157-162`, `benchmark-sfm-pyramid-e2e.mjs:156-161, 402-407` |
+| Mapper controls (500, 3, 1, 0.5, 4, 8, true) | `LAB_OPTIONS` (sfm.worker.ts:125-157); `MAPPER` (workers/multi-video.ts:59-67); the record's pseudo options (SfmLab.tsx:684-697); `LAB` (scripts/measure-focal.mjs:87-94, "LAB_OPTIONS in website/src/workers/sfm.worker.ts"); the six numbers in full at 6 more places in 5 scripts: `measure-multi-video.mjs:94`, `benchmark-sfm-pyramid-e2e.mjs:156-161, 402-407`, `benchmark-rotation-tracking.mjs:294`, `benchmark-sift-clahe.mjs:123`, `measure-video-sfm-performance.mjs:157-162` |
 | Analysis scale and budgets | sfm.worker.ts:621-629; workers/multi-video.ts:108-124 and 194-198. `workingBytesFromAdapter` (working-budget.ts:9-14) and `denseWorkingBytes` (dense-run.ts:115-117) are the same formula under two names. |
 | Feature cap `min(16384, 4096 × scale)` | sfm.worker.ts:694; workers/multi-video.ts:142; the 16384 bound again in multi-video.ts:46 |
 | Device open and loss handling | 5 `ShadeDevice.open` sites (sfm.worker.ts:683, 1517; workers/multi-video.ts:114, 189; probe.worker.ts:208) and 4 loss handlers (sfm.worker.ts:770, 1522; workers/multi-video.ts:133, 215). The adapter preflight runs in sfm.worker.ts:600-607 and workers/multi-video.ts:85-89 (called twice). |
@@ -292,12 +292,12 @@ src/pipeline/ (name and area for the owner, risk 6; internal entry only)  websit
 This section is a proposal. The day counts are estimates (I).
 
 Common gate for every phase (F for what exists today):
-- `npm test`: 445/445 on this configuration.
+- `npm test`: 445/445 on this configuration; 430/430 on `main` at `5e1c95c`.
 - The 36 browser-free website test files: 249/249.
 - CI `check` (`npm run check`, website `astro check`, `build:website`) and CI `webgpu` (`test:webgpu`, `test:website` with Chromium).
 - Run-record format checks: `runRecordProblem` through `website/worker.test.mjs` (2125 lines), `record-fixture.mjs`,
   `site.test.mjs` (477, 540, 626, 780) and `frame-navigation-browser.test.mjs` (405, 488, 676).
-- Document audit: the moved symbols are named in the docs. `sfm.worker.ts` has 23 mentions in 11 docs,
+- Document audit: the moved symbols are named in the docs. On `5e1c95c`, `sfm.worker.ts` has 22 mentions in 10 files (20 in 8 Markdown documents, 2 in JSON experiment records; #239's record adds one),
   `run-record.ts` 10 in 5, `SfmLab.tsx` 11 in 5, `processFrame` 5 in 3, `dense-run.ts` 8 in 2.
 
 | Phase (days) | Change | Files | Phase gate and new tests |
@@ -308,7 +308,7 @@ Common gate for every phase (F for what exists today):
 | P3 Policy units (3) | Name each inline rule with its current unit: `PAIR_MIN_MATCH_ENTRIES` 16 (= 8 matches), `PRECOMPUTED_MIN_MATCH_ENTRIES` 32, `MIN_FEATURES` 8, the reference rule (0.5 s, 3, 3), the legacy and track decisions, the guided trigger, KLT cover. The worker and the job call them. | sfm.worker.ts, multi-video-job.ts, new policy modules, klt-join.ts | Transcripts identical. Table-driven unit tests copied from today's branches. |
 | P4 Worker by stage (4–5; 3 PRs) | 4a: a `SingleVideoJob` class (port-based, like `MultiVideoJob`) takes processFrame, registerFrame, guided, KLT, finish and outcome; the worker keeps intake and the device. 4b: `lab-device.ts` for the 5 open sites and 4 loss handlers. 4c: `lab-protocol.ts`; `start(message)` replaces 23 positional parameters; the page `request<T>()` gets types. | sfm.worker.ts, workers/multi-video.ts, SfmLab.tsx (types only), new modules | Transcripts identical. Update the hooks of `dense-gpu-mode-worker.test.mjs` (they name `job`, `device`, `queue`, `denseContext`, `releaseFeatures`, …). CI browser tests `sfm-worker-loss-browser`, `dense-quality-browser`, `gpu-preparation-browser`, `frame-navigation-browser`, `dense-activity-browser`, `site`. New Node tests of `SingleVideoJob` with a fake API. |
 | P5 Page run controller (3–4) | Move the run-control copies of `runSfM`, `runMultiVideo` and `runBenchmark` into `lab-run.ts`. React keeps the setters. | SfmLab.tsx, new lab-run.ts | Same browser tests in CI. New Node test of the controller against a scripted fake worker. |
-| P6 One options schema (3–4) | `run-options.ts`: a table of key, flag, parser, default, applies-to and record path. It replaces the 10 `*Override()` helpers and the scattered parser calls. Today's parsers stay as implementations. Effective values stay those the page sends now. | SfmLab.tsx, sfm.worker.ts, workers/multi-video.ts, run-record/assemble.ts, sift-quality.ts, keyframe-gate.ts, video-sampling.ts, dense-quality.ts, multi-video.ts, decode-protocol.ts, scripts | Table test over about 40 query strings: the old and the new start payloads and record options are identical. Transcripts and golden records identical. |
+| P6 One options schema (3–4) | `run-options.ts`: a table of key, flag, parser, default, applies-to and record path. It replaces the 9 `*Override()` helpers (8 in SfmLab.tsx:271-434 and `decodeOverride`, decode-protocol.ts:60) and the scattered parser calls. Today's parsers stay as implementations. Effective values stay those the page sends now. | SfmLab.tsx, sfm.worker.ts, workers/multi-video.ts, run-record/assemble.ts, sift-quality.ts, keyframe-gate.ts, video-sampling.ts, dense-quality.ts, multi-video.ts, decode-protocol.ts, scripts | Table test over about 40 query strings: the old and the new start payloads and record options are identical. Transcripts and golden records identical. |
 | P7 Library placement (3–5; after the owner decides) | Move the Node-importable stage modules to the chosen `src/` area, exported only from `src/gpu/internal.ts` (precedent: `multi-video.md` Amendment 6, decision 1). Add a CPU-tier run of `SingleVideoJob` on a tiny synthetic sequence, compared with WebGPU (Rule 1.2). Port the scripts that copy the pipeline. | src/…, internal.ts, scripts | Plus `test:shade` and `test:webgpu` (CI). |
 
 ## 8. TypeShade and platform limitations that shaped this code
