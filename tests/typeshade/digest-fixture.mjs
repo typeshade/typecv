@@ -12,12 +12,13 @@
 // Otherwise `check` compares the fields `compared` of each record with the fixture's.
 //
 // The configuration of a fixture is the one that recorded it: the Node and V8 versions, the
-// platform, the commit and the git tree of src/. Fact: identity of the CPU-tier digests across
-// Node majors is not established. On 09894a7 the CI job check (24) found the two focal-search
-// cases of the scene fixture different from their Node 22 records, with equal traces and request
-// counts. Inference: an intrinsic such as `**` or `Math.pow`, which the focal grid computes
-// (`focalGrid` of src/sfm/focal/focal-search.ts), differs in its last bits between the V8 of
-// Node 22 and that of Node 24. So the check job of .github/workflows/ci.yml compares the fixtures
+// platform, the commit, the git tree of src/ and the flags of the process (`process.execArgv`).
+// Fact: identity of the CPU-tier digests across Node majors is not established. On 09894a7 the CI
+// job check (24) found the two focal-search cases of the scene fixture different from their Node
+// 22 records, with equal traces and request counts. Fact (docs/library-structure.md, section 4,
+// rule 2, amendment 3): `**` in the focal grid (`focalGrid` of src/sfm/focal/focal-search.ts)
+// calls the C library's `pow` on the V8 of Node 24 (`--use-std-math-pow`, on by default), and the
+// V8 of Node 22 has no such flag. So the check job of .github/workflows/ci.yml compares the fixtures
 // on the Node major that recorded them only, and the compare job compares a base and a head on
 // every Node major of the matrix, on one runner. A comparison on another Node major still runs,
 // and its message names both configurations.
@@ -44,8 +45,9 @@ function git(args) {
 }
 
 /**
- * The configuration of this run: the Node and V8 versions, the platform, the commit and the git
- * tree of src/ (`modified` when src/ differs from the commit).
+ * The configuration of this run: the Node and V8 versions, the platform, the commit, the git tree
+ * of src/ (`modified` when src/ differs from the commit) and the flags of the process. A fixture
+ * recorded before the flags were recorded has no `execArgv`.
  */
 export function runConfiguration() {
   const modified = (git(['status', '--porcelain', '--', 'src']) ?? '') !== '';
@@ -55,6 +57,7 @@ export function runConfiguration() {
     platform: `${process.platform} ${process.arch}`,
     commit: git(['rev-parse', 'HEAD']) ?? 'unknown',
     src: modified ? 'modified' : (git(['rev-parse', 'HEAD:src']) ?? 'unknown'),
+    execArgv: process.execArgv,
   };
 }
 
