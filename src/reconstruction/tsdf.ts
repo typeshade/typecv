@@ -7,7 +7,8 @@
  * size v_L = v_0 · 2^L. A depth sample at depth d of a view with focal f has the footprint d / f.
  * It goes to the least level with v_L ≥ `voxelScale` · d / f (the last level takes the rest), so a
  * far region is integrated at a coarser level and is not lost. v_0 is `voxelScale` times the
- * `percentile` of the footprints of all samples. The truncation is μ_L = `truncation` · v_L.
+ * `percentile` of the footprints of positive-confidence depths (absent confidence means 1).
+ * The truncation is μ_L = `truncation` · v_L.
  *
  * Details that section 10.4 leaves open, with the choice made here:
  * - Every level's voxel grid has one origin, the least corner of all levels' boxes, so that a block
@@ -163,7 +164,7 @@ export interface TsdfVolume {
   /** Per view: `voxelScale` / ((fx + fy) / 2) in f32. A depth d goes to the least level with
    *  d · footprint ≤ v_L. */
   readonly footprints: Float32Array;
-  /** The samples with a depth over all views. */
+  /** Positive depths with positive (or absent) confidence over all views. */
   readonly samples: number;
 }
 
@@ -254,9 +255,17 @@ function footprintOf(view: TsdfView, voxelScale: number): number {
 }
 
 /**
+ * Nonpositive confidence cannot integrate on either tier. Keep every positive confidence here:
+ * angle and fixed-point thresholds can differ between the reference and f32 shader arithmetic.
+ */
+function hasPositiveConfidenceDepth(view: TsdfView, i: number): boolean {
+  return view.depth[i]! > 0 && (view.confidence === undefined || view.confidence[i]! > 0);
+}
+
+/**
  * The plan of the volume (section 10.4): v_0 from the percentile of the samples' scaled
  * footprints, and each level's box of blocks around the points of its samples. Undefined when no
- * view has a depth.
+ * positive depth has positive (or absent) confidence.
  */
 export function planTsdfVolume(
   input: TsdfInput,
@@ -267,7 +276,8 @@ export function planTsdfVolume(
   const P = W * H;
   const footprints = Float32Array.from(input.views, (v) => footprintOf(v, o.voxelScale));
   let samples = 0;
-  for (const view of input.views) for (let i = 0; i < P; i++) if (view.depth[i]! > 0) samples++;
+  for (const view of input.views)
+    for (let i = 0; i < P; i++) if (hasPositiveConfidenceDepth(view, i)) samples++;
   if (!samples) return undefined;
   // The percentile of the scaled footprints, from at most 2^20 samples taken at a fixed stride.
   const stride = Math.max(1, Math.ceil(samples / 2 ** 20));
@@ -276,7 +286,7 @@ export function planTsdfVolume(
   input.views.forEach((view, v) => {
     for (let i = 0; i < P; i++) {
       const d = view.depth[i]!;
-      if (!(d > 0)) continue;
+      if (!hasPositiveConfidenceDepth(view, i)) continue;
       if (seen++ % stride === 0) values.push(f32(d * footprints[v]!));
     }
   });
@@ -305,7 +315,7 @@ function levelBoxes(
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const d = view.depth[y * W + x]!;
-        if (!(d > 0)) continue;
+        if (!hasPositiveConfidenceDepth(view, y * W + x)) continue;
         const level = levelOf(d, footprints[v]!, voxel, L);
         const D = pixelRay(view, x, y);
         for (let a = 0; a < 3; a++) {
