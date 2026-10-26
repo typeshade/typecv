@@ -626,7 +626,7 @@ design, so each probe is read again. **Inference.** Some digests may change, sin
 `src/` changes in 110 files.
 
 **The pin bump** (amendment 3). **Fact** (#246, merged as `c1bfe38` on 2026-10-26). The pin is
-`725b2969`: TypeShade `main` when the task started, which is `ff51e8f8` plus
+`725b2969`: TypeShade `main` when the work of #246 started, which is `ff51e8f8` plus
 typeshade/typeshade#778, a commit that adds only proposal 0097. **Fact** (TypeShade,
 `git rev-list --count d36ac502..725b2969` and `git diff --stat d36ac502 725b2969 -- src`). The
 range holds 48 commits, 33 of them not merges, and `src/` differs in 120 files. It implements
@@ -648,7 +648,7 @@ run 40356667841 was green on every job on `fab38b9`, and its `webgpu` job ran on
 
 **Deviation** (#246, "Deviations from the brief"). The pull request records four:
 
-1. The pin is `725b2969`, not `ff51e8f8`, since TypeShade `main` had moved when the task started.
+1. The pin is `725b2969`, not `ff51e8f8`, since TypeShade `main` had moved when the work started.
 2. Change 0085 is `accepted` at `725b2969`, not `implemented`; six of its stages are implemented.
 3. The shader change is attributed by bisection over `git archive` trees, not by installing
    intermediate pins.
