@@ -64,6 +64,9 @@ jobs:
       - run: npm ci
       - run: npm --prefix website ci
       - run: npm run check
+      # After the build of `npm run check`: the declaration surface and the kernels' shader text
+      # (docs/library-structure.md, section 5, phase 0).
+      - run: npm run test:surface
       - run: npm --prefix website run check
       - run: npm run build:website
       - run: npm run example

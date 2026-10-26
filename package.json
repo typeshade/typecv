@@ -27,6 +27,7 @@
     "build": "npm run build:core && npm run build:gpu",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
+    "test:surface": "node --test tests/surface/*.test.ts",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build && npm run test:shade",
     "example": "npm run build && node examples/two-view.mjs",
     "format:check": "prettier --plugin=./website/node_modules/prettier-plugin-astro/dist/index.js --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tests/typeshade/*.mjs\" \"scripts/*.mjs\" \"website/*.mjs\" \"website/*.css\" \"website/src/**/*.{ts,tsx,astro,css}\" \"website/scripts/*.mjs\" \"website/*.md\" vite.gpu.config.ts",

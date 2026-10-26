@@ -66,6 +66,7 @@ Use Node.js 22.18+ or Node.js 24:
 ```sh
 npm ci
 npm run check                 # formatting, types, CPU/reference tests and builds
+npm run test:surface          # the declaration surface and the kernels' WGSL/GLSL digests, after a build
 npm run example               # current two-view SfM example
 npm run example:incremental   # current multi-view SfM example
 npx playwright install --only-shell chromium
