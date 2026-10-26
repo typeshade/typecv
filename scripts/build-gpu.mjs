@@ -11,7 +11,27 @@ async function clean(directory, suffix = '.shade.typeshade.ts') {
     else if (entry.name.endsWith(suffix)) await unlink(file);
   }
 }
-await clean('src/gpu');
+
+// The directories of GPU code under `root`: `gpu`, `*/gpu` and `*/*/gpu`, the globs of
+// docs/library-structure.md, section 3.1. The host views of the kernels sit there under `src`, and
+// their declarations at the same paths under `dist/types`. A glob that matches no directory adds
+// none. The walk does not enter a `gpu` directory, since `clean` reaches everything below it.
+async function gpuDirectories(root, depth = 0) {
+  const found = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const directory = `${root}/${entry.name}`;
+    if (entry.name === 'gpu') found.push(directory);
+    else if (depth < 2) found.push(...(await gpuDirectories(directory, depth + 1)));
+  }
+  return found;
+}
+
+async function cleanGpu(root, suffix) {
+  for (const directory of await gpuDirectories(root)) await clean(directory, suffix);
+}
+
+await cleanGpu('src');
 await mkdir('.typecv-build', { recursive: true });
 await bundle({
   entryPoints: ['vite.gpu.config.ts'],
@@ -38,7 +58,7 @@ try {
   execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.gpu.json'], {
     stdio: 'inherit',
   });
-  await clean('dist/types/gpu', '.shade.typeshade.d.ts');
+  await cleanGpu('dist/types', '.shade.typeshade.d.ts');
 } finally {
-  await clean('src/gpu');
+  await cleanGpu('src');
 }
