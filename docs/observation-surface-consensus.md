@@ -85,6 +85,8 @@ fabricated. All supplied raw pair candidates remain in `candidatePairs`.
 
 In required mode, `rejected.multiViewUnavailable` and `corroboration.unavailable`
 also count seeds deferred by the early membership check, before a KLT attempt.
+They can therefore exceed `diagnostics.attempts`; this prebudget deferral does
+not report a failed image-tracking measurement.
 The existing witness disagreement/failure counters and post-measurement ownership,
 join and capacity guards retain their meanings. More corroborated edges do not
 establish better depth, pose accuracy or Dense coverage; those require separate
