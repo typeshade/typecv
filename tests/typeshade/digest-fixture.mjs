@@ -16,7 +16,7 @@
 // Fact: identity of the CPU-tier digests across Node majors is not established. On 09894a7 the CI
 // job check (24) found the two focal-search cases of the scene fixture different from their Node
 // 22 records, with equal traces and request counts. Fact (docs/library-structure.md, section 4,
-// rule 2, amendment 3): `**` in the focal grid (`focalGrid` of src/reconstruction/focal-search.ts)
+// rule 2, amendment 3): `**` in the focal grid (`focalGrid` of src/sfm/focal/focal-search.ts)
 // calls the C library's `pow` on the V8 of Node 24 (`--use-std-math-pow`, on by default), and the
 // V8 of Node 22 has no such flag. So the check job of .github/workflows/ci.yml compares the fixtures
 // on the Node major that recorded them only, and the compare job compares a base and a head on

@@ -46,7 +46,7 @@ const quantile = (values, fraction) => {
 const runs = [];
 for (const { label, root } of roots) {
   const { reconstructIncremental } = await import(pathToFileURL(resolve(root, 'dist/index.js')));
-  const sourceFiles = ['src/reconstruction/focal-search.ts', 'src/reconstruction/mapper.ts'];
+  const sourceFiles = ['src/sfm/focal/focal-search.ts', 'src/sfm/mapper/mapper.ts'];
   const source = {
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
     modified:

@@ -13,7 +13,7 @@ baseline GPU bundle has SHA256
 
 ## Findings and chosen scope
 
-`src/gpu/klt.shade.ts::kltTrack` already computes the source Hessian and
+`src/motion/gpu/klt.shade.ts::kltTrack` already computes the source Hessian and
 mean/variance once per pyramid level. It samples fixed source intensities and
 gradients again in residual iterations. We tested per-invocation intensity
 storage, intensity/gradient storage and a bounded GPU resident source prepass.
@@ -81,7 +81,7 @@ The uploaded-video window has six frames, a manual crop/background mask and
 assumed K. This is not a full gameplay-clip reconstruction or a new accuracy result.
 
 The remote baseline CI's only failing WebGPU case expected an incomplete CPU-stage
-list. `gpu/mapper.ts` intentionally reports calibrated rotation hypotheses, using
+list. `sfm/gpu/mapper.ts` intentionally reports calibrated rotation hypotheses, using
 existing host feature coordinates without extra GPU readback. The test now checks
 the exact documented list while retaining its numerical/local-BA assertions.
 

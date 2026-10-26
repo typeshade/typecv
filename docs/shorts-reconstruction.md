@@ -38,7 +38,7 @@ RGB 특징점·매칭·재검증·PnP까지 정확히 재생한 결과는 아니
 
 ## 수정과 기본 동작
 
-`src/reconstruction/local-bundle.ts::planConnectedBundles`를 CPU mapper, scene mapper,
+`src/sfm/bundle/local-bundle.ts::planConnectedBundles`를 CPU mapper, scene mapper,
 같은 요청 프로토콜의 GPU mapper에 연결했다. 기존 BA와 수학 구현을 재사용한다.
 
 - 연결된 입력은 원래 문제와 옵션을 그대로 전달한다.
@@ -117,8 +117,8 @@ phase gate, 4 fps, 360 × 640으로 다시 실행했다. 마스크·정답 포�
 | 특징점 없는 입력 | 카메라/깊이를 채우지 않고 보류 |
 | 유한점 60개 + 무한원 방향 60개 | 당시 초기화 보류를 재현. 후속 [유한/방향 분리](direction-depth.md) 실험 옵션에서 이 회귀 목표를 구현·검증 |
 
-마지막 사례의 수정 전 CPU `src/sfm/two-view.ts::recoverTwoViewGeometry`와 GPU
-`src/gpu/recovery.shade.ts::chooseTwoViewPose`는 모든 E 인라이어 중 60%에 양의 유한
+마지막 사례의 수정 전 CPU `src/geometry/two-view.ts::recoverTwoViewGeometry`와 GPU
+`src/geometry/gpu/recovery.shade.ts::chooseTwoViewPose`는 모든 E 인라이어 중 60%에 양의 유한
 깊이를 요구한다. 120개 중 유한점 60개만 있어도 잘못된 대응이라는 뜻은 아니다.
 회전 가설의 기본 최소 지지 비율 0.6도 방향 절반을 따로 보존하지 못한다.
 

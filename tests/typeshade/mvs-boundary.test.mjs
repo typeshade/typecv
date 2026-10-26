@@ -29,7 +29,7 @@ import { W, P, z, fixture, bind } from './mvs-boundary-probe-fixture.mjs';
 
 test('centered support measures a one-pixel foreground line; rotation-only ambiguity withholds depth', async () => {
   const c = await compiler(),
-    source = await readFile(new URL('../../src/gpu/mvs.shade.ts', import.meta.url), 'utf8'),
+    source = await readFile(new URL('../../src/mvs/gpu/mvs.shade.ts', import.meta.url), 'utf8'),
     parsed = c.compile(source);
   assert.deepEqual(
     parsed.diagnostics.filter((d) => d.category === 'error'),

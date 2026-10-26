@@ -140,7 +140,7 @@ not claim that the inspected TypeNN matmul implements them.
    compatibility/reference implementation while migration is incomplete.
 2. P3P now has bounded derivative-based all-real-root isolation, distance refinement,
    rigid-pose construction and branch validation in
-   [`p3p.shade.ts`](../src/gpu/p3p.shade.ts). Its explicit compute entry runs one
+   [`p3p.shade.ts`](../src/geometry/gpu/p3p.shade.ts). Its explicit compute entry runs one
    problem per invocation and retains four candidate slots per problem. Tests
    compare the compiled shared-IR CPU tier and actual GPU execution with the
    independent recursive CPU solver. [GPU PnP](gpu-geometry.md) now composes

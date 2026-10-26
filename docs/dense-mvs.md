@@ -1,12 +1,12 @@
 # Dense multi-view stereo after the sparse SfM: design
 
 Status: accepted, 2026-10-20. The owner approved this design and the start of its
-implementation. Step 1 (host view selection, `src/gpu/mvs-views.ts`) is implemented. Step 2
-(the photometric pass on one reference, CPU tier, `src/gpu/mvs.shade.ts` and `src/gpu/mvs.ts`)
+implementation. Step 1 (host view selection, `src/mvs/gpu/mvs-views.ts`) is implemented. Step 2
+(the photometric pass on one reference, CPU tier, `src/mvs/gpu/mvs.shade.ts` and `src/mvs/gpu/mvs.ts`)
 is implemented, and its measurements are in "Step 2 record" under section 8. Step 3 (the
 chunk keys and warm steps of `mvsInitialize` and `mvsPropagate`, and
 `tests/typeshade/mvs-webgpu.test.mjs`) is implemented, and its measurements are in "Step 3
-record". Step 4 (the geometric pass and `mvsFilter`, `mvsDepthMapsGpu` in `src/gpu/mvs.ts` and
+record". Step 4 (the geometric pass and `mvsFilter`, `mvsDepthMapsGpu` in `src/mvs/gpu/mvs.ts` and
 `tests/typeshade/mvs-geometric.test.mjs`) is implemented, and its measurements are in "Step 4
 record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/index.ts`,
 `tests/typeshade/mvs-fusion.test.mjs`) is implemented, and its measurements are in "Step 5
@@ -86,7 +86,7 @@ photometric and geometric passes, and a per-pixel fusion.** The reasons:
    against the lab's working budget of 256 MiB (4.2).
 2. **Per-pixel independence.** In a red-black pass a pixel reads the other color and writes
    only its own slots. That is one invocation per element, with no workgroup memory, the form
-   of the SIFT kernels (`src/gpu/sift.shade.ts`). The CPU tier runs the same kernels.
+   of the SIFT kernels (`src/features/gpu/sift.shade.ts`). The CPU tier runs the same kernels.
    COLMAP's sweep is sequential along each row or column, so W or H dependent steps per
    iteration. That form does not fit one invocation per element.
 3. **Chunking.** A color pass splits at any pixel boundary with no change of result, as
@@ -154,12 +154,12 @@ observations each, a view holds about 575 seeds, about one in every 23 × 23 pix
 
 ### 3.4 Undistortion (device, `mvsUndistort` _(new)_)
 
-The existing `rgbaToGray` (`src/gpu/features.shade.ts`) converts each view's packed RGBA to
+The existing `rgbaToGray` (`src/features/gpu/features.shade.ts`) converts each view's packed RGBA to
 f32 gray in [0, 1]. `mvsUndistort` then writes the undistorted gray image with the same
 fx, fy, cx, cy and zero distortion. For output pixel (u, v) it computes x = (u − cx) / fx,
 y = (v − cy) / fy, r² = x² + y², and the distorted position
 (fx · x · (1 + k1 r² + k2 r⁴) + cx, fy · y · (1 + k1 r² + k2 r⁴) + cy). That is the forward
-model of `project` in `src/gpu/numerics.shade.ts`, so no iteration is needed. It samples the
+model of `project` in `src/device/gpu/numerics.shade.ts`, so no iteration is needed. It samples the
 input bilinearly. An output pixel whose source position falls outside the image, or whose r²
 is at or past `radialLimit`, gets −1, the "no data" mark. The pinhole views of the pyramid and
 TUM samples (k1 = k2 = 0) skip the kernel.
@@ -172,7 +172,7 @@ computes the pixel's cost (3.7). `mvsSeed` writes the seeds over the random valu
 computes their costs.
 
 Randomness is a counter-based hash of (seed, view, pixel, iteration, draw), as `hash` in
-`src/gpu/features.shade.ts`. No random state is stored. The CPU tier and WebGPU therefore draw
+`src/features/gpu/features.shade.ts`. No random state is stored. The CPU tier and WebGPU therefore draw
 the same numbers, and a chunk boundary changes no draw.
 
 ### 3.6 Propagation and refinement (device, `mvsPropagate` _(new)_)
@@ -331,7 +331,7 @@ and 10° are COLMAP's `max_depth_error`, `max_reproj_error` and `max_normal_erro
 checked in 3.7.
 
 `mvsFuseFlags` writes one flag per pixel. The shared flag scan (`planFlagScan`,
-`scanBlockCount` in `src/gpu/scan.ts`) gives each emitted pixel its slot.
+`scanBlockCount` in `src/device/gpu/scan.ts`) gives each emitted pixel its slot.
 `mvsScatterPoints` writes the points. The host reads one count and the points of that
 reference.
 
@@ -366,7 +366,7 @@ fusion, with the semantics of the libraries they are named after. It changes no 
 3.1 to 3.11: `reconstructDenseGpu` still returns the raw fused cloud, and the filters are new
 functions that take any cloud of the layout of `GpuDensePoints`.
 
-All three use a uniform-grid spatial hash (`buildPointGrid` in `src/reconstruction/cloud-clean.ts`).
+All three use a uniform-grid spatial hash (`buildPointGrid` in `src/mvs/cloud-clean.ts`).
 A cell is a cube. The host sorts the points by the bucket of their cell, with `hashCell` and a
 table of the least power of two that holds the points. A bucket holds the points of every cell
 that hashes to it, so a lookup of one cell compares the stored cell coordinates too. A cell
@@ -401,23 +401,23 @@ below 1, so a point in cell 0 was lost as a neighbour.
    cluster at all comes back unchanged. The pipeline's default `eps` is `epsFactor` (4) times
    the median nearest-neighbour distance of the cloud it receives, and `minPoints` is 5.
 
-`cleanDenseCloud` (CPU) and `cleanDenseCloudGpu` (`src/gpu/cloud-clean.ts`) run the three in the
+`cleanDenseCloud` (CPU) and `cleanDenseCloudGpu` (`src/mvs/gpu/cloud-clean.ts`) run the three in the
 order outliers, voxels, clusters, each on the output of the one before, and return the cloud and
 a report: the count after each stage, the threshold, voxel size and `eps` used, the clusters found
 and kept, and the milliseconds of each stage. Each stage turns off by itself.
 
 The GPU tier runs the two steps that pay on a GPU:
 
-- `knnMeanDistance` (`src/gpu/cloud-knn.shade.ts`): one invocation per sorted point, the ring
+- `knnMeanDistance` (`src/mvs/gpu/cloud-knn.shade.ts`): one invocation per sorted point, the ring
   search above with a sorted list of the k best squared distances in private memory. It reads the
   sorted points, their cell coordinates and the bucket offsets, and writes one f32 per point.
-  The host gives the invocations a visit order (`cellVisitOrder` in `src/reconstruction/cloud-clean.ts`): the points by cell, z then y
+  The host gives the invocations a visit order (`cellVisitOrder` in `src/mvs/cloud-clean.ts`): the points by cell, z then y
   then x, so that the invocations of a group leave their loops together. The kernel inserts into
   the list in place and skips a row or a cell whose nearest corner is farther than the k-th
   distance (with a margin of 0.1 % for rounding). It goes to ring `KNN_GPU_MAX_RING` = 16 before
   it scans every point. Every variant gives the exact k nearest points, so the ring limit and
   the skips change the time and not the result.
-- `voxelClaim` (`src/gpu/cloud-voxel.shade.ts`): one invocation per point. It finds the voxel and
+- `voxelClaim` (`src/mvs/gpu/cloud-voxel.shade.ts`): one invocation per point. It finds the voxel and
   claims a slot of an open-addressing table (at least 2n slots) with
   `atomicCompareExchangeWeak` on the index of its first member. The result is the owner of its
   voxel. Which member owns it depends on the order of the invocations, so the host orders the
@@ -441,7 +441,7 @@ with a color per vertex: a signed distance field on a lattice, then marching cub
 contract of 3.1 to 3.12. `reconstructDenseGpu` and `cleanDenseCloudGpu` return what they returned,
 and the mesh is a new function of any cloud of the layout of `GpuDensePoints` that has normals.
 
-**The field** (`src/reconstruction/dense-mesh.ts`). A lattice node x takes the points p within the
+**The field** (`src/mvs/dense-mesh.ts`). A lattice node x takes the points p within the
 truncation radius R of it. A point with unit normal n gives the signed distance d = n · (x − p) to
 its tangent plane, positive on the side the normal points to, and the weight w = (1 − |x − p|² /
 R²)². The field is Σ w d / Σ w and the node color is Σ w c / Σ w, rounded. A node with no point
@@ -461,7 +461,7 @@ second limit holds.
 
 **The cubes.** A cube is inside where the field is below 0. A cube whose eight corners all have a
 value makes up to five triangles by the 256-case table of Lorensen and Cline in the numbering of
-Bourke (`src/reconstruction/marching-cubes-tables.ts`, the table of three.js's `MarchingCubes`,
+Bourke (`src/mvs/marching-cubes-tables.ts`, the table of three.js's `MarchingCubes`,
 which `tests/dense-mesh.test.ts` checks for the crossed edges of every case). The vertex of a
 crossed edge is at the linear zero of the field, and its color is interpolated the same way. The
 faces wind counter-clockwise seen from the side the normals point to. A vertex is named by its
@@ -471,7 +471,7 @@ mesh is indexed and two cubes share the vertices of a shared edge. Inference: th
 points and the lab cloud show none that makes an edge used more than twice ("Mesh record").
 Lewiner's tables (scikit-image's default) remove the ambiguity, and are an open item.
 
-**The GPU tier** (`src/gpu/dense-mesh.ts`, `src/gpu/dense-mesh.shade.ts`) runs four kernels:
+**The GPU tier** (`src/mvs/gpu/dense-mesh.ts`, `src/mvs/gpu/dense-mesh.shade.ts`) runs four kernels:
 
 - `meshNodeField`: one invocation per active node (a node within R of a point). It gathers the
   points from the cell grid of `buildPointGrid` with the cell size R, the 27 cells around the
@@ -596,7 +596,7 @@ array is view-major: element v × P + i. All arrays are TypeShade arrays allocat
 | `mvsPointData`   | u32 × 2 per point: normal (octahedral, world), RGBA                                | P          | 8               |
 
 The TSDF fusion of section 10.4 (step 3) binds these arrays _(new)_ in place of the fusion's
-(`src/gpu/tsdf.shade.ts`). T is the table's slots, a power of two of at least twice the blocks of
+(`src/mvs/gpu/tsdf.shade.ts`). T is the table's slots, a power of two of at least twice the blocks of
 a pass, and B the blocks of the pass.
 
 | Array           | Element                                                                                             | Count            | Bytes            |
@@ -628,7 +628,7 @@ pixel.
 Amendment 3 (section 8): the all-resident layout below is replaced by a window of the reference
 and its sources, streamed when the window does not fit the device's budget. The depth stage then
 takes (8 K + 28) bytes per pixel in its geometric pass, K ≤ 6, whatever N is, and no view limit
-applies. `planMvsResidency` (`src/gpu/mvs-residency.ts`) sizes every array. Amendment 3 has the
+applies. `planMvsResidency` (`src/mvs/gpu/mvs-residency.ts`) sizes every array. Amendment 3 has the
 byte math for 640 × 360, 1280 × 720 and 1280 × 960 at N = 12, 25, 50 and 100. The rest of this
 section is the layout before Amendment 3.
 
@@ -707,7 +707,7 @@ in section 8 is the windowed layout that it needs.
 ### 5.1 Kernels as chunks of the time budget
 
 Every kernel that loops over pixels runs as chunks through `device.planSteps`, as
-`triangulateTracksGpu` does (`src/gpu/triangulation.ts`). A chunk is a contiguous range of
+`triangulateTracksGpu` does (`src/geometry/gpu/triangulation.ts`). A chunk is a contiguous range of
 color indices, `first..end`, in a uniform `range`. For color c of a W × H image, color index
 k maps to row y = ⌊k / ⌈W/2⌉⌋, column x = 2 (k mod ⌈W/2⌉) + ((y + c) mod 2). A lane with
 x ≥ W, or past `end`, is idle and masked (3.6).
@@ -734,7 +734,7 @@ The CPU tier runs each key as one chunk (`chunkSize` returns `max` there), so it
 those of the whole pass.
 
 Step 3 added the keys `mvsInitialize` and `mvsPropagate` with their warm steps
-(`src/gpu/mvs.ts`). The other keys come with their kernels: `mvsGeometricInitialize`,
+(`src/mvs/gpu/mvs.ts`). The other keys come with their kernels: `mvsGeometricInitialize`,
 `mvsPropagateGeometric` and `mvsFilter` in step 4, `mvsFuse` in step 5. Amendment, step 5:
 `mvsScatterPoints` runs as chunks under `mvsFuse` too (3.10), and the flag scan runs as one plan.
 Amendment, step 4: the
@@ -775,7 +775,7 @@ samples run in the lab. Step 3 measures the SwiftShader rate of each key ("Step 
 the lab's run records give the physical rates.
 
 Fences: each key is timed for its first 8 chunks (`CHUNK_TIMING_SAMPLES` in
-`src/gpu/device.ts`), with two fences each. The later chunks run untimed. So the five keys add
+`src/device/gpu/device.ts`), with two fences each. The later chunks run untimed. So the five keys add
 at most 80 fences to a run, whatever its size.
 
 ### 5.3 The worker
@@ -838,9 +838,9 @@ Amendments, step 6 ("Step 6 record"):
 
 ### 5.4 The API
 
-`reconstructDenseGpu(device, scene, images, options)` _(new)_ in `src/gpu/mvs.ts` _(new)_,
-with the kernels in `src/gpu/mvs.shade.ts` _(new)_ and the host view selection in
-`src/gpu/mvs-views.ts` _(new)_. `src/gpu/index.ts` exports it. `images` maps a view id to its
+`reconstructDenseGpu(device, scene, images, options)` _(new)_ in `src/mvs/gpu/mvs.ts` _(new)_,
+with the kernels in `src/mvs/gpu/mvs.shade.ts` _(new)_ and the host view selection in
+`src/mvs/gpu/mvs-views.ts` _(new)_. `src/gpu/index.ts` exports it. `images` maps a view id to its
 RGBA, width and height. `options.onView` receives the depth previews and points of 5.3. The
 result holds the points, the per-view status (no source, too few landmarks, done) and the
 plan report. A new export of `typecv/gpu` changes the public API, so its step waits for the
@@ -999,7 +999,7 @@ in its commits.
 
 | Step | Pull request content                                                                                                                       | What it proves                                                                                                                        |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `src/gpu/mvs-views.ts`: view selection, depth ranges, seeds, normalization. `tests/mvs-views.test.ts`. The COLMAP defaults of 3.7 checked. | Source lists of gerrard-hall from the dataset's features are stable. The defaults in this document are right.                         |
+| 1    | `src/mvs/gpu/mvs-views.ts`: view selection, depth ranges, seeds, normalization. `tests/mvs-views.test.ts`. The COLMAP defaults of 3.7 checked. | Source lists of gerrard-hall from the dataset's features are stable. The defaults in this document are right.                         |
 | 2    | `mvsUndistort`, `mvsInitialize`, `mvsSeed`, `mvsPropagate` (photometric) on one reference, CPU tier. `tests/typeshade/mvs.test.mjs`.       | Photometric accuracy on the synthetic scene. Chunk invariance. The defaults of iterations, window step and bilateral weights.         |
 | 3    | The chunk keys and `warm` steps. `tests/typeshade/mvs-webgpu.test.mjs`.                                                                    | WebGPU agrees with the CPU tier. The SwiftShader rate of each key.                                                                    |
 | 4    | The geometric pass and `mvsFilter`.                                                                                                        | The error tail shrinks. Reference order changes no result.                                                                            |
@@ -1064,7 +1064,7 @@ SwiftShader, a 4-core Intel Xeon container shared with other jobs. Measured on 2
 sources, the defaults of step 2). The full scene runs on SwiftShader in 4.4 s to 5.0 s, so the
 test needs no smaller case. The whole test, the CPU tier included, takes about 20 s.
 
-What changed: `mvsPhotometricGpu` (`src/gpu/mvs.ts`) runs `mvsInitialize` and `mvsPropagate` as
+What changed: `mvsPhotometricGpu` (`src/mvs/gpu/mvs.ts`) runs `mvsInitialize` and `mvsPropagate` as
 chunk steps under the keys of 5.1, one unit a pixel and a source. `device.chunkSize(key,
 remaining × K, 64 × K)` sizes each chunk, and a chunk before the last is a whole number of
 workgroups. Each key's warm step is its entry over zero workgroups (`warm.id` `mvs`).
@@ -1131,13 +1131,13 @@ the scene of 7.1 (128 × 96 px, 5 views, every view with 4 sources). The default
 
 What changed:
 
-- `src/gpu/mvs.shade.ts`: `mvsPropagate` reads and writes the reference's depth in
+- `src/mvs/gpu/mvs.shade.ts`: `mvsPropagate` reads and writes the reference's depth in
   `mvsGeoDepth` when `MvsControl.geometric` is 1, and `hypothesisCost` adds
   λ · min(ψ_s, ψmax) to each source cost (`reprojectionError`). New entries
   `mvsGeometricInitialize` and `mvsFilter` (3.8 and 3.9, with their amendments). Each lane past
   its chunk takes the chunk's last element and writes nothing, so no idle lane returns before a
   loop.
-- `src/gpu/mvs.ts`: `mvsDepthMapsGpu` runs the photometric pass of every view in `order`, then
+- `src/mvs/gpu/mvs.ts`: `mvsDepthMapsGpu` runs the photometric pass of every view in `order`, then
   the geometric pass and the filter of every view in `geometricOrder`. It schedules them under
   the keys `mvsInitialize`, `mvsPropagate`, `mvsGeometricInitialize`, `mvsPropagateGeometric`
   and `mvsFilter`, with warm steps, by the rule of step 3. `mvsPhotometricGpu` binds
@@ -1241,14 +1241,14 @@ the scene of 7.1 (128 × 96 px, 5 views, every view with 4 sources). The default
 
 What changed:
 
-- `src/gpu/mvs.shade.ts`: new entries `mvsFuseFlags` and `mvsScatterPoints` and their function
+- `src/mvs/gpu/mvs.shade.ts`: new entries `mvsFuseFlags` and `mvsScatterPoints` and their function
   `fusePixel` (3.10), the color sample `referenceColor` (3.11), and the helper
   `distortedPosition`, which `mvsUndistort` now uses too. Each lane past its chunk takes the
   chunk's last element and writes nothing, so no idle lane returns before a loop.
-- `src/gpu/mvs.ts`: `reconstructDenseGpu(device, scene, images, options)` as 5.4 declares it. It
+- `src/mvs/gpu/mvs.ts`: `reconstructDenseGpu(device, scene, images, options)` as 5.4 declares it. It
   plans the views (`planMvsViews`), runs the depth stage of every view, recycles `mvsGray`,
   `mvsDepth`, `mvsCost`, `mvsSeeds` and `mvsSources`, and fuses each reference. The flag scan is
-  the shared `planFlagScan` of `src/gpu/scan.ts`. A view without `width` and `height` takes its
+  the shared `planFlagScan` of `src/device/gpu/scan.ts`. A view without `width` and `height` takes its
   image's size. The depth stage allocates `mvsGray` and undistorts before it allocates the other
   arrays, so its peak is the formula of 4.2. `mvsPhotometricGpu` runs on `photometricSteps`, so
   the chunk rule of step 3 has one copy (the open item of step 4). Its results are those of step
@@ -1365,7 +1365,7 @@ with `main` at `9c2a08f` (#97) and at `b430f41` (#96 and #98), the compiler pin 
 
 What changed:
 
-- `src/gpu/mvs.ts`: `GpuDenseOptions` gains `onProgress` and `signal` (5.4, amended).
+- `src/mvs/gpu/mvs.ts`: `GpuDenseOptions` gains `onProgress` and `signal` (5.4, amended).
   `onProgress` runs after the last plan of each reference's photometric pass, of its geometric
   pass and filter, and of its fusion. The run reads `signal` before each plan, so a chunk in
   flight completes. A cancelled run recycles its arrays and rejects with the signal's reason.
@@ -1756,7 +1756,7 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    (new) adds each group to per-pixel sums in `mvsFuseSums` (new, 8 f32 per pixel) for a chunk of
    pixels. `mvsFuseEmit` (new) writes the flags of the chunk, the shared scan gives the rows, and
    `mvsFuseScatterSums` (new) writes the points from the sums.
-5. **The budget comes from the device.** `planMvsResidency` (`src/gpu/mvs-residency.ts`, new)
+5. **The budget comes from the device.** `planMvsResidency` (`src/mvs/gpu/mvs-residency.ts`, new)
    sizes every array from two numbers: the budget, which is `device.workingBytes` less the
    active bytes when the MVS starts, and `device.bindingBytes`, the largest array. Each stage
    takes window mode when it fits, else streamed mode with the fewest chunks and then the most
@@ -1997,7 +1997,7 @@ not as the run goes. On `main` at `8d1c4de`:
 - Fact: points exist only in the fusion stage, one `densePoints` message per reference (5.3).
 - Fact: the photometric and the geometric stages post only `denseProgress`. The depth previews
   (`denseDepth`) come all at once after the last geometric pass, from `afterDepth` in
-  `reconstructDenseGpu` (`src/gpu/mvs.ts`).
+  `reconstructDenseGpu` (`src/mvs/gpu/mvs.ts`).
 - Fact: the page keeps the `denseDepth` messages and counts them, but draws nothing from them.
 - Inference: the photometric and the geometric stages take most of the dense time, so the 3D view
   shows no new point for most of the run. Not measured per stage in this document; the run
@@ -2091,7 +2091,7 @@ headless shell on SwiftShader. Checked on 2026-10-21.
 
 What changed:
 
-- `src/gpu/mvs.ts`: `GpuDenseViewEvent` of type `depth` gains `stage` and `iteration`.
+- `src/mvs/gpu/mvs.ts`: `GpuDenseViewEvent` of type `depth` gains `stage` and `iteration`.
   `depthStage` calls `onPhotometricDepth` after iterations 1 and 3 of a reference's photometric
   pass (`PREVIEW_ITERATIONS`, only those below `photometricIterations`) and after the pass, and
   `onGeometricDepth` after its geometric pass and filter. `reconstructDenseGpu` turns them into
@@ -2229,7 +2229,7 @@ loss and does not remove its cause. Hence this overhaul.
 
 ### 10.2 Step 0: evaluation (implemented)
 
-`src/reconstruction/dense-score.ts` scores a cloud against a ground-truth cloud with the
+`src/mvs/dense-score.ts` scores a cloud against a ground-truth cloud with the
 definitions of ETH3D and Tanks and Temples, at stated thresholds τ (meters):
 
 - accuracy(τ): the fraction of reconstructed points with a ground-truth point within τ.
@@ -2414,7 +2414,7 @@ record has the numbers):
    a pair.
 6. A component is a set of surface points joined by edges of w_ij ≥ `componentEdge`.
 7. The solver is Boykov-Kolmogorov on the host for both tiers (`labelDenseCloud`,
-   `src/reconstruction/dense-label.ts`). The device's part is the attributes of `tsdfExtract`.
+   `src/mvs/dense-label.ts`). The device's part is the attributes of `tsdfExtract`.
    The report counts a point that the cut labels `noise` under the larger of its two surface
    terms.
 8. The labeling is the option `labeling` of `reconstructDenseGpu` (with `fusion` `'tsdf'`). It
@@ -2554,10 +2554,10 @@ fusion of the saved maps gives the step 0 cloud bit for bit (156,751 points and 
 so the maps are the baseline's maps. The confidence output does not change a depth (test
 `tests/typeshade/tsdf.test.mjs`).
 
-What was built (sections 4.1 and 10.4): `src/gpu/tsdf.shade.ts` (`tsdfAllocate`, `tsdfAssign`,
-`tsdfIntegrate`, `tsdfCarve`, `tsdfExtract`), the host `src/gpu/tsdf.ts` (`fuseTsdfGpu`: the dry
+What was built (sections 4.1 and 10.4): `src/mvs/gpu/tsdf.shade.ts` (`tsdfAllocate`, `tsdfAssign`,
+`tsdfIntegrate`, `tsdfCarve`, `tsdfExtract`), the host `src/mvs/gpu/tsdf.ts` (`fuseTsdfGpu`: the dry
 run, the boxes within the budget, the passes) and the CPU reference and planner
-`src/reconstruction/tsdf.ts` (`fuseTsdf`, `planTsdfVolume`, `planTsdfBoxes`). The filter writes
+`src/mvs/tsdf.ts` (`fuseTsdf`, `planTsdfVolume`, `planTsdfBoxes`). The filter writes
 the confidence to `mvsCost` when the run asks for it (`writeConfidence`, window and streamed
 modes). `reconstructDenseGpu` takes `fusion: 'tsdf'` and `tsdf` (the options of 10.4) and returns
 `tsdf`, the report of the fusion. Its points belong to no view: each view's slice is empty, and one
@@ -2667,10 +2667,10 @@ more. Date: 2026-10-22. Scene, ground truth, masks and landmark radius: as the s
 every row sees the same depths. Command:
 `node scripts/eth3d-dense.mjs … --maps <dir> --extra '{"fusion":"tsdf","labeling":{}}'`.
 
-What was built (amendment of 10.5): the tally and the point attributes in `src/gpu/tsdf.shade.ts`
-and its CPU reference `src/reconstruction/tsdf.ts`, the TSDF options `minViews` and `carveSpan`,
+What was built (amendment of 10.5): the tally and the point attributes in `src/mvs/gpu/tsdf.shade.ts`
+and its CPU reference `src/mvs/tsdf.ts`, the TSDF options `minViews` and `carveSpan`,
 the labeling `labelDenseCloud` with its Boykov-Kolmogorov solver in
-`src/reconstruction/dense-label.ts`, and the option `labeling` of `reconstructDenseGpu`. The
+`src/mvs/dense-label.ts`, and the option `labeling` of `reconstructDenseGpu`. The
 carving walk of a pass no longer depends on the boxes (item 10 of the amendment). With it, the
 step 3 defaults give 99,675 points, one more than the step 3 record's 99,674, at the same scores to
 0.1.
@@ -2794,7 +2794,7 @@ of landmarks uncovered.
 #### Diagnosis (prototypes, not in the repository)
 
 Configuration: worktree of `main` at `d7d5a79`, Node 22.22, the CPU reference `fuseTsdf` of
-`src/reconstruction/tsdf.ts` copied to a scratch directory and changed there. Input: the 14 saved
+`src/mvs/tsdf.ts` copied to a scratch directory and changed there. Input: the 14 saved
 maps of the step 3 record (`pipes`, scale 8), in the normalized frame of `reconstructDenseGpu`. The
 scoring is that of 10.2 (the same ground truth, mask and landmark radius). The unchanged reference
 gives the step 4 cloud exactly: 99,675 points, F 54.0 and 67.3 at 2 and 5 cm, 27.0 % of landmarks

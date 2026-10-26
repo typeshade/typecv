@@ -32,7 +32,10 @@ test('default NCC scalar/cache/aggregate match independent patches on actual f32
       compiler,
       compiler.exports,
     );
-    const source = await readFile(new URL('../../src/gpu/mvs.shade.ts', import.meta.url), 'utf8'),
+    const source = await readFile(
+        new URL('../../src/mvs/gpu/mvs.shade.ts', import.meta.url),
+        'utf8',
+      ),
       packs = {};
     for (const [label, text] of Object.entries({
       current: source,

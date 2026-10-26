@@ -53,8 +53,8 @@ CPU와 scene/GPU mapper는 기존 E 인라이어 트랙을 보존한다. 깊이�
 
 ## 실행·API와 전송 비용
 
-- CPU: `src/sfm/two-view.ts::recoverTwoViewGeometry`.
-- GPU: `src/gpu/recovery.shade.ts`의 후보 분류, 자세 선택, LM 수락 검사, 최종 품질 검사.
+- CPU: `src/geometry/two-view.ts::recoverTwoViewGeometry`.
+- GPU: `src/geometry/gpu/recovery.shade.ts`의 후보 분류, 자세 선택, LM 수락 검사, 최종 품질 검사.
 - GPU 호스트: `pair-estimation.ts`는 기존 resident 좌표·픽셀·제어 uniform을 바인딩한다.
   수치 결과를 CPU에서 다시 계산하는 경로를 추가하지 않는다. 모드가 다른 기존
   `preVerified` 결과는 재사용하지 않고 현재 모드로 다시 검증한다. 공유 초점거리 탐색의

@@ -176,7 +176,7 @@ since the last global BA by `globalBundleViewRatio` in registered views or by
 and the final pass are always global. `globalBundleFrequency` adds a global BA at
 each multiple of its view count; it was the whole schedule before (every third
 view) and is now off by default. `Infinity` turns a ratio off. `globalBundleDue` in
-[`src/reconstruction/mapper.ts`](../src/reconstruction/mapper.ts) holds the rule, and
+[`src/sfm/mapper/mapper.ts`](../src/sfm/mapper/mapper.ts) holds the rule, and
 both mappers (`incrementalSteps`, `sceneSteps`) apply it. `IncrementalSfmSession`
 carries the size at the last global BA across its runs; when its window evicts
 views, the ratios hold against the smaller map.

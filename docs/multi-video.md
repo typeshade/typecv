@@ -24,7 +24,7 @@ The lab (`/lab/`) takes one video. The page decodes it at 4 frames per second
 2. A keyframe gets GPU SIFT features (`extractSiftGpuResident`).
 3. The keyframe is matched with the earlier keyframes that the session still holds
    (`matchFloatDescriptorsGpu`, ratio 0.8, mutual). The last keyframe is matched first.
-4. The pairs go to one `IncrementalSfmSession` (`src/gpu/mapper.ts`) through `session.add`.
+4. The pairs go to one `IncrementalSfmSession` (`src/sfm/gpu/mapper.ts`) through `session.add`.
 
 Fact: the worker keeps at most a few keyframes resident (`registerFrame` keeps the reference
 frames and the last three). The session keeps a window of 32 views (`windowSize` 32). It drops
@@ -111,7 +111,7 @@ Decision: the focal ratio is a property of the video, not of the run.
    Pairs inside a video and across videos use the same call.
 4. The final bundle adjustment refines one focal scale for each video (a camera group), not one
    for the whole run. Fact: `refineSharedFocal` refines one scale that all views share
-   (`src/reconstruction/bundle-adjustment.ts`). A per-group form is new work (step 5).
+   (`src/sfm/bundle/bundle-adjustment.ts`). A per-group form is new work (step 5).
 
 Inference: the Pexels clips of the test set (section 9) come from a drone, possibly from one
 camera. If the cameras are equal, the per-video focal groups add parameters and no accuracy. Step 7
@@ -170,7 +170,7 @@ The cost is O(N·k) matchings. Exhaustive matching is O(N²). For N = 375 and k 
 weights.** The steps for one keyframe:
 
 1. Take the RootSIFT descriptors of the keyframe. Fact: the GPU SIFT already produces RootSIFT with
-   `keys.rootSift` (`src/gpu/sift.shade.ts`).
+   `keys.rootSift` (`src/features/gpu/sift.shade.ts`).
 2. Assign each descriptor to the nearest of 512 visual words (L2, ties to the lower word index).
    This is a new kernel, `globalAssign` _(new)_. It takes descriptors and the vocabulary, and writes
    one word index for each descriptor.
@@ -252,7 +252,7 @@ For each candidate pair:
 2. If the pair has fewer than `minMatches` = 30 matches, drop it. This cheap test removes most
    false candidates before the costly verification.
 3. Verify the matches with `verifyImagePairGpu` (the `verifyPair` job of
-   `src/reconstruction/mapper.ts`), with the two cameras of the two videos. It runs the RANSAC for
+   `src/sfm/mapper/mapper.ts`), with the two cameras of the two videos. It runs the RANSAC for
    the essential matrix and for a homography, and it triangulates the inliers.
 4. Accept the pair when it has at least `minEdgeInliers` = 25 inliers (Decision, a default to be
    tuned in step 4; COLMAP's matching accepts 15 and the lab's mapper needs 12 initial points).
@@ -315,7 +315,7 @@ gate (7.2) tests this.
 
 Decision: the default is one incremental reconstruction per component, over all its keyframes and
 all its verified edges, as COLMAP does. It reuses `incrementalSteps` in
-`src/reconstruction/mapper.ts`. The steps and the changes are:
+`src/sfm/mapper/mapper.ts`. The steps and the changes are:
 
 **Initial pair.** Fact: `verifyPairs` scores the seed candidates by
 `positiveDepthCount × min(10, medianParallaxDeg)` and drops pairs that are homography-dominated
@@ -762,7 +762,7 @@ Open: whether the CI job that published the earlier samples can run it again.
 Written on 2026-10-20 from `main` at `ebc39b6`. Files read: `website/src/lib/sfm-video.ts`,
 `website/src/lib/keyframe-gate.ts`, `website/src/lib/video-sampling.ts`,
 `website/src/lib/pose-alignment.ts`, `website/src/workers/sfm.worker.ts`,
-`src/reconstruction/mapper.ts`, `src/gpu/mapper.ts`, `scripts/lab-remote-samples.mjs`,
+`src/sfm/mapper/mapper.ts`, `src/sfm/gpu/mapper.ts`, `scripts/lab-remote-samples.mjs`,
 `website/samples/remote-videos.json`, `docs/lab-run-records.md`, `docs/klt-tracking.md` and
 `docs/dense-mvs.md` (as the model of form). No code was changed, and no check other than the
 formatting check of this file was run.
@@ -785,7 +785,7 @@ Decisions on the open questions of the draft, made by the coordinator by default
 ### Amendment 1: step 2, decoder agreement (measured, 2026-10-20)
 
 Step 2 implements the identity of 2.4: `videoIdOf`, `frameKeyOf`, `assignViewIds` and `pairSeed` in
-`src/reconstruction/identity.ts`. `verifyPairs` seeds each pair with `pairSeed(seed, first,
+`src/sfm/model/identity.ts`. `verifyPairs` seeds each pair with `pairSeed(seed, first,
 second)`. The CPU tier of the shuffle gate (7.1) is `tests/multi-video-identity.test.ts`.
 
 **Measured.** How often two decodes of one video give different `frameKey`s.
@@ -808,7 +808,7 @@ and other devices were not measured. The result holds for one machine and one br
 stays the definition of `frameKey`. The question whether two devices agree stays open. The
 thumbnail hash is the remedy if a later measurement on two devices shows a difference.
 
-**Found, not changed.** `runIncrementalGpu` (`src/gpu/mapper.ts`) replaces the seed of a pair in a
+**Found, not changed.** `runIncrementalGpu` (`src/sfm/gpu/mapper.ts`) replaces the seed of a pair in a
 streaming session by `seed + session.verification.size`, a count of the arrival order. Step 2 does
 not change it: the record names `verifyPairs` only, and the multi-video job does not use the
 session (4.2, item 3). Step 5 or step 6 decides. The `seed + order.length` of the PnP request in
@@ -818,10 +818,10 @@ count follows the content-driven registration order, so these stay.
 ### Amendment 2: step 3, the global descriptor (measured, 2026-10-21)
 
 Step 3 implements the descriptor of 3.2 and the parity gate of 7.4. The code: `globalDescriptorReference`
-and its parts in `src/gpu/global-descriptor.ts`, the kernel `globalAssign` in
-`src/gpu/global-descriptor.shade.ts` with its host call `assignWordsGpu` and `globalDescriptorGpu` in
-`src/gpu/global-descriptor-gpu.ts`, and the vocabulary `rootsift-512-v1` in `src/gpu/vocabulary/`. The
-candidates VLAD and the thumbnail, and the k-means, are in `src/gpu/global-descriptor-candidates.ts`.
+and its parts in `src/features/gpu/global-descriptor.ts`, the kernel `globalAssign` in
+`src/features/gpu/global-descriptor.shade.ts` with its host call `assignWordsGpu` and `globalDescriptorGpu` in
+`src/features/gpu/global-descriptor-gpu.ts`, and the vocabulary `rootsift-512-v1` in `src/gpu/vocabulary/`. The
+candidates VLAD and the thumbnail, and the k-means, are in `src/features/gpu/global-descriptor-candidates.ts`.
 The scripts are `scripts/global-descriptor-data.mjs` and `scripts/global-descriptor.mjs`.
 
 **The vocabulary.** Command: `node scripts/global-descriptor.mjs train <work-dir>`. It runs Lloyd's
@@ -909,13 +909,13 @@ each descriptor pair at least 0.9999, for host descriptors and for the resident 
 
 ### Amendment 3 (step 4): the view graph (measured, 2026-10-21)
 
-Step 4 implements `buildViewGraph` in `src/reconstruction/view-graph.ts`: the candidates of 3.3
+Step 4 implements `buildViewGraph` in `src/sfm/multiview/view-graph.ts`: the candidates of 3.3
 (`selectCandidates`), the host descriptor store of 3.5 (`DescriptorStore`), the matching and
 verification of 3.4 and the components of 4.1 (`connectedComponents`). Verification runs the
-existing `verifyPairs` of `src/reconstruction/mapper.ts` once for each pair, so the seed of a pair
+existing `verifyPairs` of `src/sfm/mapper/mapper.ts` once for each pair, so the seed of a pair
 is `pairSeed` of its two view ids. The numerical steps sit behind a `ViewGraphBackend`:
 `cpuViewGraphBackend` (float64 matching and the CPU `verifyPair`) and `gpuViewGraphBackend`
-(`src/gpu/view-graph.ts`: `matchFloatDescriptorsGpu` and `verifyImagePairGpu`). The backend is
+(`src/sfm/multiview/gpu/view-graph.ts`: `matchFloatDescriptorsGpu` and `verifyImagePairGpu`). The backend is
 exported from the internal test entry `src/gpu/internal.ts` only. Step 6 decides the public export.
 
 The global descriptor is an input of each keyframe (`global`, L2-normalized, so the similarity is a
@@ -983,10 +983,10 @@ one buffer would save uploads. Step 6 measures it on a physical GPU.
 ### Amendment 4 (step 5): the mapper on a component (measured, 2026-10-21)
 
 Step 5 implements the mapper on one component of the view graph. The code is `preVerified` and
-`focalGroups` in `IncrementalOptions` (`src/reconstruction/mapper.ts`), the per-group form of the
-CPU joint-focal BA (`focalGroups` in `BundleAdjustmentOptions`, `src/reconstruction/joint-focal.ts`),
+`focalGroups` in `IncrementalOptions` (`src/sfm/mapper/mapper.ts`), the per-group form of the
+CPU joint-focal BA (`focalGroups` in `BundleAdjustmentOptions`, `src/sfm/bundle/joint-focal.ts`),
 and `componentInput`, `reconstructComponent`, `preVerifiedOf` and `focalGroupsOf`
-(`src/reconstruction/component-mapper.ts`). The tests are `tests/multi-video-mapper.test.ts`.
+(`src/sfm/multiview/component-mapper.ts`). The tests are `tests/multi-video-mapper.test.ts`.
 
 **Decisions.**
 
@@ -1099,7 +1099,7 @@ Step 6 implements the lab side of the record. The pull request is typeshade/type
 
 | Part                 | Where                                                                                                                                                                                                                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pipeline on a device | `reconstructMultiVideoGpu` and `describeKeyframeGpu` in `src/gpu/multi-video.ts`: view ids, `buildViewGraph` with `gpuViewGraphBackend`, `componentInput` and `reconstructIncrementalGpu` for each component.                                                                                      |
+| Pipeline on a device | `reconstructMultiVideoGpu` and `describeKeyframeGpu` in `src/sfm/multiview/gpu/multi-video.ts`: view ids, `buildViewGraph` with `gpuViewGraphBackend`, `componentInput` and `reconstructIncrementalGpu` for each component.                                                                                      |
 | Stage times          | `ViewGraph.timing` (`retrievalMs`, `pairMatchingMs`, `pairVerificationMs`, `componentsMs`) in `buildViewGraph`.                                                                                                                                                                                    |
 | The `multiVideo` job | `MultiVideoJob` in `website/src/lib/multi-video-job.ts` (messages `video`, `frame`, `endVideo`, `finish`). `website/src/workers/multi-video.ts` wires `multiStart`, `multiVideo`, `multiFrame`, `multiEndVideo` and `multiFinish`. `sfm.worker.ts` gains one import and one branch in `onmessage`. |
 | Page helpers         | `website/src/lib/multi-video.ts` (query, cap, tags, matrix, record options), `multi-video-input.ts` (`videoId` of a file or a sample, frames of a sample).                                                                                                                                         |

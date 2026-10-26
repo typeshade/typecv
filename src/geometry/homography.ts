@@ -1,4 +1,4 @@
-import { multiply } from '../sfm/linear.ts';
+import { multiply } from './linear.ts';
 import { inverse3, nullspace, ransacBudget, sample, seededRandom } from './numerics.ts';
 
 /** Normalized DLT, row-major H maps (x,y,1) to (u,v,1). */

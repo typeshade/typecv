@@ -20,13 +20,13 @@ if (![samples, warmup].every((n) => Number.isSafeInteger(n) && n >= 1 && n <= 20
   throw new RangeError('samples and warmup must be integers in [1, 20]');
 if (values.hardware) process.env.TYPECV_HARDWARE_GPU = '1';
 const files = [
-  'src/gpu/bundle.shade.ts',
-  'src/gpu/bundle.ts',
-  'src/gpu/joint-focal.ts',
-  'src/gpu/device.ts',
+  'src/sfm/bundle/gpu/bundle.shade.ts',
+  'src/sfm/bundle/gpu/bundle.ts',
+  'src/sfm/bundle/gpu/joint-focal.ts',
+  'src/device/gpu/device.ts',
   'scripts/benchmark-gpu-invariants.mjs',
-  'src/gpu/joint-focal.shade.ts',
-  'src/gpu/mvs.shade.ts',
+  'src/sfm/bundle/gpu/joint-focal.shade.ts',
+  'src/mvs/gpu/mvs.shade.ts',
   'tests/typeshade/geometry-cases.mjs',
   'tests/typeshade/mvs-cases.mjs',
 ];

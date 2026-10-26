@@ -15,7 +15,7 @@ const dir = resolve(flag('--case')),
   plan = planMvsViews(scene),
   ref = plan.views.find((v) => v.id === info.reference).index;
 const source = await readFile(
-  flag('--source') ?? new URL('../src/gpu/mvs.shade.ts', import.meta.url),
+  flag('--source') ?? new URL('../src/mvs/gpu/mvs.shade.ts', import.meta.url),
   'utf8',
 );
 const b = await build({

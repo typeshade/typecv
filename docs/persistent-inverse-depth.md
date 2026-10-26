@@ -301,7 +301,7 @@ finite/bearing and deferred tracks: all complete result objects are bitwise iden
 Reproduce the mixed regression with `scripts/compare-inverse-depth-variants.mjs --baseline
 <frozen-b036bd8-bundle>` and the timings with `scripts/measure-inverse-depth-performance.mjs`.
 Build the baseline in a worktree at `b036bd8` with `esbuild
-src/reconstruction/inverse-depth-bundle.ts --bundle --platform=node --format=esm
+src/sfm/depth/inverse-depth-bundle.ts --bundle --platform=node --format=esm
 --outfile=<frozen-bundle>`, using the repository's installed esbuild version.
 The results include commands, all samples/ranges, code/input hashes and aggregate numerical checks.
 No per-point or camera geometry is committed. RSS samples include full-value extraction and are

@@ -1,5 +1,5 @@
 // Verifies: docs/dense-mvs.md section 3.13 (the mesh kernels on the CPU tier of the device, against
-// the CPU reference of `src/reconstruction/dense-mesh.ts`).
+// the CPU reference of `src/mvs/dense-mesh.ts`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { meshDenseCloudGpu } from '../../dist/internal/gpu.js';

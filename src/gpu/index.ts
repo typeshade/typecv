@@ -1,33 +1,42 @@
-export { ShadeDevice } from './device.ts';
-export { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
-export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+export { ShadeDevice } from '../device/gpu/device.ts';
+export { bundleAdjustInverseDepthGpu } from '../sfm/depth/gpu/inverse-depth.ts';
+export { InverseDepthTracker } from '../sfm/depth/inverse-depth-tracker.ts';
 export type {
   InverseDepthTracking,
   InverseDepthTrackingOptions,
   InverseDepthSnapshot,
   DepthTrackState,
-} from '../reconstruction/inverse-depth-tracker.ts';
+} from '../sfm/depth/inverse-depth-tracker.ts';
 export type {
   InverseDepthConstraint,
   InverseDepthBundleOptions,
   InverseDepthBundleResult,
-} from '../reconstruction/inverse-depth-bundle.ts';
-export type { DeviceDiagnostics } from './device-diagnostics.ts';
-export type { ShadeDeviceOptions, ShadePlanReport, ChunkRate, KernelStatistic } from './device.ts';
-export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from './p3p.ts';
-export type { GpuP3pResult } from './p3p.ts';
-export { estimatePosePnPGpu } from './pnp.ts';
-export type { GpuPnPOptions, GpuPnPResult, GpuGeometryExecution } from './pnp.ts';
-export { triangulateTracksGpu } from './triangulation.ts';
-export type { GpuTriangulationOptions, GpuTriangulationResult } from './triangulation.ts';
-export { evaluateObservationsGpu } from './observations.ts';
-export type { GpuObservationResult } from './observations.ts';
+} from '../sfm/depth/inverse-depth-bundle.ts';
+export type { DeviceDiagnostics } from '../device/gpu/device-diagnostics.ts';
+export type {
+  ShadeDeviceOptions,
+  ShadePlanReport,
+  ChunkRate,
+  KernelStatistic,
+} from '../device/gpu/device.ts';
+export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from '../geometry/gpu/p3p.ts';
+export type { GpuP3pResult } from '../geometry/gpu/p3p.ts';
+export { estimatePosePnPGpu } from '../geometry/gpu/pnp.ts';
+export type { GpuPnPOptions, GpuPnPResult } from '../geometry/gpu/pnp.ts';
+export type { GpuGeometryExecution } from '../geometry/gpu/execution.ts';
+export { triangulateTracksGpu } from '../geometry/gpu/triangulation.ts';
+export type {
+  GpuTriangulationOptions,
+  GpuTriangulationResult,
+} from '../geometry/gpu/triangulation.ts';
+export { evaluateObservationsGpu } from '../geometry/gpu/observations.ts';
+export type { GpuObservationResult } from '../geometry/gpu/observations.ts';
 export {
   reconstructIncrementalGpu,
   refineIncrementalGpu,
   reconstructIncrementalFloatGpu,
   IncrementalSfmSession,
-} from './mapper.ts';
+} from '../sfm/gpu/mapper.ts';
 export type {
   GpuIncrementalOptions,
   GpuIncrementalResult,
@@ -35,17 +44,17 @@ export type {
   GpuFloatImagePair,
   GpuFloatIncrementalOptions,
   GpuFloatIncrementalResult,
-} from './mapper.ts';
-export { matchFloatDescriptorsGpu } from './float-matching.ts';
-export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
-export type { ClaheOptions } from './clahe.ts';
-export { extractOrbGpuResident } from './orb.ts';
-export type { GpuOrbOptions, GpuResidentOrb } from './orb.ts';
-export { extractOrbCpu } from './orb-reference.ts';
-export type { OrbFeaturesCpu, OrbParameters } from './orb-reference.ts';
-export { slic, slicGpu } from './slic.ts';
-export type { SlicOptions, SlicResult } from './slic.ts';
-export { canny, cannyGpu, houghLines, houghLinesGpu } from './hough.ts';
+} from '../sfm/gpu/mapper.ts';
+export { matchFloatDescriptorsGpu } from '../features/gpu/float-matching.ts';
+export { equalizeGrayCpu, equalizeGrayGpu } from '../image/gpu/clahe.ts';
+export type { ClaheOptions } from '../image/gpu/clahe.ts';
+export { extractOrbGpuResident } from '../features/gpu/orb.ts';
+export type { GpuOrbOptions, GpuResidentOrb } from '../features/gpu/orb.ts';
+export { extractOrbCpu } from '../features/gpu/orb-reference.ts';
+export type { OrbFeaturesCpu, OrbParameters } from '../features/gpu/orb-reference.ts';
+export { slic, slicGpu } from '../analysis/gpu/slic.ts';
+export type { SlicOptions, SlicResult } from '../analysis/gpu/slic.ts';
+export { canny, cannyGpu, houghLines, houghLinesGpu } from '../analysis/gpu/hough.ts';
 export type {
   CannyOptions,
   CannyResult,
@@ -53,24 +62,29 @@ export type {
   HoughLinesOptions,
   HoughLinesResult,
   HoughSegment,
-} from './hough.ts';
-export { extractSiftGpuResident } from './sift.ts';
-export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
-export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
-export { expandObservationsGpu } from './observation-expansion.ts';
-export { appendExpandedObservations } from './observation-append.ts';
+} from '../analysis/gpu/hough.ts';
+export { extractSiftGpuResident } from '../features/gpu/sift.ts';
+export type {
+  GpuSiftOptions,
+  GpuResidentSift,
+  GpuSiftExecution,
+  GpuSiftGray,
+} from '../features/gpu/sift.ts';
+export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from '../motion/gpu/klt-tracker.ts';
+export { expandObservationsGpu } from '../sfm/tracks/gpu/observation-expansion.ts';
+export { appendExpandedObservations } from '../sfm/tracks/gpu/observation-append.ts';
 export type {
   ObservationAppendOptions,
   ObservationAppendRejection,
   ObservationAppendResult,
-} from './observation-append.ts';
+} from '../sfm/tracks/gpu/observation-append.ts';
 export type {
   ObservationExpansionFrame,
   ObservationExpansionOptions,
   ObservationExpansionResult,
   ExpandedObservation,
   ExpandedObservationEdge,
-} from './observation-expansion.ts';
+} from '../sfm/tracks/gpu/observation-expansion.ts';
 export type {
   KltFrame,
   KltJoin,
@@ -82,7 +96,7 @@ export type {
   KltTracker,
   KltTrackerOptions,
   KltTracks,
-} from './klt-tracker.ts';
+} from '../motion/gpu/klt-tracker.ts';
 export {
   KLT_DEFAULTS_640,
   KLT_DEFAULT_CAPACITY,
@@ -90,49 +104,52 @@ export {
   KLT_MAX_CAPACITY,
   kltOptionsFor,
   kltReject,
-} from './klt.ts';
-export type { KltOptions } from './klt.ts';
+} from '../motion/gpu/klt.ts';
+export type { KltOptions } from '../motion/gpu/klt.ts';
 export type {
   GpuResidentFloatDescriptors,
   GpuFloatMatchOptions,
   GpuFloatMatches,
-} from './float-matching.ts';
-export { bundleAdjustGpu } from './bundle.ts';
-export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
-export { EpipolarSession } from './epipolar.ts';
-export type { EpipolarScore } from './epipolar.ts';
-export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from './two-view.ts';
+} from '../features/gpu/float-matching.ts';
+export { bundleAdjustGpu } from '../sfm/bundle/gpu/bundle.ts';
+export type {
+  GpuBundleAdjustmentOptions,
+  GpuBundleAdjustmentResult,
+} from '../sfm/bundle/gpu/bundle-shared.ts';
+export { EpipolarSession } from '../geometry/gpu/epipolar.ts';
+export type { EpipolarScore } from '../geometry/gpu/epipolar.ts';
+export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from '../geometry/gpu/two-view.ts';
 export type {
   GpuTwoViewOptions,
   GpuConsensusExecution,
   GpuEssentialConsensus,
   GpuTwoViewResult,
-} from './two-view.ts';
+} from '../geometry/gpu/two-view.ts';
 
-export { estimateHomographyGpu } from './homography.ts';
-export type { GpuHomographyOptions, GpuHomographyResult } from './homography.ts';
-export { undistortCorrespondencesGpu } from './pair-estimation.ts';
-export type { GpuUndistortionResult } from './pair-estimation.ts';
-export { verifyImagePairGpu } from './image-pair.ts';
+export { estimateHomographyGpu } from '../geometry/gpu/homography.ts';
+export type { GpuHomographyOptions, GpuHomographyResult } from '../geometry/gpu/homography.ts';
+export { undistortCorrespondencesGpu } from '../geometry/gpu/pair-estimation.ts';
+export type { GpuUndistortionResult } from '../geometry/gpu/pair-estimation.ts';
+export { verifyImagePairGpu } from '../geometry/gpu/image-pair.ts';
 /** Normalized camera coordinates of a pixel, radial distortion inverted (for guided matching). */
 export { unprojectPixel } from '../geometry/camera.ts';
-export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
+export type { GpuImagePairOptions, GpuImagePairVerification } from '../geometry/gpu/image-pair.ts';
 export {
   extractFeaturesGpu,
   extractFeaturesGpuPyramidResident,
   extractFeaturesGpuResident,
   matchFeaturesGpu,
   matchResidentFeaturesGpu,
-} from './features.ts';
+} from '../features/gpu/features.ts';
 export type {
   GpuFeatureExecution,
   GpuFeatureOptions,
   GpuFeatures,
   GpuFeatureMatches,
   GpuResidentFeatures,
-} from './features.ts';
+} from '../features/gpu/features.ts';
 
-export { reconstructDenseGpu } from './mvs.ts';
+export { reconstructDenseGpu } from '../mvs/gpu/mvs.ts';
 export type {
   GpuDenseOptions,
   GpuDenseDepthDiagnostic,
@@ -149,13 +166,13 @@ export type {
   MvsImage,
   TsdfOptions,
   TsdfReport,
-} from './mvs.ts';
+} from '../mvs/gpu/mvs.ts';
 export {
   cleanDenseCloudGpu,
   meanNeighbourDistancesGpu,
   removeStatisticalOutliersGpu,
   voxelDownsampleGpu,
-} from './cloud-clean.ts';
+} from '../mvs/gpu/cloud-clean.ts';
 export type {
   CleanCloud,
   DenseCleanOptions,
@@ -165,29 +182,29 @@ export type {
   OutlierResult,
   VoxelOptions,
   VoxelResult,
-} from '../reconstruction/cloud-clean.ts';
-export { meshDenseCloudGpu } from './dense-mesh.ts';
+} from '../mvs/cloud-clean.ts';
+export { meshDenseCloudGpu } from '../mvs/gpu/dense-mesh.ts';
+export type { DenseMesh, DenseMeshResult, MeshOptions, MeshReport } from '../mvs/dense-mesh.ts';
 export type {
-  DenseMesh,
-  DenseMeshResult,
-  MeshOptions,
-  MeshReport,
-} from '../reconstruction/dense-mesh.ts';
-export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
+  MvsScene,
+  MvsSceneLandmark,
+  MvsSceneView,
+  MvsViewOptions,
+} from '../mvs/gpu/mvs-views.ts';
 export type {
   MvsDepthResidency,
   MvsFusionResidency,
   MvsResidency,
   MvsResidencyMode,
-} from './mvs-residency.ts';
+} from '../mvs/gpu/mvs-residency.ts';
 
-export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';
+export { extractFeaturesTiledGpu, featureTileRegions } from '../features/gpu/tiled-features.ts';
 export type {
   GpuImageSource,
   ImageRegion,
   GpuTiledFeatureOptions,
   GpuTiledFeatures,
-} from './tiled-features.ts';
+} from '../features/gpu/tiled-features.ts';
 export {
   BAG_OF_WORDS_VOCABULARY_ID,
   BAG_OF_WORDS_WORDS,
@@ -205,12 +222,15 @@ export {
   vladDescriptorReference,
   vladFromWords,
   wordHistogram,
-} from './global-descriptor.ts';
-export type { GlobalDescriptorKind, GlobalDescriptorOptions } from './global-descriptor.ts';
+} from '../features/gpu/global-descriptor.ts';
+export type {
+  GlobalDescriptorKind,
+  GlobalDescriptorOptions,
+} from '../features/gpu/global-descriptor.ts';
 export {
   assignWordsGpu,
   bagOfWordsDescriptorGpu,
   globalDescriptorGpu,
   vladDescriptorGpu,
-} from './global-descriptor-gpu.ts';
-export type { GlobalAssignOptions } from './global-descriptor-gpu.ts';
+} from '../features/gpu/global-descriptor-gpu.ts';
+export type { GlobalAssignOptions } from '../features/gpu/global-descriptor-gpu.ts';

@@ -34,9 +34,9 @@ if (!options.has('--baseline')) throw new Error(usage);
 const baseline = resolve(options.get('--baseline')),
   sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex'),
   sourceFiles = [
-    'src/reconstruction/inverse-depth-bundle.ts',
-    'src/reconstruction/sparse-schur.ts',
-    'src/reconstruction/bundle-adjustment.ts',
+    'src/sfm/depth/inverse-depth-bundle.ts',
+    'src/sfm/depth/sparse-schur.ts',
+    'src/sfm/bundle/bundle-adjustment.ts',
     'src/geometry/inverse-depth.ts',
     'src/geometry/pose.ts',
     'src/geometry/camera.ts',

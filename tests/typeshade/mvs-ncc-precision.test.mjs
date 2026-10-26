@@ -29,7 +29,7 @@ async function compiler() {
 
 test('sample-centered NCC resolves aligned bright low-contrast texture in f32', async () => {
   const c = await compiler(),
-    source = await readFile(new URL('../../src/gpu/mvs.shade.ts', import.meta.url), 'utf8'),
+    source = await readFile(new URL('../../src/mvs/gpu/mvs.shade.ts', import.meta.url), 'utf8'),
     parsed = c.compile(source),
     rows = [];
   for (const precision of ['f64', 'f32']) {

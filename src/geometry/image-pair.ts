@@ -7,7 +7,7 @@ import {
   type TrialHypotheses,
   type TwoViewOptions,
   type TwoViewResult,
-} from '../sfm/two-view.ts';
+} from './two-view.ts';
 
 export interface ImagePairOptions extends TwoViewOptions {
   /** Symmetric transfer threshold in ideal pixels. Default: maxReprojectionErrorPx (4). */

@@ -60,7 +60,7 @@ front end and a CPU oracle:
 | Pair verification kernels (E, H, relative pose)                              | Kept; moved to f32 with normalized coordinates when the precision gate passes.           |
 | P3P, triangulation, Schur/PCG BA kernels                                     | Kept as algorithms; rewritten to bind the resident scene and f32 arrays.                 |
 | Corner detector and patch descriptor (`features.shade.ts`, `float-matching`) | Retired from the pipeline once SIFT registers the lab sample; the matching kernel stays. |
-| `incrementalSteps`, `IncrementalSfmSession`, `src/gpu/mapper.ts`             | Replaced by the scene state machine. The CPU generator stays as the oracle driver.       |
+| `incrementalSteps`, `IncrementalSfmSession`, `src/sfm/gpu/mapper.ts`             | Replaced by the scene state machine. The CPU generator stays as the oracle driver.       |
 | Lab, run records, COLMAP sample, dataset harness                             | Kept. They are the gates.                                                                |
 | Public API (`compile`-side types, `Scene`, diagnostics)                      | Kept in shape; versioned when a field changes.                                           |
 
@@ -78,7 +78,7 @@ front end and a CPU oracle:
 
 1. Finish the lab measurement work in flight (#27, #28, #29, #30): it is the
    instrument.
-2. GPU SIFT (`src/gpu/sift.shade.ts`, `sift.ts`), with the lab's photo button as the
+2. GPU SIFT (`src/features/gpu/sift.shade.ts`, `sift.ts`), with the lab's photo button as the
    gate. The mapper is unchanged in this step.
 3. Scene engine, steps 1 to 4 of `docs/gpu-resident-scene.md`, in f32 with
    normalized coordinates from the start; the oracle comparison on the SIFT

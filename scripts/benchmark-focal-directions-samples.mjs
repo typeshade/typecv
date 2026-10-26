@@ -97,16 +97,16 @@ cases.push({
   controls: { ...LAB, focalSearch: true, refineSharedFocal: true },
 });
 const sourcePaths = [
-    'src/reconstruction/mapper.ts',
-    'src/reconstruction/focal-search.ts',
-    'src/reconstruction/directional-tracks.ts',
-    'src/reconstruction/bundle-directions.ts',
-    'src/reconstruction/bundle-adjustment.ts',
-    'src/reconstruction/joint-focal.ts',
-    'src/reconstruction/tracking.ts',
+    'src/sfm/mapper/mapper.ts',
+    'src/sfm/focal/focal-search.ts',
+    'src/sfm/bundle/directional-tracks.ts',
+    'src/sfm/bundle/bundle-directions.ts',
+    'src/sfm/bundle/bundle-adjustment.ts',
+    'src/sfm/bundle/joint-focal.ts',
+    'src/sfm/tracks/tracking.ts',
     'src/geometry/rotation.ts',
-    'src/sfm/two-view.ts',
-    'src/sfm/refinement.ts',
+    'src/geometry/two-view.ts',
+    'src/geometry/refinement.ts',
   ],
   hashes = (dir, paths) =>
     Object.fromEntries(

@@ -414,7 +414,7 @@ fences, and each fence drains the GPU's queue. On the owner's Windows GPU (lab
 record `20261020012028865-b2ca931e`) pair verification ran 90 timed chunks, the
 longest 4.1 ms, and the fences cost more than the work. The device keeps the rate
 of a key for its life, so `ShadeDevice` times the first `chunkTimingSamples`
-chunks of each key, 8 by default (`CHUNK_TIMING_SAMPLES` in `src/gpu/device.ts`).
+chunks of each key, 8 by default (`CHUNK_TIMING_SAMPLES` in `src/device/gpu/device.ts`).
 A later chunk of the key is still a plan of its own, but `planSteps` runs it as an
 ordinary plan: no fence, and no update of the rate. With bounded submissions it
 keeps the one fence that every bounded plan has. `chunkRates[key].chunks` then
@@ -478,7 +478,7 @@ only its row appends, null solve and finish are indirect.
 So the host reads nothing between the kernels of a batch, and between batches
 only the scheduling word. `snapshotPairModelBudget` copies the adaptive budget
 into it, and the host reads it after every fourth batch of a search
-(`PROGRESS_INTERVAL` in `src/gpu/pair-estimation.ts`). The host bounds the loop
+(`PROGRESS_INTERVAL` in `src/geometry/gpu/pair-estimation.ts`). The host bounds the loop
 by the requested maximum, as before, and by the budget it read last. At most
 three batches past the budget are submitted: each runs its three one-workgroup
 control kernels (`planPairModelBatch`, `summarizePairModelWork`,
@@ -513,7 +513,7 @@ counts are those of the state machine run once, bit for bit.
 
 ### PnP's RANSAC
 
-PnP's RANSAC (`estimatePosePnPGpu`, `src/gpu/pnp.ts`) follows the same recipe
+PnP's RANSAC (`estimatePosePnPGpu`, `src/geometry/gpu/pnp.ts`) follows the same recipe
 (`docs/gpu-geometry.md`, "PnP execution"). `selectPnP` walks a batch's trials in
 order and ignores those past the adaptive budget, so the selected pose and
 inliers are those of the sequential search for every batch size and device. A
@@ -526,7 +526,7 @@ scoring rate the device learned. The CPU tier scores 64 trials a batch.
 twelve words, and those entries dispatch indirectly. A count is 0 when the
 batch's first trial is at or past the budget. The first batch always runs.
 `snapshotPnPBudget` copies the budget into the scheduling word, and the host
-reads it after every fourth batch (`PROGRESS_INTERVAL` in `src/gpu/pnp.ts`). The
+reads it after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/pnp.ts`). The
 scoring of a batch is a chunk step of its own (key `scorePnP`, one unit a
 trial), timed only when the host knows it runs. Before this change PnP ran
 batches of 32 trials up to the requested maximum, all in one plan with no time
@@ -538,8 +538,8 @@ each LM step is a few fixed-cost dispatches.
 
 Both bundle adjustment routes run the preconditioned conjugate-gradient loop of
 each LM iteration as chunks of the time budget: the fixed-focal route
-(`bundleAdjustGpu` without `refineSharedFocal`, `src/gpu/bundle.ts`) and the
-shared-focal route (`refineSharedFocal: true`, `src/gpu/joint-focal.ts`). Each
+(`bundleAdjustGpu` without `refineSharedFocal`, `src/sfm/bundle/gpu/bundle.ts`) and the
+shared-focal route (`refineSharedFocal: true`, `src/sfm/bundle/gpu/joint-focal.ts`). Each
 route had a kernel `bundlePersistentCg` that ran the whole PCG loop of an LM
 iteration in one workgroup, up to `maxCgIterations` iterations over every point
 and camera row, in one dispatch. The shared-focal route also ran it in chunks of
@@ -601,7 +601,7 @@ every four PCG iterations with `solverCheckpoints`.
 
 ### Triangulation
 
-`triangulateTracks` (`src/gpu/triangulation.shade.ts`) runs one invocation per
+`triangulateTracks` (`src/geometry/gpu/triangulation.shade.ts`) runs one invocation per
 track, in workgroups of 16 tracks. Each invocation runs up to
 `maxPairHypotheses + 1` hypotheses, each with a Jacobi SVD of up to 160 sweeps,
 then the consensus refit and a point LM of `refinementIterations` steps. Before

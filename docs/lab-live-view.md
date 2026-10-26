@@ -303,7 +303,7 @@ message)_, so the map moves while it is refined, not only after. This changes th
 its message protocol, and the cost of each post must be measured against Rule L.3.
 
 **Step 4.** The mapper reports the 2D–3D correspondences that PnP weighs and its inlier mask
-_(new event of `src/reconstruction/mapper.ts` and `scene-mapper.ts`)_, so the 3D view shows them
+_(new event of `src/sfm/mapper/mapper.ts` and `scene-mapper.ts`)_, so the 3D view shows them
 before a camera registers, and shows them for a frame that fails to register. This changes the
 library's API and follows `docs/design-rules.md`.
 
