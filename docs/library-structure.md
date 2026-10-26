@@ -1,8 +1,9 @@
 # TypeCV library structure and the refactoring programme: proposal
 
-Status: proposed, 2026-10-26. This document decides nothing until the owner accepts it. An
-accepted version becomes the record that every refactoring pull request cites. It changes no
-code and no behaviour. Labels: **Fact** (read in the code, a document or a measurement),
+Status: accepted, 2026-10-26 (the owner's go-ahead in the session, #241). This document is the
+record that every refactoring pull request cites. Section 7 records the disposition of each
+decision. An open item is decided before the phase that needs it. It changes no code and no
+behaviour. Labels: **Fact** (read in the code, a document or a measurement),
 **Inference** (reasoned from facts), **Proposal** (a choice this document asks the owner to make).
 
 Evidence: three audit records of 2026-10-26.
@@ -467,18 +468,30 @@ Not gaps (**Fact**, from the kernel audit's probes and rules):
 esbuild bundle check confirms the import. Device-resident hashing and an on-device sort are gaps
 that remove no lines today and are not asked for.
 
-## 7. Decisions for the owner
+## 7. Decisions
+
+The owner's go-ahead of 2026-10-26 fixes each item at the choice this document proposes. An
+item without a proposed choice stays open until the phase that needs it, and its decision is
+recorded here by amendment.
 
 1. **The areas and their names** (section 3.1). Which directories and entry point names, and do
    `sfm` and `mvs` sit as two areas or under one `reconstruction`?
+   **Decision (2026-10-26).** Decided: the directories and entry point names of the table in section
+   3.1; `sfm` and `mvs` are two areas.
 2. **White-box tests.** May the structure pull requests rewrite the tests that depend on internal
    names and source text (`dense-gpu-mode-worker.test.mjs`, `working-budget.test.mjs`), keeping
    what they check?
+   **Decision (2026-10-26).** Decided: yes. The structure pull requests rewrite the two tests and
+   keep what they check.
 3. **Which mapper survives:** converge on `sceneSteps` (the R03 path) and retire
    `incrementalSteps`, or keep both until R03 lands? Phase 8a needs this.
+   **Decision (2026-10-26).** Decided: converge on `sceneSteps`. `incrementalSteps` stays until
+   parity (phase 8a) and retires with R03.
 4. **Where the lab's stage modules and the lab preset live:** in a library area (so scripts and
    Node tests share them) or in `website/src/lib/`? Phases 2 and 8b need this. **Inference.** The
    placement changes no record, since phase 2's gate holds the record's `options` identical.
+   **Decision (2026-10-26).** Decided: the modules a script needs go to a library area; a module
+   that only the page needs stays in `website/src/lib/`.
 5. **Behaviour differences found by the audits**, each its own pull request if fixed:
    - the component driver's error rule;
    - `finalBundleIterations` 25 against 8, and stall 1e-4 against 1e-9;
@@ -491,16 +504,25 @@ that remove no lines today and are not asked for.
    - two devices in one worker after a single-video run;
    - the session's pair-verification seed rewrite;
    - the GPU refusal of focal groups (`gpu/bundle.ts:1037-1041`).
+
+   **Decision (2026-10-26).** Open. Each difference gets its own record and pull request when its
+   phase reaches it. The structure phases keep today's behaviour (rule 1).
 6. **Code without a product caller:** `posed-evidence.ts` (329 lines) and the observation-expansion
    family (1,692 lines, exported from `typecv/gpu`). Keep, move to `experimental/`, or delete? A
    move or a deletion of the family removes exports of `typecv/gpu` (`src/gpu/index.ts:60-73`).
    Rules 1 and 4 of section 4 and the surface gate exclude that before the next major version.
+   **Decision (2026-10-26).** Open. Until decided, both move with their area and keep their exports
+   (rules 1 and 4).
 7. **Compiler changes** (section 6): which to open as TypeShade proposals now.
+   **Decision (2026-10-26).** Decided: C1, C2, C3 with C8, C6 and C7 open first as TypeShade
+   proposals, and C9 as an issue. The others open when a phase needs them.
 8. **Freeze or sequence.** Functional work on the files of a phase stops while the phase is open,
    or follows it.
+   **Decision (2026-10-26).** Open. Decided before phase 1 opens.
 9. **The front end (`design-rules.md` §4) and the package path (§5.1):** decided separately, or
    together with the area entry points of phase 10? The `typecv/<area>` names of section 3.1
    presuppose the path `typecv`.
+   **Decision (2026-10-26).** Open. Decided with the go-ahead of phase 10's entry points.
 10. **Floating-point reductions as kernel reductions** (the observation summary, the BA metrics,
     the PnP and consensus scores). **Inference.** The CPU tier and WebGPU would then agree bit for
     bit. Today's numbers and the recorded digests (`PREVIOUS_RESULTS` of the pair-batch and
@@ -508,13 +530,18 @@ that remove no lines today and are not asked for.
     behaviour change under Rule 2.2, not proposed here. The same decision covers deleting the 18
     oracle twins after C2, which renews the CPU digests once. Phase 10 deletes them only if this
     item is decided yes.
+    **Decision (2026-10-26).** Decided: not now. The reductions and the oracle twins stay; a later
+    record may propose the change.
 11. **The hardware gate of the kernel phases.** Phases 9 and 10 need a run on the RTX 5060 Ti
     while A1 is open, and CI has no such device. Who runs it, and on which samples? R02 asks for
     runs on the same device.
+    **Decision (2026-10-26).** Open. Decided before phase 9's first step: who runs it, and on which
+    samples.
 12. **`EpipolarSession`**, the only kernel-function path today, called by tests and one
     benchmark: public or not? Making it non-public removes an export of `typecv/gpu`
     (`src/gpu/index.ts:102`), which waits for the next major version. **The four test-only
     triangulation entries:** removed in phase 10, or kept with a reason?
+    **Decision (2026-10-26).** Open. Decided before phase 10's steps after R03.
 13. **(a) The build and packaging change** (section 2, the build split; section 3.1; phase 1a).
     The build selects `gpu/` subdirectories instead of `src/gpu` alone, and five configuration
     files change. The `dist/` file list changes by the moved paths, and the surface bake holds
@@ -523,24 +550,34 @@ that remove no lines today and are not asked for.
       (proposed; the boundary that `architecture.md` describes today); or
     - `typecv/<area>` is an entry of the GPU bundle that exports the whole area, beside the
       CPU-only root. This form is closer to the "one entry point per area" of `engine-v2.md`.
+
+    **Decision (2026-10-26).** Decided: the first form. `typecv/<area>` exports the CPU half and
+    `typecv/gpu` keeps the GPU half; phase 1a changes the five configuration files.
 14. **(b) Amend `engine-v2.md` for the shared scan?** `engine-v2.md` keeps the shared scan and the
     partial reductions as the device layer. The resident scene derives its CSR orders and
     compaction from that scan. Phase 10 converts only the hand-written compactions. Retiring
     `scan.shade.ts` for `push` needs this amendment.
+    **Decision (2026-10-26).** Open. Needed only to retire `scan.shade.ts`; phase 10's C3 step
+    converts the hand-written compactions without it.
 15. **(c) `src/gpu/internal.ts`:** keep Amendment 6 of `multi-video.md`, or close `internal.ts`?
     The default keeps it: `internal.ts` stays, and the moved stage modules are exported from it
     only. Closing it makes its symbols public or changes the tests, scripts and pages that import
     it.
+    **Decision (2026-10-26).** Decided: keep Amendment 6. `internal.ts` stays.
 16. **(d) The resident-scene protocol in phase 8a.** Moving the BA subset policy into the mapper
     changes the `bundle` request of `gpu-resident-scene.md`. The mapper would decide the subset,
     and the result would no longer report whether it was used. Amend that document in 8a, or keep
     the policy in the driver?
+    **Decision (2026-10-26).** Open. Decided before phase 8a.
 17. **(e) The programme against R01 to R03** (`reconstruction-status.md`) and the order of
     `engine-v2.md`: before them, after them or beside them? R01 and R02 are verification and
     measurement work. R03 changes the mapper and the GPU drivers that phases 4, 6 and 8
     restructure.
+    **Decision (2026-10-26).** Open. Phases 0 to 9 wait on none of R01 to R03 (section 2); the order
+    among them is the owner's.
 18. **(f) The registration driver** (audit lab, question 6): how much should the programme invest
     in a `registration` stage around `IncrementalSfmSession`, which `engine-v2.md` replaces?
+    **Decision (2026-10-26).** Open. Decided before phase 5b.
 
 ## 8. Verification
 
@@ -567,3 +604,5 @@ that remove no lines today and are not asked for.
 - 2026-10-26: written from the three audits of the same day; proposed (#241).
 - 2026-10-26: revised after the review of #241 (the configuration and counts, the build split,
   the layers, the phase scopes and gates, decisions 13 to 18).
+- 2026-10-26: accepted (the owner's go-ahead in the session, #241), with the dispositions of
+  section 7.
