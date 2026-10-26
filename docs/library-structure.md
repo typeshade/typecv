@@ -746,7 +746,7 @@ merge; `docs` was skipped, since the change holds code. On `c1bfe38`, `src/` hel
 table of section 3.1, and the sparse modules follow section 3.3. 21 files stay. They are the three
 barrels (`src/index.ts`, `src/gpu/index.ts` and `src/gpu/internal.ts`), the 4 files of
 `src/gpu/vocabulary/` and the 11 files already in `src/geometry/`. The two modules that phase 1c
-moves and the float-matching kernel (deviation 1) stay too. The extractions add 9 modules. A file of
+moved and the float-matching kernel (deviation 1) stay too. The extractions add 9 modules. A file of
 `src/gpu/` moved only into a `gpu/` subdirectory, and a file outside it only outside one. So no file
 changed build. #250 lists every move and its placement decisions.
 
@@ -767,7 +767,7 @@ byte for byte: 20 declarations, each checked. The old module imports what it sti
 re-exports every moved name. No signature changes.
 
 - Out of `bundle-adjustment.ts`: `validateReconstruction` to `src/sfm/bundle/validation.ts` (phase
-  1c moves it on, below). `bundleStallTolerance`, and `clone` and `metrics` with the statement that
+  1c moved it on, below). `bundleStallTolerance`, and `clone` and `metrics` with the statement that
   exports them as `cloneBundleReconstruction` and `bundleMetrics`, to
   `src/sfm/bundle/bundle-shared.ts`.
 - Out of `gpu/bundle.ts`: `bundleStallMonitor`, `cooperativeBundleSchur`, the constant
