@@ -3,15 +3,96 @@
 // points of one pass.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseTsdf } from '../../src/reconstruction/tsdf.ts';
+import { fuseTsdf, planTsdfVolume } from '../../src/reconstruction/tsdf.ts';
 import {
   TSDF_SYNTHETIC,
+  confidencePlanningInput,
   matchedShare,
   surfaceMetrics,
   tsdfInput,
   untrustedCarvingInput,
 } from './tsdf-cases.mjs';
 import { inBrowser } from './browser.mjs';
+
+test('zero-confidence remote depth preserves the trusted TSDF grid and all WebGPU point channels', async () => {
+  // fuseTsdfGpu does not expose the grid. Check its shared host planner exactly, without
+  // requiring a new public GPU API or comparing resource/timing metadata across view counts.
+  const options = { visibility: 'view-weighted' };
+  const planned = (kind) => {
+    const plan = planTsdfVolume(confidencePlanningInput(kind), options);
+    if (!plan) return undefined;
+    const { footprints, ...grid } = plan;
+    assert.ok([...footprints].every((value) => value === footprints[0]));
+    return { ...grid, trustedFootprint: footprints[0] };
+  };
+  const baselinePlan = planned('baseline');
+  assert.equal(baselinePlan.samples, 64);
+  assert.equal(baselinePlan.voxel, Math.fround(0.004));
+  assert.equal(baselinePlan.keys, 903);
+  assert.deepEqual(planned('remote-zero-confidence'), baselinePlan);
+  assert.deepEqual(planned('remote-zero-depth'), baselinePlan);
+  assert.equal(planned('all-zero-confidence'), undefined);
+
+  const { result, errors } = await inBrowser(async () => {
+    const api = await import('/dist/internal/gpu.js');
+    const { confidencePlanningCase } = await import('/tests/typeshade/tsdf-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('WebGPU adapter unavailable');
+    const gpu = await adapter.requestDevice();
+    const validation = [],
+      uncaptured = [],
+      lost = [];
+    gpu.addEventListener('uncapturederror', (event) => uncaptured.push(event.error.message));
+    const settledLoss = gpu.lost.then((info) => {
+      if (info.reason !== 'destroyed') lost.push({ reason: info.reason, message: info.message });
+    });
+    gpu.pushErrorScope('out-of-memory');
+    gpu.pushErrorScope('internal');
+    gpu.pushErrorScope('validation');
+    try {
+      const result = await confidencePlanningCase(api, 'webgpu', gpu);
+      await gpu.queue.onSubmittedWorkDone();
+      return { ...result, validation, uncaptured, lost };
+    } finally {
+      try {
+        for (const scope of ['validation', 'internal', 'out-of-memory']) {
+          const error = await gpu.popErrorScope();
+          if (error) validation.push({ scope, message: error.message });
+        }
+      } finally {
+        gpu.destroy();
+        await settledLoss;
+      }
+    }
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.validation, []);
+  assert.deepEqual(result.uncaptured, []);
+  assert.deepEqual(result.lost, []);
+  assert.equal(result.backend, 'webgpu');
+  assert.deepEqual(
+    result.runs.map((run) => run.kind),
+    ['baseline', 'remote-zero-confidence', 'remote-zero-depth', 'all-zero-confidence'],
+  );
+  const [baseline, unsupported, absent, empty] = result.runs;
+  assert.equal(baseline.points.count, 16);
+  assert.equal(baseline.volume.voxel, baselinePlan.voxel);
+  assert.ok(baseline.volume.blocks > 0);
+  for (const run of [unsupported, absent]) {
+    assert.deepEqual(run.volume, baseline.volume, run.kind);
+    assert.deepEqual(run.points, baseline.points, run.kind);
+  }
+  assert.equal(empty.points.count, 0);
+  for (const [key, value] of Object.entries(empty.points))
+    if (key !== 'count') assert.deepEqual(value, [], key);
+  assert.equal(empty.volume.voxel, 0);
+  assert.equal(empty.volume.blocks, 0);
+  for (const run of result.runs) {
+    assert.equal(run.inputArraysUnchanged, true, run.kind);
+    assert.equal(run.liveBytes, 0, run.kind);
+    assert.equal(run.liveBuffers, 0, run.kind);
+  }
+});
 
 test('view-weighted visibility preserves weakly contradicted surfaces on WebGPU', async () => {
   const { result: r, errors } = await inBrowser(async () => {

@@ -31,6 +31,106 @@ export const TSDF_SYNTHETIC = { voxelScale: 1, truncation: 4 };
 /** The floater's patch: 16 × 16 pixels of view 0, and the factor of its depth. */
 export const FLOATER = { view: 0, x0: 40, y0: 30, size: 16, factor: 0.7 };
 
+/** A remote zero-confidence depth must not coarsen or translate this trusted 8 × 8 plane. */
+export function confidencePlanningInput(kind = 'baseline') {
+  const width = 8,
+    pixels = width * width;
+  const plane = () => ({
+    rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    center: [0, 0, 0],
+    fx: 1000,
+    fy: 1000,
+    cx: 3.5,
+    cy: 3.5,
+    depth: new Float32Array(pixels).fill(2),
+    normal: new Uint32Array(pixels).fill(encodeNormal([0, 0, -1])),
+    confidence: new Float32Array(pixels).fill(1),
+    rgba: new Uint32Array(pixels).fill(0xff808080),
+  });
+  const trusted = plane();
+  if (kind === 'all-zero-confidence') trusted.confidence.fill(0);
+  const views = [trusted];
+  if (kind === 'remote-zero-confidence' || kind === 'remote-zero-depth') {
+    const remote = plane();
+    remote.center = [1000, 1000, 0];
+    remote.depth.fill(0);
+    if (kind === 'remote-zero-confidence') {
+      remote.depth[36] = 2;
+      remote.confidence.fill(0);
+    }
+    views.push(remote);
+  } else if (kind !== 'baseline' && kind !== 'all-zero-confidence') {
+    throw new TypeError(`Unknown confidence planning case: ${kind}`);
+  }
+  return { width, height: width, views };
+}
+
+/** Same physical input/outputs for the CPU planner and actual WebGPU regression. */
+export async function confidencePlanningCase({ ShadeDevice, fuseTsdfGpu }, backend, gpuDevice) {
+  const device = await ShadeDevice.open({ backend, gpuDevice, poolBytes: 0 });
+  const options = { visibility: 'view-weighted' };
+  const channels = ['positions', 'normals', 'colors', 'weights', 'free', 'freeWeights', 'tallies'];
+  const sourceBytes = (input) =>
+    input.views.flatMap((view) =>
+      ['depth', 'normal', 'confidence', 'rgba'].map((key) =>
+        Array.from(new Uint8Array(view[key].buffer, view[key].byteOffset, view[key].byteLength)),
+      ),
+    );
+  const canonical = (points) => {
+    const values = (i) => [
+      ...points.positions.subarray(3 * i, 3 * i + 3),
+      ...channels.slice(1).map((key) => points[key][i]),
+    ];
+    const order = Array.from({ length: points.count }, (_, i) => i).sort((a, b) => {
+      const va = values(a),
+        vb = values(b);
+      for (let k = 0; k < va.length; k++) if (va[k] !== vb[k]) return va[k] - vb[k];
+      return 0;
+    });
+    return {
+      count: points.count,
+      ...Object.fromEntries(
+        channels.map((key) => [
+          key,
+          order.flatMap((i) =>
+            key === 'positions'
+              ? Array.from(points.positions.subarray(3 * i, 3 * i + 3))
+              : [points[key][i]],
+          ),
+        ]),
+      ),
+    };
+  };
+  try {
+    const runs = [];
+    for (const kind of [
+      'baseline',
+      'remote-zero-confidence',
+      'remote-zero-depth',
+      'all-zero-confidence',
+    ]) {
+      const input = confidencePlanningInput(kind);
+      const before = sourceBytes(input);
+      const points = await fuseTsdfGpu(device, input, options);
+      runs.push({
+        kind,
+        points: canonical(points),
+        volume: {
+          voxel: points.tsdf.voxel,
+          levels: points.tsdf.levels,
+          blocks: points.tsdf.blocks,
+        },
+        inputArraysUnchanged: JSON.stringify(before) === JSON.stringify(sourceBytes(input)),
+        liveBytes: device.statistics.liveBytes,
+        liveBuffers: device.statistics.liveBuffers,
+      });
+    }
+    return { runs, backend: device.backend };
+  } finally {
+    await device.dispose();
+  }
+}
+
 /**
  * A plane at z = 2 seen twice. Two additional views can have an erroneous, farther patch
  * whose integration weight is zero: zero confidence, grazing normal, or rounding to zero.
