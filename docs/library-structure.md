@@ -689,3 +689,5 @@ recorded here by amendment.
   the layers, the phase scopes and gates, decisions 13 to 18).
 - 2026-10-26: accepted (the owner's go-ahead in the session, #241), with the dispositions of
   section 7.
+- 2026-10-26: amendment 1 (TypeShade proposals 0090 to 0092 accepted, issue #761, the kernel
+  alias, the Node-major binding of the digests, the container's Chromium), pull request #244.
