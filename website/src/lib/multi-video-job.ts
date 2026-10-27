@@ -8,6 +8,7 @@
  */
 import { packLandmarks, type PackedScene } from './sfm-scene.ts';
 import { PhaseGate } from './keyframe-gate.ts';
+import { tooFewFeatures } from './lab-features.ts';
 import {
   createDenseJob,
   denseFailure,
@@ -357,7 +358,7 @@ export class MultiVideoJob {
     this.stageGpuMs.features += (this.gpuNs() - g0) / 1e6;
     this.featureCalls++;
     try {
-      if (sift.count < 8) {
+      if (tooFewFeatures(sift.count)) {
         video.gate.discard();
         video.skipped++;
         done({ keyframe: false, skipped: 'Too few detected features' });
@@ -762,7 +763,10 @@ export class MultiVideoJob {
     }
   }
 
-  /** The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in `run-record.ts`). */
+  /**
+   * The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in
+   * `run-record/assemble.ts`).
+   */
   gpuFields(device: any = this.device): { gpuKernels: unknown[]; gpuDropped: number } {
     try {
       const { rows, dropped } = device.kernelStatistics;

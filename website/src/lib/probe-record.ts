@@ -1,3 +1,5 @@
+import { count, finite, text } from './run-record/validate.ts';
+
 /**
  * A probe record is the result of the triangulation probe of `/lab/probe/`
  * (`website/src/workers/probe.worker.ts`, `docs/lab-run-records.md`, "Probe"): the steps it ran
@@ -130,12 +132,6 @@ export interface ProbeRecord {
   readonly steps: readonly ProbeStep[];
 }
 
-const finite = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
-const count = (value: unknown): value is number =>
-  Number.isSafeInteger(value) && (value as number) >= 0;
-const text = (value: unknown, max: number): value is string =>
-  typeof value === 'string' && value.length <= max;
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const orNull =

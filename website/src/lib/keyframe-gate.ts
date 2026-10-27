@@ -21,6 +21,9 @@
  * 5. When the correlation peak is weak (`minRatio`, a ratio of 20), the translation says nothing: the frame goes
  *    on to SIFT and the legacy rule decides.
  *
+ * The SfM worker also applies two rules of its own, which this module names: the legacy rule
+ * (`legacyGateSkips`) and the track gate of `?kltGate=1` (`trackGateDecision`).
+ *
  * This module has no DOM and no worker globals, so a unit test runs it in Node.
  */
 import {
@@ -132,4 +135,68 @@ export class PhaseGate {
   discard(): void {
     this.candidate = undefined;
   }
+}
+
+/**
+ * The analysis width at which `keyframeMinMotionPx` holds. A frame `width` pixels wide scales it
+ * by `width / MOTION_REFERENCE_WIDTH`: 8 px at 640 px is 16 px at 1280 px.
+ */
+export const MOTION_REFERENCE_WIDTH = 640;
+
+/** The motion threshold in pixels for a frame `width` pixels wide (`minMotionPx` at 640 px). */
+export function scaledMotionThresholdPx(minMotionPx: number, width: number): number {
+  return (minMotionPx * width) / MOTION_REFERENCE_WIDTH;
+}
+
+/** The legacy rule judges a pair with at least this many match entries (8 matches). */
+export const LEGACY_GATE_MIN_MATCH_ENTRIES = 16;
+
+/** The worker's keyframe numbers that the legacy and track rules read (`LAB_OPTIONS`). */
+export type KeyframeMotionOptions = {
+  /** Pixels at 640 px. */
+  readonly keyframeMinMotionPx: number;
+  /** Seconds. */
+  readonly keyframeMaxGapSeconds: number;
+};
+
+/**
+ * The legacy rule (`?gate=legacy`, or a weak peak of the phase gate): true when the frame is not a
+ * keyframe. Three conditions hold together. The pair with the last keyframe has at least
+ * `LEGACY_GATE_MIN_MATCH_ENTRIES` match entries. The median motion of its matches is under the
+ * scaled threshold. Less than `keyframeMaxGapSeconds` have passed since the last keyframe.
+ */
+export function legacyGateSkips(
+  matchEntries: number,
+  motionPx: number,
+  gapSeconds: number,
+  width: number,
+  options: KeyframeMotionOptions,
+): boolean {
+  return (
+    matchEntries >= LEGACY_GATE_MIN_MATCH_ENTRIES &&
+    motionPx < scaledMotionThresholdPx(options.keyframeMinMotionPx, width) &&
+    gapSeconds < options.keyframeMaxGapSeconds
+  );
+}
+
+/** The decision of the track gate: skip the frame, keep it, or leave it to the legacy rule. */
+export type TrackGateDecision = 'skip' | 'keep' | 'undecided';
+
+/**
+ * The track gate (`?kltGate=1`, `docs/klt-tracking.md` 3.6), from the median displacement of the
+ * tracks since the last keyframe (`medianTrackDisplacement` of `klt-join.ts`). A median that is
+ * not finite (too few common tracks) decides nothing. Under the scaled threshold, and with less
+ * than `keyframeMaxGapSeconds` since the last keyframe, the frame is skipped. Otherwise it is kept.
+ */
+export function trackGateDecision(
+  medianPx: number,
+  gapSeconds: number,
+  width: number,
+  options: KeyframeMotionOptions,
+): TrackGateDecision {
+  if (!Number.isFinite(medianPx)) return 'undecided';
+  return medianPx < scaledMotionThresholdPx(options.keyframeMinMotionPx, width) &&
+    gapSeconds < options.keyframeMaxGapSeconds
+    ? 'skip'
+    : 'keep';
 }

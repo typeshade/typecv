@@ -10,8 +10,11 @@ the owner's devices, with the remedy of each observation.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v6`) and its
-validator. One record is one run, completed or failed:
+`website/src/lib/run-record/` defines the record (`typecv-run-record-v6`) and its validator:
+`schema.ts` holds the format and its types, `validate.ts` the validator, `assemble.ts` the
+builders of its fields and `summary.ts` the lines the page shows. The barrel
+`website/src/lib/run-record.ts` exports them. The page builds a record with
+`run-record/page.ts`. One record is one run, completed or failed:
 
 | Field       | Content                                                                                                                                                                               |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

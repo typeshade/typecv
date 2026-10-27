@@ -1,14 +1,31 @@
 /// <reference lib="webworker" />
-import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate.ts';
-import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching.ts';
 import {
-  KLT_COVER_MATCHES,
+  PhaseGate,
+  legacyGateSkips,
+  trackGateDecision,
+  type KeyframeGateMode,
+} from '../lib/keyframe-gate.ts';
+import {
+  guideEssential,
+  guideEssentialOptions,
+  guidedMatchingRuns,
+  preferGuided,
+} from '../lib/guided-matching.ts';
+import {
   mergeTrackerPairs,
   medianTrackDisplacement,
   trackAnchor,
   trackerVerdicts,
   type TrackerPair,
 } from '../lib/klt-join.ts';
+import { tooFewFeatures } from '../lib/lab-features.ts';
+import {
+  admitsPair,
+  admitsPrecomputedPair,
+  retainedFeatureIds,
+  retainedReferences,
+  tracksCoverPair,
+} from '../lib/lab-matching.ts';
 import type { DenseQualityOptions } from '../lib/dense-quality.ts';
 import type { KltSetup } from '../lib/sift-quality.ts';
 import {
@@ -824,9 +841,9 @@ async function processFrame(frame: Frame) {
     if (active.lastKeyframe && klt.anchor) {
       const { median, tracks } = medianTrackDisplacement(klt.anchor, klt.tracker.tracks()),
         gap = frame.time - active.lastKeyframe.time,
-        scaledMinimum = (LAB_OPTIONS.keyframeMinMotionPx * frame.width) / 640;
-      if (Number.isFinite(median)) {
-        if (median < scaledMinimum && gap < LAB_OPTIONS.keyframeMaxGapSeconds) {
+        decision = trackGateDecision(median, gap, frame.width, LAB_OPTIONS);
+      if (decision !== 'undecided') {
+        if (decision === 'skip') {
           active.skippedFrames++;
           post({
             type: 'frameComplete',
@@ -892,7 +909,7 @@ async function processFrame(frame: Frame) {
   });
   active.featureCounts.push(handle.count);
   post({ type: 'features', frameId: frame.id, time: frame.time, points });
-  if (handle.count < 8) {
+  if (tooFewFeatures(handle.count)) {
     await handle.dispose();
     await kltPush(api, frame, rgba);
     active.dense?.rgba.delete(frame.id);
@@ -932,7 +949,7 @@ async function processFrame(frame: Frame) {
       points,
       previous.map((other) => other.frame.id),
     );
-    for (const t of early) if (t.matches.length / 2 >= KLT_COVER_MATCHES) covered.add(t.first);
+    for (const t of early) if (tracksCoverPair(t.matches.length)) covered.add(t.first);
   }
   for (const other of previous) {
     if (covered.has(other.frame.id)) {
@@ -965,13 +982,8 @@ async function processFrame(frame: Frame) {
     });
     if (legacyRule && other === last && active.lastKeyframe) {
       const motion = medianMotionPx(matched.matches, other.points, other.frame, points, frame),
-        gap = frame.time - active.lastKeyframe.time,
-        scaledMinimum = (LAB_OPTIONS.keyframeMinMotionPx * frame.width) / 640;
-      if (
-        matched.matches.length >= 16 &&
-        motion < scaledMinimum &&
-        gap < LAB_OPTIONS.keyframeMaxGapSeconds
-      ) {
+        gap = frame.time - active.lastKeyframe.time;
+      if (legacyGateSkips(matched.matches.length, motion, gap, frame.width, LAB_OPTIONS)) {
         active.features.delete(frame.id);
         await handle.dispose();
         await kltPush(api, frame, rgba);
@@ -996,7 +1008,7 @@ async function processFrame(frame: Frame) {
         return;
       }
     }
-    if (sift && active.options.guidedMatching && matched.matches.length >= 16) {
+    if (guidedMatchingRuns(sift, active.options.guidedMatching, matched.matches.length)) {
       const guidedStarted = performance.now();
       active.operation = 'guided matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
       const guided = await guidedMatches(api, other, handle, points, frame, matched);
@@ -1009,7 +1021,7 @@ async function processFrame(frame: Frame) {
         if (preferGuided(matched.matches.length, guided.matches.length)) matched = guided;
       }
     }
-    if (matched.matches.length >= 16) {
+    if (admitsPair(matched.matches.length)) {
       pairs.push({
         first: other.frame.id,
         second: frame.id,
@@ -1058,7 +1070,7 @@ async function processPrecomputedFrame(frame: Frame, started: number) {
   let last: { first: number; matches: Uint32Array } | undefined;
   for (const pair of given) {
     const other = active.features.get(pair.first);
-    if (!other || pair.matches.length < 32) continue;
+    if (!other || !admitsPrecomputedPair(pair.matches.length)) continue;
     pairs.push({ first: pair.first, second: frame.id, matches: pair.matches });
     active.matchedPairs++;
     if (!last || pair.first > last.first) last = pair;
@@ -1208,12 +1220,9 @@ async function guidedMatches(
 /** Hand the frame and its verified-candidate pairs to the session and report the keyframe. */
 async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], started: number) {
   const active = job!;
-  active.references = active.references.filter((id) => active.features.has(id));
-  const reference = active.features.get(active.references.at(-1) ?? -1);
-  if (!reference || frame.time - reference.frame.time >= 0.5) active.references.push(frame.id);
   // Keep a long-baseline first reference, two recent reference images and three adjacent frames.
-  if (active.references.length > 3) active.references.splice(1, active.references.length - 3);
-  const keepFeatures = new Set([...active.references, ...[...active.features.keys()].slice(-3)]);
+  active.references = retainedReferences(active.references, active.features, frame);
+  const keepFeatures = retainedFeatureIds(active.references, active.features.keys());
   for (const [id, feature] of active.features)
     if (!keepFeatures.has(id) && feature.handle) {
       await feature.handle.dispose();

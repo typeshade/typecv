@@ -1,24 +1,26 @@
-// The page module of the lab, `src/components/SfmLab.tsx`, for the baselines of phase 0
-// (`docs/library-structure.md`, section 5): the record builders `buildRunRecord` and
-// `buildMultiRunRecord`, and the page's query helpers. They are module functions that the page
-// does not export. So the test bundles the module with one added export line and evaluates it
-// in a `vm` realm whose browser globals are the fixed `ENVIRONMENT`. The product code is not
-// changed.
+// The page module of the lab for the baselines of phase 0 (`docs/library-structure.md`, section
+// 5): the record builders `buildRunRecord` and `buildMultiRunRecord`, and the page's query
+// helpers.
 //
-// Phase 3 moves the builders to `run-record/assemble.ts` with an `environment` argument, and
-// phase 7 replaces the query helpers with `run-options`. Then this file imports those modules
-// instead, and the tests that use it keep their fixtures.
+// The builders are in `src/lib/run-record/page.ts` since phase 3, with the browser globals as
+// their `environment` argument. This file passes them the fixed `ENVIRONMENT`. Before phase 3 they
+// were module functions of `src/components/SfmLab.tsx` that read these globals from the page's
+// realm.
+//
+// The query helpers are module functions of `src/components/SfmLab.tsx` that the page does not
+// export. So the test bundles the module with one added export line and evaluates it in a `vm`
+// realm. The product code is not changed. Phase 7 replaces the query helpers with `run-options`.
+// Then this file imports that module instead, and the tests that use it keep their fixtures.
 import { readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { build } from 'esbuild';
+import { buildMultiRunRecord, buildRunRecord } from './src/lib/run-record/page.ts';
 
 const PAGE = new URL('./src/components/SfmLab.tsx', import.meta.url).pathname;
 
 /** The names the bundle adds to the module's exports. */
 export const PAGE_FUNCTIONS = [
-  'buildRunRecord',
-  'buildMultiRunRecord',
   'boundedOverride',
   'budgetOverride',
   'denseOverride',
@@ -33,7 +35,8 @@ export const PAGE_FUNCTIONS = [
 
 /**
  * The browser globals that the record builders read (`navigator`, `screen`,
- * `devicePixelRatio`). They become the record's `client` block.
+ * `devicePixelRatio`): their `environment` argument (`RunRecordEnvironment`). They become the
+ * record's `client` block.
  */
 export const ENVIRONMENT = {
   navigator: {
@@ -49,8 +52,9 @@ export const ENVIRONMENT = {
 };
 
 /**
- * Bundle and evaluate the page module. The result holds the functions of `PAGE_FUNCTIONS` and
- * `setSearch(search)`, which sets `location.search` for the query helpers.
+ * Bundle and evaluate the page module. The result holds the functions of `PAGE_FUNCTIONS`, the two
+ * record builders with `environment` as their environment, and `setSearch(search)`, which sets
+ * `location.search` for the query helpers.
  */
 export async function loadPageModule(environment = ENVIRONMENT) {
   const source = await readFile(PAGE, 'utf8');
@@ -87,6 +91,8 @@ export async function loadPageModule(environment = ENVIRONMENT) {
   const page = context.LabPage;
   return {
     ...Object.fromEntries(PAGE_FUNCTIONS.map((name) => [name, page[name]])),
+    buildRunRecord: (input) => buildRunRecord(environment, input),
+    buildMultiRunRecord: (input) => buildMultiRunRecord(environment, input),
     setSearch(search) {
       sandbox.location = { ...sandbox.location, search };
     },

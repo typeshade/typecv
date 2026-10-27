@@ -1,7 +1,8 @@
 // Phase 0 of the refactoring programme (`docs/library-structure.md`, section 5, "Baselines": the
-// golden run records): records that today's `buildRunRecord` and `buildMultiRunRecord`
-// (`src/components/SfmLab.tsx`) build from fixed inputs, compared byte for byte with
-// `tests/fixtures/lab-golden-records/`. The worker messages they read come from the transcript harness
+// golden run records): records that `buildRunRecord` and `buildMultiRunRecord` build from fixed
+// inputs (`src/lib/run-record/page.ts` since phase 3, `src/components/SfmLab.tsx` before),
+// compared byte for byte with `tests/fixtures/lab-golden-records/`. The worker messages they read
+// come from the transcript harness
 // (`lab-worker-harness.mjs`); the page's part (rows, frames, decode path, note) is written here
 // as the page assembles it.
 //
