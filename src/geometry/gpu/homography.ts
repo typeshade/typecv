@@ -1,6 +1,7 @@
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import type { GpuGeometryExecution } from './execution.ts';
 import { estimatePairGpu } from './pair-estimation.ts';
+import { HOMOGRAPHY_DEFAULTS } from '../operator-defaults.ts';
 
 export interface GpuHomographyOptions {
   readonly thresholdPx?: number;
@@ -23,15 +24,15 @@ export async function estimateHomographyGpu(
   matches: Float64Array,
   options: GpuHomographyOptions = {},
 ): Promise<GpuHomographyResult | undefined> {
-  const iterations = options.iterations ?? 500;
+  const iterations = options.iterations ?? HOMOGRAPHY_DEFAULTS.iterations;
   const unit = { fx: 1, fy: 1, cx: 0, cy: 0 };
   const result = await estimatePairGpu(device, matches, unit, unit, {
     kind: 1,
     iterations,
     minIterations: options.minIterations ?? Math.min(32, iterations),
-    threshold: options.thresholdPx ?? 2,
-    confidence: options.confidence ?? 0.999,
-    seed: options.seed ?? 17,
+    threshold: options.thresholdPx ?? HOMOGRAPHY_DEFAULTS.thresholdPx,
+    confidence: options.confidence ?? HOMOGRAPHY_DEFAULTS.confidence,
+    seed: options.seed ?? HOMOGRAPHY_DEFAULTS.seed,
     batchSize: options.batchSize,
   });
   if (result.count < 4) return undefined;

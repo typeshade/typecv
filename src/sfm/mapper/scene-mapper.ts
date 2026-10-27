@@ -48,6 +48,7 @@ import type {
   PairMatches,
   SparseReconstruction,
 } from '../../contracts/scene.ts';
+import { MAPPER_DEFAULTS, bundleHuberPx, maxErrorOfHuberPx } from '../config/defaults.ts';
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
 export interface TriangulationGroup {
@@ -387,7 +388,7 @@ export function* sceneSteps(
       iterations: steps,
       anchor: cameraOf.get(first.id)!,
       scale: cameraOf.get(second.id)!,
-      huberPx: maxError / 2,
+      huberPx: bundleHuberPx(maxError),
       variable: window ? Uint32Array.from(window, (id) => cameraOf.get(id)!) : undefined,
       subset: local && localSubset,
       refineSharedFocal,
@@ -506,7 +507,12 @@ export function* sceneSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, true);
+  yield* adjust(
+    finalBundle,
+    false,
+    options.refineSharedFocal ?? MAPPER_DEFAULTS.refineSharedFocal,
+    true,
+  );
   if (controls.depth.maxRelativeDepthStdDev) yield* filter();
   const meanReprojectionErrorPx = yield* request<number>({ kind: 'measure', maxErrorPx: maxError });
   const reconstruction = yield* request<SparseReconstruction>({ kind: 'snapshot' });
@@ -673,7 +679,7 @@ export class HostSceneDriver {
                 })).filter((o) => views.has(o.viewId)),
                 direction = fitBundleDirection(
                   observations.map((o) => ({ ...views.get(o.viewId)!, pixel: o.pixel })),
-                  2 * job.huberPx,
+                  maxErrorOfHuberPx(job.huberPx),
                 );
               return direction ? [{ trackId: g.trackId, direction, observations }] : [];
             });

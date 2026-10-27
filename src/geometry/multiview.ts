@@ -8,6 +8,7 @@ import {
   validatePose,
 } from './pose.ts';
 import { inverse3, nullspace, solveSystem } from './numerics.ts';
+import { TRIANGULATION_DEFAULTS } from './operator-defaults.ts';
 
 export interface DepthSensitivityOptions {
   /** Optional bound on linearized depth stddev / positive camera Z, conditional on fixed poses/K. */
@@ -208,9 +209,9 @@ export function triangulateTrackDetailed(
   options: TrackTriangulationOptions = {},
 ): DetailedTrackTriangulation {
   const depth = depthSensitivityControls(options);
-  const maxError = options.maxErrorPx ?? 3,
-    minAngle = options.minAngleDeg ?? 0.5,
-    maxPairs = options.maxPairHypotheses ?? 32;
+  const maxError = options.maxErrorPx ?? TRIANGULATION_DEFAULTS.maxErrorPx,
+    minAngle = options.minAngleDeg ?? TRIANGULATION_DEFAULTS.minAngleDeg,
+    maxPairs = options.maxPairHypotheses ?? TRIANGULATION_DEFAULTS.maxPairHypotheses;
   if (
     !Number.isFinite(maxError) ||
     maxError <= 0 ||

@@ -55,6 +55,7 @@ import {
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle-shared.ts';
+import { BUNDLE_DEFAULTS } from '../../config/defaults.ts';
 
 /** Matrix-free Schur PCG with a single global log-focal coordinate coupled to every pose and point. */
 export function bundleAdjustJointFocalGpu(
@@ -71,10 +72,10 @@ export function bundleAdjustJointFocalGpu(
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
   if (![C, P, M].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff))
     throw new RangeError('GPU BA scene dimensions exceed integer index bounds');
-  const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2,
+  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
+    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
     maxCg = options.maxCgIterations ?? Math.min(256, Math.max(32, C * 12 + 1)),
-    tolerance = options.cgRelativeTolerance ?? 1e-6;
+    tolerance = options.cgRelativeTolerance ?? BUNDLE_DEFAULTS.cgRelativeTolerance;
   if (
     C < 2 ||
     finitePoints < 1 ||

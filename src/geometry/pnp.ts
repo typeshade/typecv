@@ -5,6 +5,7 @@ import { observationJacobian, projectPoint, transformPoint, updatePose } from '.
 import { p3p } from './p3p.ts';
 import { fitHomography } from './homography.ts';
 import { nullspace, ransacBudget, sample, seededRandom, solveSystem } from './numerics.ts';
+import { PNP_DEFAULTS, pnpMinInliers } from './operator-defaults.ts';
 
 export interface PnPOptions {
   readonly iterations?: number;
@@ -200,12 +201,12 @@ export function estimatePosePnP(
 ): PnPResult {
   validateCamera(camera);
   const n = worldPoints.length / 3;
-  const iterations = options.iterations ?? 1000,
-    threshold = options.thresholdPx ?? 3,
-    confidence = options.confidence ?? 0.999,
-    seed = options.seed ?? 17,
-    minInliers = options.minInliers ?? Math.min(6, n),
-    refinement = options.refinementIterations ?? 20;
+  const iterations = options.iterations ?? PNP_DEFAULTS.iterations,
+    threshold = options.thresholdPx ?? PNP_DEFAULTS.thresholdPx,
+    confidence = options.confidence ?? PNP_DEFAULTS.confidence,
+    seed = options.seed ?? PNP_DEFAULTS.seed,
+    minInliers = options.minInliers ?? pnpMinInliers(n),
+    refinement = options.refinementIterations ?? PNP_DEFAULTS.refinementIterations;
   if (
     !Number.isInteger(n) ||
     n < 4 ||

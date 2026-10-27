@@ -2,6 +2,7 @@ import { multiply, svd3 } from './linear.ts';
 import { unprojectPixel, validateCamera } from './camera.ts';
 import type { Camera } from '../contracts/camera.ts';
 import { ransacBudget, sample, seededRandom } from './numerics.ts';
+import { DEFAULT_SEED } from './operator-defaults.ts';
 
 export interface RelativeRotationOptions {
   readonly iterations?: number;
@@ -39,7 +40,7 @@ export function relativeRotationControls(
     minInliers: options.minInliers ?? 12,
     minInlierRatio: options.minInlierRatio ?? 0.6,
     minSpreadDeg: options.minSpreadDeg ?? 0.5,
-    seed: options.seed ?? 17,
+    seed: options.seed ?? DEFAULT_SEED,
   };
   if (
     !Number.isSafeInteger(controls.iterations) ||

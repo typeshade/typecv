@@ -2,8 +2,9 @@ import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice } from '../../../device/gpu/device.ts';
 import type { GpuGeometryExecution } from '../../../geometry/gpu/execution.ts';
 import type { BundleAdjustmentOptions, BundleAdjustmentResult } from '../bundle-adjustment.ts';
-import { bundleStallTolerance } from '../bundle-shared.ts';
+import { bundleStallTolerance, bundleStalled } from '../bundle-shared.ts';
 import type { CameraProductWorkgroupSize } from './bundle-camera-product.ts';
+import { BUNDLE_SOLVER_STALL_TOLERANCE } from '../../config/defaults.ts';
 
 export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly maxCgIterations?: number;
@@ -26,8 +27,8 @@ export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly execution: GpuGeometryExecution;
 }
 
-/** The convergence rule of `acceptBundleCandidate` in both BA shaders. */
-const SHADER_STALL_TOLERANCE = 1e-9;
+/** The convergence rule of `acceptBundleCandidate` in both BA shaders: the solvers' default. */
+const SHADER_STALL_TOLERANCE = BUNDLE_SOLVER_STALL_TOLERANCE;
 
 /** @internal Keep the serial CPU oracle and stay inside the one-dimensional dispatch limit. */
 export function cooperativeBundleSchur(
@@ -83,7 +84,7 @@ export function bundleStallMonitor(
         accepted = values[12] === 1,
         change = cost - next;
       cost = next;
-      return accepted && change < tolerance * Math.max(1, next);
+      return accepted && bundleStalled(change, next, tolerance);
     },
     async start() {
       monitor.begin(await monitor.fetch());

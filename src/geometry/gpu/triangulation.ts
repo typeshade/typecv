@@ -7,6 +7,7 @@ import { planTriangulationChunks } from '../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { type GpuGeometryExecution } from './execution.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
+import { TRIANGULATION_DEFAULTS } from '../operator-defaults.ts';
 
 export interface GpuTriangulationOptions extends DepthSensitivityOptions {
   readonly maxErrorPx?: number;
@@ -38,9 +39,9 @@ export function triangulateTracksGpu(
   options: GpuTriangulationOptions = {},
 ): Promise<GpuTriangulationResult> {
   const depth = depthSensitivityControls(options);
-  const maxError = options.maxErrorPx ?? 3,
-    minAngle = options.minAngleDeg ?? 0.5,
-    maxPairs = options.maxPairHypotheses ?? 32,
+  const maxError = options.maxErrorPx ?? TRIANGULATION_DEFAULTS.maxErrorPx,
+    minAngle = options.minAngleDeg ?? TRIANGULATION_DEFAULTS.minAngleDeg,
+    maxPairs = options.maxPairHypotheses ?? TRIANGULATION_DEFAULTS.maxPairHypotheses,
     iterations = options.refinementIterations ?? 10;
   if (
     !finiteGpuArray(Float64Array.of(depth.maxRelativeDepthStdDev, depth.pixelNoiseStdDevPx)) ||

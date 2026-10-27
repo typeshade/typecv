@@ -1,6 +1,11 @@
 import { type BundleAdjustmentOptions, type BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { validateReconstruction } from '../../geometry/validation.ts';
-import { cloneBundleReconstruction, bundleMetrics, bundleStallTolerance } from './bundle-shared.ts';
+import {
+  cloneBundleReconstruction,
+  bundleMetrics,
+  bundleStallTolerance,
+  bundleStalled,
+} from './bundle-shared.ts';
 import { cameraCenter, transformPoint, updatePose } from '../../geometry/pose.ts';
 import { inverse3, solveSystem } from '../../geometry/numerics.ts';
 import type { SparseReconstruction } from '../../contracts/scene.ts';
@@ -10,6 +15,7 @@ import {
   bundleObservationJacobian,
   normalizeBundlePoint,
 } from './bundle-directions.ts';
+import { BUNDLE_DEFAULTS } from '../config/defaults.ts';
 
 interface PointNormal {
   rhs: Float64Array;
@@ -41,8 +47,8 @@ export function bundleAdjustJointFocal(
   options: BundleAdjustmentOptions = {},
 ): BundleAdjustmentResult {
   validateReconstruction(input);
-  const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2,
+  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
+    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
     stall = bundleStallTolerance(options);
   if (
     input.views.length < 2 ||
@@ -255,7 +261,7 @@ export function bundleAdjustJointFocal(
       current = next;
       lambda = Math.max(1e-10, lambda / 3);
       acceptedSteps++;
-      if (improvement < stall * Math.max(1, current.cost)) break;
+      if (bundleStalled(improvement, current.cost, stall)) break;
     } else {
       lambda *= 10;
       rejectedSteps++;

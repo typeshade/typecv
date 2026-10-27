@@ -73,6 +73,8 @@ import {
   ReconstructionOperationError,
 } from '../protocol/errors.ts';
 import { copyReconstruction } from '../model/copy.ts';
+import { imagePairHomographyIterations } from '../../geometry/operator-defaults.ts';
+import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
 
 /** @internal */
 export { judgePair } from '../pairs/pair-verdict.ts';
@@ -605,7 +607,7 @@ export function* verifyPairs(
             minParallaxDeg: Math.min(pointAngle, 0.1),
             maxReprojectionErrorPx: maxError,
             homographyThresholdPx: maxError,
-            homographyIterations: Math.min(iterations, 500),
+            homographyIterations: imagePairHomographyIterations(iterations),
           },
         ],
       });
@@ -950,7 +952,7 @@ export function* incrementalSteps(
       iterations: steps,
       anchorViewId: subset?.anchorViewId ?? first.id,
       scaleViewId: subset?.scaleViewId ?? second.id,
-      huberPx: maxError / 2,
+      huberPx: bundleHuberPx(maxError),
       variableViewIds: window,
       refineSharedFocal,
       focalGroups: refineSharedFocal ? options.focalGroups : undefined,
@@ -1179,7 +1181,12 @@ export function* incrementalSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, finalize);
+  yield* adjust(
+    finalBundle,
+    false,
+    options.refineSharedFocal ?? MAPPER_DEFAULTS.refineSharedFocal,
+    finalize,
+  );
   let finalModel = model();
   let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',

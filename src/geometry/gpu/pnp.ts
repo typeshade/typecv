@@ -26,6 +26,7 @@ import {
 } from './pnp.shade.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import type { GpuGeometryExecution } from './execution.ts';
+import { PNP_DEFAULTS, pnpMinInliers } from '../operator-defaults.ts';
 
 /** @internal */
 export { finiteGpuArray, validateGpuCamera } from './bounds.ts';
@@ -70,12 +71,12 @@ export function estimatePosePnPGpu(
 ): Promise<GpuPnPResult> {
   const k = validateGpuCamera({ ...camera }),
     n = worldPoints.length / 3;
-  const maximum = options.iterations ?? 1000,
-    threshold = options.thresholdPx ?? 3,
-    confidence = options.confidence ?? 0.999,
-    seed = options.seed ?? 17,
-    minimum = options.minInliers ?? Math.min(6, n),
-    refinement = options.refinementIterations ?? 20,
+  const maximum = options.iterations ?? PNP_DEFAULTS.iterations,
+    threshold = options.thresholdPx ?? PNP_DEFAULTS.thresholdPx,
+    confidence = options.confidence ?? PNP_DEFAULTS.confidence,
+    seed = options.seed ?? PNP_DEFAULTS.seed,
+    minimum = options.minInliers ?? pnpMinInliers(n),
+    refinement = options.refinementIterations ?? PNP_DEFAULTS.refinementIterations,
     minTrials = options.minIterations ?? Math.min(64, maximum),
     requestedBatch = options.batchSize ?? 512;
   if (

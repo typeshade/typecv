@@ -9,6 +9,7 @@ import {
   type TwoViewOptions,
   type TwoViewResult,
 } from './two-view.ts';
+import { imagePairHomographyIterations } from './operator-defaults.ts';
 
 export interface ImagePairOptions extends TwoViewOptions {
   /** Symmetric transfer threshold in ideal pixels. Default: maxReprojectionErrorPx (4). */
@@ -41,7 +42,8 @@ export function resolveImagePairOptions(first: Camera, second: Camera, options: 
       refinementIterations: options.refinementIterations ?? 0,
     }),
     homographyThreshold = options.homographyThresholdPx ?? controls.maxError,
-    homographyIterations = options.homographyIterations ?? Math.min(controls.iterations, 500);
+    homographyIterations =
+      options.homographyIterations ?? imagePairHomographyIterations(controls.iterations);
   if (
     !Number.isFinite(homographyThreshold) ||
     homographyThreshold <= 0 ||

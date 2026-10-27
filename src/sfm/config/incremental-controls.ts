@@ -3,6 +3,11 @@ import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 import type { IncrementalControls, IncrementalOptions } from '../mapper/mapper.ts';
 import { rotationTrackingControls } from '../tracks/tracking.ts';
 import { validateFeatures } from '../tracks/tracks.ts';
+import {
+  DEFAULT_BUNDLE_STALL_TOLERANCE,
+  DEFAULT_GLOBAL_BUNDLE_RATIO,
+  MAPPER_DEFAULTS,
+} from './defaults.ts';
 
 /** @internal Validate the inputs and options; throws RangeError on an invalid one. */
 export function incrementalControls(
@@ -11,10 +16,11 @@ export function incrementalControls(
   options: IncrementalOptions,
 ): { byId: Map<number, ImageFeatures>; controls: IncrementalControls } {
   const byId = validateFeatures(images, inputPairs),
-    seed = options.seed ?? 17,
-    iterations = options.ransacIterations ?? 750,
-    maxError = options.maxErrorPx ?? 3;
-  const pairRefinementIterations = options.pairRefinementIterations ?? 0;
+    seed = options.seed ?? MAPPER_DEFAULTS.seed,
+    iterations = options.ransacIterations ?? MAPPER_DEFAULTS.ransacIterations,
+    maxError = options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx;
+  const pairRefinementIterations =
+    options.pairRefinementIterations ?? MAPPER_DEFAULTS.pairRefinementIterations;
   const separateDirectionalObservations =
     options.separateDirectionalObservations ?? !!options.depthTracking;
   if (typeof separateDirectionalObservations !== 'boolean')
@@ -26,16 +32,16 @@ export function incrementalControls(
     pairRefinementIterations > 100
   )
     throw new RangeError('pairRefinementIterations must be 0..100');
-  const initialAngle = options.minInitialAngleDeg ?? 1,
-    pointAngle = options.minTriangulationAngleDeg ?? 0.5,
-    minPnP = options.minPnPInliers ?? 12,
-    minInitial = options.minInitialPoints ?? 12;
-  const bundleIterations = options.bundleIterations ?? 8,
-    finalBundle = options.finalBundleIterations ?? 25;
-  const localSize = options.localBundleSize ?? 6,
+  const initialAngle = options.minInitialAngleDeg ?? MAPPER_DEFAULTS.minInitialAngleDeg,
+    pointAngle = options.minTriangulationAngleDeg ?? MAPPER_DEFAULTS.minTriangulationAngleDeg,
+    minPnP = options.minPnPInliers ?? MAPPER_DEFAULTS.minPnPInliers,
+    minInitial = options.minInitialPoints ?? MAPPER_DEFAULTS.minInitialPoints;
+  const bundleIterations = options.bundleIterations ?? MAPPER_DEFAULTS.bundleIterations,
+    finalBundle = options.finalBundleIterations ?? MAPPER_DEFAULTS.finalBundleIterations;
+  const localSize = options.localBundleSize ?? MAPPER_DEFAULTS.localBundleSize,
     globalViewRatio = options.globalBundleViewRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
     globalPointRatio = options.globalBundlePointRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
-    globalFrequency = options.globalBundleFrequency ?? 0,
+    globalFrequency = options.globalBundleFrequency ?? MAPPER_DEFAULTS.globalBundleFrequency,
     stallTolerance = options.bundleStallTolerance ?? DEFAULT_BUNDLE_STALL_TOLERANCE;
   if (
     images.length < 2 ||
@@ -109,7 +115,7 @@ export function incrementalControls(
       bundleIterations,
       finalBundle,
       localSize,
-      localSubset: options.localBundleSubset ?? true,
+      localSubset: options.localBundleSubset ?? MAPPER_DEFAULTS.localBundleSubset,
       globalViewRatio,
       globalPointRatio,
       globalFrequency,
@@ -118,7 +124,4 @@ export function incrementalControls(
   };
 }
 
-/** COLMAP's `ba_global_images_ratio` and `ba_global_points_ratio`: 10 % growth. */
-export const DEFAULT_GLOBAL_BUNDLE_RATIO = 1.1;
-/** The default `bundleStallTolerance` of the mapper's BA passes. */
-export const DEFAULT_BUNDLE_STALL_TOLERANCE = 1e-4;
+export { DEFAULT_BUNDLE_STALL_TOLERANCE, DEFAULT_GLOBAL_BUNDLE_RATIO } from './defaults.ts';

@@ -4,6 +4,7 @@ import { triangulate } from './triangulation.ts';
 import { refinePoint, refinePose } from './refinement.ts';
 import { determinant3, multiply, svd3, transpose } from './linear.ts';
 import type { CameraIntrinsics } from '../contracts/camera.ts';
+import { DEFAULT_SEED } from './operator-defaults.ts';
 
 export type { CameraIntrinsics } from '../contracts/camera.ts';
 
@@ -299,7 +300,7 @@ export function resolveTwoViewOptions(options: TwoViewOptions = {}) {
     minParallax,
     maxError,
     separateDirectionalObservations,
-    seed: options.seed ?? 17,
+    seed: options.seed ?? DEFAULT_SEED,
   };
 }
 

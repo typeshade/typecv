@@ -45,6 +45,7 @@ import {
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle-shared.ts';
+import { BUNDLE_DEFAULTS } from '../../config/defaults.ts';
 
 /** @internal */
 export { bundleStallMonitor, cooperativeBundleSchur } from './bundle-shared.ts';
@@ -82,10 +83,10 @@ function bundleAdjustGpuFixed(
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
   if (![C, P, M].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff))
     throw new RangeError('GPU BA scene dimensions exceed integer index bounds');
-  const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2,
+  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
+    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
     maxCg = options.maxCgIterations ?? Math.min(96, Math.max(24, C * 12)),
-    tolerance = options.cgRelativeTolerance ?? 1e-6;
+    tolerance = options.cgRelativeTolerance ?? BUNDLE_DEFAULTS.cgRelativeTolerance;
   if (
     C < 2 ||
     finitePoints < 1 ||

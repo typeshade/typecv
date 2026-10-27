@@ -2,13 +2,22 @@ import { clonePose } from '../../geometry/pose.ts';
 import type { SparseReconstruction } from '../../contracts/scene.ts';
 import type { BundleAdjustmentOptions } from './bundle-adjustment.ts';
 import { projectBundlePoint } from './bundle-directions.ts';
+import { BUNDLE_SOLVER_STALL_TOLERANCE } from '../config/defaults.ts';
 
 /** @internal The LM stop rule shared by the CPU and GPU solvers. */
 export function bundleStallTolerance(options: BundleAdjustmentOptions): number {
-  const tolerance = options.stallTolerance ?? 1e-9;
+  const tolerance = options.stallTolerance ?? BUNDLE_SOLVER_STALL_TOLERANCE;
   if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance >= 1)
     throw new RangeError('stallTolerance must be in [0, 1)');
   return tolerance;
+}
+
+/**
+ * @internal The LM stall test of the CPU solvers and of the GPU monitor: an accepted step that
+ * lowered the cost by less than `tolerance` times the cost (at least 1).
+ */
+export function bundleStalled(change: number, cost: number, tolerance: number): boolean {
+  return change < tolerance * Math.max(1, cost);
 }
 function clone(input: SparseReconstruction): SparseReconstruction {
   return {

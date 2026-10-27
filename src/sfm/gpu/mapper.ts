@@ -64,6 +64,7 @@ import {
   type GpuFloatMatchOptions,
   type GpuFloatMatches,
 } from '../../features/gpu/float-matching.ts';
+import { MAPPER_DEFAULTS, SESSION_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
@@ -375,7 +376,7 @@ async function runIncrementalGpu(
               job.args[2],
               {
                 ...job.args[3],
-                seed: (options.seed ?? 17) + session.verification.size,
+                seed: (options.seed ?? MAPPER_DEFAULTS.seed) + session.verification.size,
               },
             ] as const)
           : job.args;
@@ -561,7 +562,7 @@ export class IncrementalSfmSession {
       rotationTracking:
         rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
     };
-    const size = options.windowSize ?? 32;
+    const size = options.windowSize ?? SESSION_DEFAULTS.windowSize;
     if (!Number.isInteger(size) || size < 8 || size > 64)
       throw new RangeError('windowSize must be an integer from 8 through 64');
     if (
@@ -628,7 +629,7 @@ export class IncrementalSfmSession {
         ],
       };
     }
-    const windowSize = this.options.windowSize ?? 32;
+    const windowSize = this.options.windowSize ?? SESSION_DEFAULTS.windowSize;
     if (images.length > windowSize) {
       const recent = images.slice(-(windowSize - 2));
       const recentIds = new Set(recent.map((view) => view.id));
@@ -795,8 +796,11 @@ export class IncrementalSfmSession {
           this.options.onReconstruction?.(full);
         },
         initialPair: this.result?.diagnostics.initialPair ?? this.options.initialPair,
-        finalBundleIterations: final ? (this.options.finalBundleIterations ?? 8) : 0,
-        refineSharedFocal: final && (this.options.refineSharedFocal ?? false),
+        finalBundleIterations: final
+          ? (this.options.finalBundleIterations ?? SESSION_DEFAULTS.finalBundleIterations)
+          : 0,
+        refineSharedFocal:
+          final && (this.options.refineSharedFocal ?? MAPPER_DEFAULTS.refineSharedFocal),
         // The search runs once, for the session's first map; later runs resume that map.
         focalSearch: this.focal || this.state.model ? undefined : this.options.focalSearch,
       },
@@ -853,7 +857,8 @@ export class IncrementalSfmSession {
         !this.options.separateDirectionalObservations &&
         !this.options.maxRelativeDepthStdDev
       ) {
-        const finalIterations = this.options.finalBundleIterations ?? 8,
+        const finalIterations =
+            this.options.finalBundleIterations ?? SESSION_DEFAULTS.finalBundleIterations,
           solved = await refineHistory(
             reconstruction,
             {
@@ -864,7 +869,7 @@ export class IncrementalSfmSession {
                     ((focalRatios?.length ?? 0) > 1
                       ? Math.max(finalIterations, 32)
                       : finalIterations)),
-              huberPx: (this.options.maxErrorPx ?? 3) / 2,
+              huberPx: bundleHuberPx(this.options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx),
               refineSharedFocal: this.options.refineSharedFocal && !multipleFocalGroups,
               focalGroups: this.options.focalGroups,
               ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
