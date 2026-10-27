@@ -2,6 +2,7 @@
 import {
   PhaseGate,
   legacyGateSkips,
+  medianMotionPx,
   trackGateDecision,
   type KeyframeGateMode,
 } from '../lib/keyframe-gate.ts';
@@ -18,14 +19,23 @@ import {
   trackerVerdicts,
   type TrackerPair,
 } from '../lib/klt-join.ts';
-import { tooFewFeatures } from '../lib/lab-features.ts';
+import {
+  KEYPOINT_COLOR_FRAMES,
+  featureCap,
+  keypointColorFloats,
+  landmarkColor,
+  tooFewFeatures,
+} from '../lib/lab-features.ts';
 import {
   admitsPair,
   admitsPrecomputedPair,
+  frameCamera,
+  matchLines,
   retainedFeatureIds,
   retainedReferences,
   tracksCoverPair,
 } from '../lib/lab-matching.ts';
+import { trimStages } from '../lib/lab-ledger.ts';
 import type { DenseQualityOptions } from '../lib/dense-quality.ts';
 import type { KltSetup } from '../lib/sift-quality.ts';
 import {
@@ -41,7 +51,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run.ts';
-import { workingBytesFromAdapter } from '../lib/working-budget.ts';
+import { analysisScale, deviceBudgets } from '../lib/working-budget.ts';
 import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video.ts';
 import { adapterFacts } from '../lib/adapter-info.ts';
 import { reportGpuMs } from '../lib/run-record.ts';
@@ -287,20 +297,15 @@ function scene(model: any) {
   const active = job!;
   const result = {
     views: model.views.map((view: any) => sceneViewWithFrame(view, active.frames.get(view.id))),
+    // The colour of a track is kept for the whole run (`pointColors`).
     landmarks: model.landmarks.map((point: any) => {
-      let color = active.pointColors.get(point.trackId);
-      if (!color)
-        for (const observation of point.observations) {
-          const colors = active.colors.get(observation.viewId);
-          if (colors && observation.featureId * 3 + 2 < colors.length) {
-            color = Array.from(
-              colors.subarray(observation.featureId * 3, observation.featureId * 3 + 3),
-            ) as [number, number, number];
-            active.pointColors.set(point.trackId, color);
-            break;
-          }
-        }
-      return { ...point, color: color ?? [0.7, 0.7, 0.7] };
+      const color = landmarkColor(
+        point,
+        (viewId) => active.colors.get(viewId),
+        'float',
+        active.pointColors,
+      );
+      return { ...point, color };
     }),
   };
   active.latest = result;
@@ -339,21 +344,6 @@ function record(stage: any) {
   // The detailed list is bounded; the totals above keep the whole run.
   trimStages(active.stages);
 }
-/**
- * Bound the detailed stage list to `detailedStageLimit`: drop the oldest entries, keyframe entries
- * last. The focal search runs hundreds of operations at once, and the page still lists each
- * keyframe.
- */
-export function trimStages(stages: { operation: string }[]) {
-  let excess = stages.length - LAB_OPTIONS.detailedStageLimit;
-  for (let i = 0; excess > 0 && i < stages.length;)
-    if (stages[i]!.operation === 'keyframe') i++;
-    else {
-      stages.splice(i, 1);
-      excess--;
-    }
-  if (excess > 0) stages.splice(0, excess);
-}
 /** Post the map to the page at most every snapshotIntervalMs; the latest model wins. */
 function publish(model: any, force = false) {
   const active = job!,
@@ -374,29 +364,6 @@ function publish(model: any, force = false) {
     active.snapshot.timer = undefined;
     if (active.snapshot.pending) publish(active.snapshot.pending, true);
   }, wait);
-}
-/** Median displacement of matched features between two frames, in the current frame's pixels. */
-function medianMotionPx(
-  matches: Uint32Array,
-  previousPoints: Float64Array,
-  previous: { width: number; height: number },
-  points: Float64Array,
-  frame: { width: number; height: number },
-): number {
-  const distances: number[] = [];
-  for (let i = 0; i < matches.length; i += 2) {
-    const a = matches[i] * 2,
-      b = matches[i + 1] * 2;
-    distances.push(
-      Math.hypot(
-        points[b] - (previousPoints[a] * frame.width) / previous.width,
-        points[b + 1] - (previousPoints[a + 1] * frame.height) / previous.height,
-      ),
-    );
-  }
-  if (!distances.length) return Infinity;
-  distances.sort((x, y) => x - y);
-  return distances[distances.length >> 1];
 }
 async function releaseFeatures() {
   if (!job) return;
@@ -592,20 +559,13 @@ async function start(
   const bounded = boundedRequest === true;
   // A device opened in the other submission mode, or under another flavor of the emulated double
   // than the page forces, is replaced, not reused.
-  // The working and pool budgets grow with the pixel count of the analysis frame: the SIFT
-  // pyramid of a 1280 px frame needs about 72 MB against the 64 MB default (`sift.ts`,
-  // `estimatedPeakBytes`), and the resident descriptors of the matching window grow with the
-  // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
-  // Octave -1 builds the pyramid at twice the frame's width and height: four times the pixels.
-  const scale = ((analysisEdge * analysisEdge) / (640 * 640)) * (firstOctave === -1 ? 4 : 1);
-  // `docs/gpu-budget.md` section 2 and Amendment 3 of `docs/dense-mvs.md`: the budget comes from
-  // the adapter's limits, half of its `maxBufferSize` when that is larger, and the device requests
-  // them. The stages split their work to fit it: size changes speed, not success.
-  const workingBytes = workingBytesFromAdapter(
-    Math.round(64 * 1024 ** 2 * scale),
-    adapter?.limits?.maxBufferSize,
-  );
-  const poolBytes = Math.round(32 * 1024 ** 2 * scale);
+  // The working and pool budgets grow with the pixel count of the analysis frame (`analysisScale`
+  // and `deviceBudgets` of `lib/working-budget.ts`): 64 and 32 MiB at 640 px, 256 and 128 MiB at
+  // 1280 px. `docs/gpu-budget.md` section 2 and Amendment 3 of `docs/dense-mvs.md`: the budget
+  // comes from the adapter's limits, half of its `maxBufferSize` when that is larger, and the
+  // device requests them. The stages split their work to fit it: size changes speed, not success.
+  const scale = analysisScale(analysisEdge, firstOctave);
+  const { workingBytes, poolBytes } = deviceBudgets(scale, adapter?.limits?.maxBufferSize);
   const reused =
     !!device &&
     !deviceUnavailable &&
@@ -665,12 +625,13 @@ async function start(
   }
   const opened = device;
   preparing('session');
-  // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
-  // 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in processFrame.
+  // The feature cap follows the pixel count of the analysis frame (`featureCap`): 4096 at 640 px,
+  // 16384 at 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in
+  // processFrame.
   const base = controls(profile);
   const options = {
     ...base,
-    maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
+    maxFeatures: featureCap(base.maxFeatures, scale),
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
     guidedKernel,
@@ -1090,16 +1051,10 @@ function keepPixels(frame: Frame) {
 /** The colour under each keypoint, for the point cloud. */
 function sampleColors(frame: Frame, points: Float64Array) {
   const active = job!;
-  const colors = new Float32Array((points.length / 2) * 3);
-  for (let i = 0; i < points.length / 2; i++) {
-    const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
-    const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
-    const offset = (y * frame.width + x) * 4;
-    for (let channel = 0; channel < 3; channel++)
-      colors[i * 3 + channel] = frame.pixels[offset + channel] / 255;
-  }
+  const colors = keypointColorFloats(frame, points);
   active.colors.set(frame.id, colors);
-  if (active.colors.size > 64) active.colors.delete(active.colors.keys().next().value!);
+  if (active.colors.size > KEYPOINT_COLOR_FRAMES)
+    active.colors.delete(active.colors.keys().next().value!);
   return colors;
 }
 
@@ -1111,38 +1066,16 @@ function postMatchLines(
   frame: Frame,
   matches: ArrayLike<number>,
 ) {
-  const lines: number[] = [];
-  for (let i = 0; i < Math.min(matches.length, 160); i += 2) {
-    const a = matches[i] * 2,
-      b = matches[i + 1] * 2;
-    lines.push(
-      (otherPoints[a] * frame.width) / otherFrame.width,
-      (otherPoints[a + 1] * frame.height) / otherFrame.height,
-      points[b],
-      points[b + 1],
-    );
-  }
+  const lines = matchLines(otherPoints, otherFrame, points, frame, matches);
   post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
 }
 
 /**
- * The camera of a frame in analysis pixels: the sample's calibration, else the focal search's
- * estimate once it ran, else the assumed focal.
+ * The focal ratio of a frame without its own calibration (`frameCamera` of
+ * `lib/lab-matching.ts`): the focal search's estimate once it ran, else the assumed focal.
  */
-function frameCamera(frame: Frame) {
-  const sourceWidth = frame.sourceWidth ?? frame.width;
-  const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * (job!.session.focalSearch?.ratio ?? job!.focal);
-  return (
-    frame.camera ?? {
-      fx: (sourceFocal * frame.width) / sourceWidth,
-      fy: (sourceFocal * frame.height) / sourceHeight,
-      cx: (frame.width - 1) / 2,
-      cy: (frame.height - 1) / 2,
-      k1: 0,
-      k2: 0,
-    }
-  );
+function cameraFocalRatio() {
+  return job!.session.focalSearch?.ratio ?? job!.focal;
 }
 
 /** Lines of a guided match lie within this many pixels of a candidate, as COLMAP's 4 px default. */
@@ -1164,8 +1097,8 @@ async function guidedMatches(
   plain: { matches: Uint32Array; distances: Float64Array },
 ) {
   const active = job!;
-  const a = frameCamera(other.frame),
-    b = frameCamera(frame),
+  const a = frameCamera(other.frame, cameraFocalRatio()),
+    b = frameCamera(frame, cameraFocalRatio()),
     n = plain.matches.length / 2,
     pixels = new Float64Array(n * 4);
   for (let i = 0; i < n; i++) {
@@ -1231,7 +1164,7 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   const result = await active.session.add(
     {
       id: frame.id,
-      camera: frameCamera(frame),
+      camera: frameCamera(frame, cameraFocalRatio()),
       keypoints: points,
     },
     pairs,

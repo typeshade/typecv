@@ -8,7 +8,8 @@
  */
 import { packLandmarks, type PackedScene } from './sfm-scene.ts';
 import { PhaseGate } from './keyframe-gate.ts';
-import { tooFewFeatures } from './lab-features.ts';
+import { keypointColorBytes, landmarkColor, tooFewFeatures } from './lab-features.ts';
+import { frameCamera } from './lab-matching.ts';
 import {
   createDenseJob,
   denseFailure,
@@ -166,33 +167,6 @@ interface VideoState {
   skipped: number;
   dropped: number;
   ended: boolean;
-}
-
-function cameraOf(frame: JobFrame, focalRatio: number) {
-  const sourceWidth = frame.sourceWidth ?? frame.width;
-  const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * focalRatio;
-  return (
-    frame.camera ?? {
-      fx: (sourceFocal * frame.width) / sourceWidth,
-      fy: (sourceFocal * frame.height) / sourceHeight,
-      cx: (frame.width - 1) / 2,
-      cy: (frame.height - 1) / 2,
-      k1: 0,
-      k2: 0,
-    }
-  );
-}
-
-function sampleColors(frame: JobFrame, points: Float64Array): Uint8Array {
-  const colors = new Uint8Array((points.length / 2) * 3);
-  for (let i = 0; i < points.length / 2; i++) {
-    const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2]!)));
-    const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1]!)));
-    const offset = (y * frame.width + x) * 4;
-    for (let c = 0; c < 3; c++) colors[i * 3 + c] = frame.pixels[offset + c]!;
-  }
-  return colors;
 }
 
 /** Map snapshots go to the page at most this often (the single-video worker's interval). */
@@ -377,11 +351,11 @@ export class MultiVideoJob {
         frameKey,
         time: frame.time,
         frameId: frame.id,
-        camera: cameraOf(frame, video.info.focalRatio),
+        camera: frameCamera(frame, video.info.focalRatio),
         keypoints,
         descriptors: described.descriptors,
         global: described.global,
-        colors: sampleColors(frame, keypoints),
+        colors: keypointColorBytes(frame, keypoints),
         width: frame.width,
         height: frame.height,
         sourceWidth: frame.sourceWidth,
@@ -949,7 +923,6 @@ export class MultiVideoJob {
 
   /** A model as the viewer reads it: the mapper's views with their frame data, and colors. */
   private scene(model: any, info: Map<number, Keyframe>) {
-    const colorOf = new Map<number, [number, number, number]>();
     return {
       views: model.views.map((view: any) => {
         const k = info.get(view.id)!;
@@ -963,21 +936,10 @@ export class MultiVideoJob {
           videoId: k.videoId,
         };
       }),
+      // The colour of a landmark is looked up on each call: no cache.
       landmarks: model.landmarks.map((point: any) => {
-        let color = colorOf.get(point.trackId);
-        if (!color)
-          for (const o of point.observations) {
-            const k = info.get(o.viewId);
-            if (k && o.featureId * 3 + 2 < k.colors.length) {
-              color = [
-                k.colors[o.featureId * 3]! / 255,
-                k.colors[o.featureId * 3 + 1]! / 255,
-                k.colors[o.featureId * 3 + 2]! / 255,
-              ];
-              break;
-            }
-          }
-        return { ...point, color: color ?? [0.7, 0.7, 0.7] };
+        const color = landmarkColor(point, (viewId) => info.get(viewId)?.colors, 'byte');
+        return { ...point, color };
       }),
     };
   }
