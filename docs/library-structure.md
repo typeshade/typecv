@@ -385,7 +385,8 @@ section). 0094 asks that the list be amended before a conversion. **Fact** (#246
 implemented at the pin `725b2969`. So the list stands as written until a pin carries 0094's
 implementation. **Fact** (amendment 6; typeshade/typeshade#796, merged as `a768a04a` on
 2026-10-27). Stage 1 of 0094's implementation, the stores after the loops, is on TypeShade `main`.
-0094 stays `status: accepted` at `210f3b01`, and the pin carries no stage of it. So the list still
+typeshade/typeshade#799 merged stage 2, a push after a held length, as `37e6c6f0`. 0094 stays
+`status: accepted` at `37e6c6f0`, and the pin carries no stage of it. So the list still
 stands as written (section 5, "The next pin", amendment 6).
 
 **Fact** (the kernel audit, sections 2 and 3, and the kernels at `3e2777b`). These entries exist
@@ -892,17 +893,17 @@ part of phase 10's step "C6 and C7" then becomes possible. Its gate is phase 9's
 hardware run (section 7, item 11). Until such a pin, row C7, section 3.6 and the phase rows stand
 as written.
 
-**The next pin** (amendment 6). **Fact** (TypeShade `main` at `210f3b01`, read on 2026-10-27).
-TypeShade `main` is 21 commits after the pin `725b2969`. Since amendment 5:
+**The next pin** (amendment 6). **Fact** (TypeShade `main` at `37e6c6f0`, read on 2026-10-27).
+TypeShade `main` is 22 commits after the pin `725b2969`. Since amendment 5:
 
 - typeshade/typeshade#786 implemented change 0098 (`a591e1b7`). 0098 is `status: implemented`.
 - typeshade/typeshade#796 merged stage 1 of change 0094 as `a768a04a`: a kernel function stores
   into its arrays after its loops, on the device. Its body records decisions D3(a), D4(a), D5(a),
   D7(a) and D8(a). It clarifies D2: a store after the loops past the array's end is dropped on
   every tier, by one guard in the IR (`guardStoresAfterLoops`). 0094 stays `status: accepted`.
-- typeshade/typeshade#799, stage 2 of 0094, is open on 2026-10-27 at `3a3bdedd`. It adds a push
-  after a held length, and two loops that push onto one array. It proposes decisions S2-1 to S2-4
-  for the owner's review.
+- typeshade/typeshade#799 merged stage 2 of change 0094 as `37e6c6f0` on 2026-10-27 (a squash). It
+  adds a push after a held length, and two loops that push onto one array. Decisions S2-1 to S2-4
+  are recorded in the proposal, and its two deviations are closed. 0094 stays `status: accepted`.
 - typeshade/typeshade#800 merged as `210f3b01` and closed typeshade/typeshade#793. A storage
   binding of lists with no length is refused with `TS8002`, and the remedy names the
   offsets-and-values form.
@@ -916,9 +917,9 @@ TypeShade `main` is 21 commits after the pin `725b2969`. Since amendment 5:
 the shape that A1 forbids. So the case records the idle-lane shape at this pin. At a pin that
 carries 0096, the same case is the run of 0096's decision D5 (row C7).
 
-**Inference** (amendment 6). The next pin bump brings 0096, 0098, 0099, stage 1 of 0094 and the
-refusal of #793. It also brings stage 2 of 0094 and the refusal of #792 if #799 and #798 merge
-first. If the bump moves a digest, it declares the cases under rule 2 (amendment 6).
+**Inference** (amendment 6). The next pin bump brings 0096, 0098, 0099, stages 1 and 2 of 0094
+and the refusal of #793 (typeshade/typeshade#800, `210f3b01`). It also brings the refusal of #792
+if #798 merges first. If the bump moves a digest, it declares the cases under rule 2 (amendment 6).
 
 **Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
 on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
@@ -1584,7 +1585,7 @@ after the pin. The other proposals of the rows are `accepted` there. The pin car
 | C1 | proposal 0091 (typeshade/typeshade#767) | accepted 2026-10-26 |
 | C2 | proposal 0092 (typeshade/typeshade#768) | accepted 2026-10-26 |
 | C9 | issue typeshade/typeshade#761 | open |
-| C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2). Stage 1 on TypeShade `main` (typeshade/typeshade#796, `a768a04a`, 2026-10-27); stage 2 open (typeshade/typeshade#799); not at the pin (amendment 6) |
+| C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2). Stage 1 on TypeShade `main` (typeshade/typeshade#796, `a768a04a`, 2026-10-27); stage 2 on TypeShade `main` (typeshade/typeshade#799, `37e6c6f0`, 2026-10-27); not at the pin (amendment 6) |
 | C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2) |
 | C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11). Implemented on TypeShade `main` by typeshade/typeshade#782 (`a21f7024`, 2026-10-27), with that run open by the owner's decision; not at the pin (amendment 5). The `kernel-functions` case of the hardware check is D5's run at a pin that carries 0096 (amendment 6) |
 | C4, C5, C10 to C13 | none | not opened (section 7, item 7) |
@@ -1932,7 +1933,7 @@ recorded here by amendment.
     digest declares it (section 4, rule 2, amendment 6). The items on 2026-10-27:
     - B1: the focal search stops at the grid's lower bound (`docs/chimney-rock-58532c69.md`,
       section 3.1). typeshade/typecv#267 takes candidates 1 and 2 of that record's section 5.
-      **Fact.** #267 is a draft in progress at `f76932e`. #268 states that it is red on the two
+      **Fact.** #267 is in progress. #268 states that it is red on the two
       `digests` jobs with 10 focal-search cases, and that it declares them after #268 merges.
     - B4 to B7: the behaviour differences of item 5. **Fact** (the coordinator's decision table of
       2026-10-27, given to the owner with recommendations). B4: classify the GPU PnP numerical
