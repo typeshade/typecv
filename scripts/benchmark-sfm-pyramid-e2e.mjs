@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
 import { reconstructIncremental } from '../dist/index.js';
+import { LAB_MAPPER_NUMBERS } from '../src/sfm/config/lab-preset.ts';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -86,6 +87,7 @@ const { result, errors } = await inBrowser(
     maxDistance,
     windowSize,
     refineSharedFocal,
+    labMapperNumbers,
   }) => {
     const api = await import(runtimeUrl);
     const adapter = await navigator.gpu?.requestAdapter();
@@ -152,15 +154,7 @@ const { result, errors } = await inBrowser(
       ...(occupancyFloors === undefined ? {} : { occupancyFloors }),
     });
     const deviceOpenMs = performance.now() - openStarted;
-    const mapOptions = {
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      minInitialAngleDeg: 1,
-      minTriangulationAngleDeg: 0.5,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal,
-    };
+    const mapOptions = { ...labMapperNumbers, refineSharedFocal };
     const runs = [];
     let comparisonInput;
     let reconstructionModel;
@@ -378,6 +372,7 @@ const { result, errors } = await inBrowser(
     maxDistance,
     windowSize,
     refineSharedFocal,
+    labMapperNumbers: LAB_MAPPER_NUMBERS,
   },
   { timeoutMs: 300000 },
 );
@@ -398,15 +393,7 @@ const cpu = reconstructIncremental(
     matches: Uint32Array.from(pair.matches),
     distances: Float64Array.from(pair.distances),
   })),
-  {
-    ransacIterations: 500,
-    maxErrorPx: 3,
-    minInitialAngleDeg: 1,
-    minTriangulationAngleDeg: 0.5,
-    bundleIterations: 4,
-    finalBundleIterations: 8,
-    refineSharedFocal,
-  },
+  { ...LAB_MAPPER_NUMBERS, refineSharedFocal },
 );
 const cpuElapsedMs = performance.now() - cpuStarted;
 const summarizeCpu = {

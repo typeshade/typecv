@@ -1,10 +1,11 @@
 import type { FeatureTrack, ImageFeatures, LandmarkObservation } from '../../contracts/scene.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 export interface PersistentDepthTrack {
   readonly id: number;
   readonly observations: readonly LandmarkObservation[];
 }
-const key = (o: { viewId: number; featureId: number }) => `${o.viewId}:${o.featureId}`;
+const key = (o: { viewId: number; featureId: number }) => observationKey(o.viewId, o.featureId);
 const copy = (t: PersistentDepthTrack): PersistentDepthTrack => ({
   id: t.id,
   observations: t.observations.map((o) => ({ ...o, pixel: [o.pixel[0], o.pixel[1]] })),

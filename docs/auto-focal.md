@@ -27,7 +27,8 @@ value. The typed value stays only as an advanced override.
 ### 2.1 Method
 
 `scripts/measure-focal.mjs` runs the CPU mapper (`reconstructIncremental`) with the lab's
-controls (`LAB_OPTIONS` of `website/src/workers/sfm.worker.ts`: 500 RANSAC trials, 3 px, 4 BA
+controls (the lab preset, `LAB_MAPPER_NUMBERS` of `src/sfm/config/lab-preset.ts`, which
+`LAB_OPTIONS` of `website/src/lib/lab-options.ts` holds: 500 RANSAC trials, 3 px, 4 BA
 iterations during mapping, 8 in the final BA) on the lab's samples:
 
 - `south-building`, `gerrard-hall`, `person-hall`, `graham-hall` (`website/public/sample/`): 12

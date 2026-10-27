@@ -6,6 +6,7 @@ import type {
   ExpandedObservationEdge,
   ObservationExpansionResult,
 } from './observation-expansion.ts';
+import { observationKey } from '../../../contracts/keys.ts';
 
 export interface ObservationAppendOptions {
   /** Fixed-model reprojection gate in the input images' pixel coordinates; no implicit resize. */
@@ -42,7 +43,8 @@ export interface ObservationAppendResult {
   };
 }
 
-const key = (viewId: number, featureId: number) => `${viewId}:${featureId}`;
+/** The key of a point's observation in one view (point index, view id). */
+const pointViewKey = (pointIndex: number, viewId: number) => `${pointIndex}:${viewId}`;
 const pixelValid = (pixel: readonly number[]) =>
   pixel?.length === 2 && Number.isFinite(pixel[0]) && Number.isFinite(pixel[1]);
 
@@ -97,7 +99,7 @@ export function appendExpandedObservations(
         Math.abs(image.keypoints[2 * observation.featureId + 1]! - observation.pixel[1]) > 1e-9
       )
         throw new RangeError('Observation append requires original feature measurements');
-      owners.set(key(observation.viewId, observation.featureId), pointIndex);
+      owners.set(observationKey(observation.viewId, observation.featureId), pointIndex);
     }
   });
   const validateFeature = (
@@ -197,12 +199,12 @@ export function appendExpandedObservations(
       rejected.nonIndependentWitness++;
       return;
     }
-    const pointIndex = owners.get(key(edge.sourceViewId, edge.sourceFeatureId));
+    const pointIndex = owners.get(observationKey(edge.sourceViewId, edge.sourceFeatureId));
     if (pointIndex === undefined) {
       rejected.sourceNotOriginal++;
       return;
     }
-    if (owners.get(key(witness.viewId, witness.featureId)) !== pointIndex) {
+    if (owners.get(observationKey(witness.viewId, witness.featureId)) !== pointIndex) {
       rejected.witnessNotOriginalPoint++;
       return;
     }
@@ -232,7 +234,7 @@ export function appendExpandedObservations(
       rejected.unregisteredTarget++;
       return;
     }
-    const owner = owners.get(key(edge.viewId, edge.featureId));
+    const owner = owners.get(observationKey(edge.viewId, edge.featureId));
     if (owner !== undefined && owner !== pointIndex) {
       rejected.targetOwned++;
       return;
@@ -264,8 +266,8 @@ export function appendExpandedObservations(
     }
     unique.add(claim);
     eligible.push({ edge, edgeIndex, pointIndex, errorPx });
-    const pv = key(pointIndex, edge.viewId),
-      feature = key(edge.viewId, edge.featureId);
+    const pv = pointViewKey(pointIndex, edge.viewId),
+      feature = observationKey(edge.viewId, edge.featureId);
     if (!pointViews.has(pv)) pointViews.set(pv, new Set());
     pointViews.get(pv)!.add(edge.featureId);
     if (!features.has(feature)) features.set(feature, new Set());
@@ -286,11 +288,11 @@ export function appendExpandedObservations(
   const admitted: ObservationAppendResult['admitted'][number][] = [];
   for (const candidate of eligible) {
     const { edge, edgeIndex, pointIndex, errorPx } = candidate;
-    if (pointViews.get(key(pointIndex, edge.viewId))!.size > 1) {
+    if (pointViews.get(pointViewKey(pointIndex, edge.viewId))!.size > 1) {
       rejected.conflictingTargetView++;
       continue;
     }
-    if (features.get(key(edge.viewId, edge.featureId))!.size > 1) {
+    if (features.get(observationKey(edge.viewId, edge.featureId))!.size > 1) {
       rejected.conflictingTargetFeature++;
       continue;
     }

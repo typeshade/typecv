@@ -1,7 +1,7 @@
 /**
  * Pre-sampling of an uploaded video: the lab analyses frames on a fixed time grid instead of
- * every decoded frame. The grid comes from the keyframe gate's own constants (the worker's
- * `LAB_OPTIONS`):
+ * every decoded frame. The grid comes from the keyframe gate's own constants (`LAB_OPTIONS` of
+ * `lib/lab-options.ts`):
  *
  * - A keyframe is forced after one second at the latest, so a grid finer than a few frames per
  *   second adds frames that no gap rule needs.

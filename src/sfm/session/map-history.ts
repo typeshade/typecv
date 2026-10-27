@@ -1,5 +1,6 @@
 import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 import { copyReconstruction } from '../model/copy.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 /** Historical observations identify a point even when local track indices are rebuilt. */
 export class MapHistory {
@@ -11,7 +12,7 @@ export class MapHistory {
   private removePoint(id: number): void {
     const point = this.points.get(id)!;
     for (const observation of point.observations) {
-      const key = observation.viewId + ':' + observation.featureId;
+      const key = observationKey(observation.viewId, observation.featureId);
       if (this.identities.get(key) === id) this.identities.delete(key);
     }
     this.points.delete(id);
@@ -22,7 +23,7 @@ export class MapHistory {
     const retained = new Set<number>();
     for (const view of model.views) this.views.set(view.id, view);
     for (const point of model.landmarks) {
-      const keys = point.observations.map((o) => o.viewId + ':' + o.featureId);
+      const keys = point.observations.map((o) => observationKey(o.viewId, o.featureId));
       const existing = [
         ...new Set(
           keys.flatMap((key) => {
@@ -52,7 +53,8 @@ export class MapHistory {
             const separate = { ...previous, observations: archived };
             this.points.set(previousId, separate);
             retained.add(previousId);
-            for (const o of archived) this.identities.set(o.viewId + ':' + o.featureId, previousId);
+            for (const o of archived)
+              this.identities.set(observationKey(o.viewId, o.featureId), previousId);
           }
         } else
           for (const observation of archived) observations.set(observation.viewId, observation);
@@ -62,7 +64,8 @@ export class MapHistory {
       const merged = { ...point, trackId: id, observations: [...observations.values()] };
       this.points.set(id, merged);
       retained.add(id);
-      for (const o of observations.values()) this.identities.set(o.viewId + ':' + o.featureId, id);
+      for (const o of observations.values())
+        this.identities.set(observationKey(o.viewId, o.featureId), id);
     }
     // A point rejected within the active window must not survive as a stale historical point.
     // Points with fewer than two remaining local observations belong to the archive.
@@ -89,7 +92,7 @@ export class MapHistory {
     for (const point of snapshot.landmarks) {
       this.nextId = Math.max(this.nextId, point.trackId + 1);
       for (const o of point.observations)
-        this.identities.set(o.viewId + ':' + o.featureId, point.trackId);
+        this.identities.set(observationKey(o.viewId, o.featureId), point.trackId);
     }
   }
 }

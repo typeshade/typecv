@@ -48,6 +48,12 @@ import type {
   PairMatches,
   SparseReconstruction,
 } from '../../contracts/scene.ts';
+import { MAPPER_DEFAULTS, bundleHuberPx, maxErrorOfHuberPx } from '../config/defaults.ts';
+import { observationKey } from '../../contracts/keys.ts';
+import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
+
+/** A triangulation result in the point channel that defers a depth: the status, negated. */
+const DEPTH_DEFERRED_POINT = -TriangulationStatus.depthSensitivity;
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
 export interface TriangulationGroup {
@@ -200,7 +206,7 @@ export function* sceneSteps(
   for (const track of graph.tracks)
     for (const o of track.observations) {
       viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(`${o.viewId}:${o.featureId}`, track.id);
+      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
     }
   const pixelOf = (viewId: number, featureId: number): [number, number] => {
     const k = byId.get(viewId)!.keypoints;
@@ -240,13 +246,13 @@ export function* sceneSteps(
       adopted = new Map<number, Landmark>();
     for (const point of resume.landmarks) {
       const trackId = point.observations
-        .map((o) => trackOfObservation.get(`${o.viewId}:${o.featureId}`))
+        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
         .find((id) => id !== undefined);
       if (trackId === undefined) continue;
       const observations = point.observations.filter(
         (o) =>
           registered.has(o.viewId) &&
-          trackOfObservation.get(`${o.viewId}:${o.featureId}`) === trackId,
+          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
       );
       const existing = adopted.get(trackId);
       if (
@@ -301,7 +307,7 @@ export function* sceneSteps(
     groups.forEach((g, i) => {
       const point = points[i]!;
       if (point < 0) {
-        if (point === -5) depthDeferred.add(g.trackId);
+        if (point === DEPTH_DEFERRED_POINT) depthDeferred.add(g.trackId);
         triedAt.set(g.trackId, cameraIds.length);
         return;
       }
@@ -387,7 +393,7 @@ export function* sceneSteps(
       iterations: steps,
       anchor: cameraOf.get(first.id)!,
       scale: cameraOf.get(second.id)!,
-      huberPx: maxError / 2,
+      huberPx: bundleHuberPx(maxError),
       variable: window ? Uint32Array.from(window, (id) => cameraOf.get(id)!) : undefined,
       subset: local && localSubset,
       refineSharedFocal,
@@ -506,7 +512,12 @@ export function* sceneSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, true);
+  yield* adjust(
+    finalBundle,
+    false,
+    options.refineSharedFocal ?? MAPPER_DEFAULTS.refineSharedFocal,
+    true,
+  );
   if (controls.depth.maxRelativeDepthStdDev) yield* filter();
   const meanReprojectionErrorPx = yield* request<number>({ kind: 'measure', maxErrorPx: maxError });
   const reconstruction = yield* request<SparseReconstruction>({ kind: 'snapshot' });
@@ -589,7 +600,8 @@ export class HostSceneDriver {
             ...job.depth,
           });
           const result = detailed.track;
-          if (detailed.status === 5) points[g] = -5;
+          if (detailed.status === TriangulationStatus.depthSensitivity)
+            points[g] = DEPTH_DEFERRED_POINT;
           if (!result) return;
           const point = scene.addPoint(group.trackId, result.xyz);
           for (let k = 0; k < observations.length; k++)
@@ -673,7 +685,7 @@ export class HostSceneDriver {
                 })).filter((o) => views.has(o.viewId)),
                 direction = fitBundleDirection(
                   observations.map((o) => ({ ...views.get(o.viewId)!, pixel: o.pixel })),
-                  2 * job.huberPx,
+                  maxErrorOfHuberPx(job.huberPx),
                 );
               return direction ? [{ trackId: g.trackId, direction, observations }] : [];
             });

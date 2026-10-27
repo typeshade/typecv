@@ -3,7 +3,8 @@ import type { Camera } from '../../contracts/camera.ts';
 import type { ImagePairGeometry } from '../image-pair.ts';
 import { resolveTwoViewInput, type TwoViewOptions, type TwoViewResult } from '../two-view.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
-import { estimatePairGpu } from './pair-estimation.ts';
+import { estimatePairGpu, RECOVERY_INFO } from './pair-estimation.ts';
+import { RECOVERY_FAILURES, TwoViewFailure } from '../../contracts/two-view-failures.ts';
 
 export interface GpuTwoViewOptions extends TwoViewOptions {
   /** Adaptive stopping is evaluated after each batch. Default: 32, bounded by device capacity. */
@@ -56,8 +57,7 @@ export async function estimateEssentialRansacGpu(
     seed: controls.seed,
     batchSize: options.batchSize,
   });
-  if (result.count < 8)
-    throw new GeometryEstimationError('Could not find a valid two-view geometry');
+  if (result.count < 8) throw new GeometryEstimationError(TwoViewFailure.noGeometry);
   return {
     E: result.model,
     inliers: result.mask,
@@ -107,7 +107,7 @@ export async function reconstructTwoViewGpu(
   });
   const recovered = result.recovery!,
     info = recovered.info;
-  const reason = recoveryFailure(info[56]!);
+  const reason = recoveryFailure(info[RECOVERY_INFO.status]!);
   if (reason) throw new GeometryEstimationError(reason);
   for (let i = 0; i < recovered.valid.length; i++)
     if (!recovered.valid[i]) recovered.points.fill(NaN, i * 3, i * 3 + 3);
@@ -130,23 +130,14 @@ export async function reconstructTwoViewGpu(
 /** @internal */
 export function recoveryFailure(status: number): string | undefined {
   if (status === 0) return undefined;
-  return (
-    [
-      '',
-      'Could not find a valid two-view geometry',
-      'Cheirality failed: low parallax, planar scene, or invalid matching',
-      'Low parallax: insufficient baseline for stable reconstruction',
-      'Insufficient reliable points after parallax and reprojection filtering',
-      'GPU two-view numerical refinement or median selection failed',
-    ][status] ?? 'GPU two-view recovery failed'
-  );
+  return RECOVERY_FAILURES[status] ?? TwoViewFailure.gpuRecovery;
 }
 /** @internal Device results only; this function performs no geometry computation. */
 export function recoverySummary(info: Float64Array, trials: number): ImagePairGeometry {
   return {
     R: info.slice(0, 9),
     t: info.slice(9, 12),
-    inlierCount: info[69]!,
+    inlierCount: info[RECOVERY_INFO.inlierCount]!,
     positiveDepthCount: info[54]!,
     meanReprojectionErrorPx: info[55]!,
     diagnostics: {

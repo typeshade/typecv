@@ -15,6 +15,7 @@ import {
 import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
 import type { Camera } from '../../contracts/camera.ts';
 import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
+import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
 
 /**
  * The automatic estimate of one shared focal length (docs/auto-focal.md). The mapper runs on a
@@ -497,7 +498,8 @@ export function* focalSearchSteps(
         preVerified: verifications?.(ratio),
         initialPair,
         refineSharedFocal: refine > 0,
-        finalBundleIterations: refine > 0 ? refine : (options.bundleIterations ?? 8),
+        finalBundleIterations:
+          refine > 0 ? refine : (options.bundleIterations ?? MAPPER_DEFAULTS.bundleIterations),
       });
     } catch (error) {
       // A device failure ends the run. A grid point that cannot build a map scores nothing.
@@ -545,7 +547,12 @@ export function* focalSearchSteps(
         subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
       const verifications = sharedVerification(subset, subsetPairs);
       // The mapper's BA runs with a Huber threshold of half the error bound.
-      const schedule = focalCandidateSteps(grid, size, (options.maxErrorPx ?? 3) / 2, exhaustive);
+      const schedule = focalCandidateSteps(
+        grid,
+        size,
+        bundleHuberPx(options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx),
+        exhaustive,
+      );
       let next = schedule.next();
       while (!next.done) {
         const ratio = next.value;
@@ -612,7 +619,7 @@ export function* focalSearchSteps(
           }
           const scored = scoreCandidates(
               [...candidates, ...refinedRuns],
-              (options.maxErrorPx ?? 3) / 2,
+              bundleHuberPx(options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx),
             ),
             winner = bestCandidate(
               scored.map((c) => (c.views >= minimumViews ? c : { ...c, views: 0 })),

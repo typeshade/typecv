@@ -73,6 +73,10 @@ import {
   ReconstructionOperationError,
 } from '../protocol/errors.ts';
 import { copyReconstruction } from '../model/copy.ts';
+import { imagePairHomographyIterations } from '../../geometry/operator-defaults.ts';
+import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
+import { observationKey, pairKey } from '../../contracts/keys.ts';
+import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
 
 /** @internal */
 export { judgePair } from '../pairs/pair-verdict.ts';
@@ -481,9 +485,7 @@ export function globalBundleDue(
     (controls.globalFrequency > 0 && views % controls.globalFrequency === 0)
   );
 }
-function pairKey(first: number, second: number): string {
-  return `${Math.min(first, second)}:${Math.max(first, second)}`;
-}
+
 /**
  * @internal Index the pre-verified pairs by pair key. Throws RangeError when an entry names no
  * input pair, repeats a pair, disagrees with its own diagnostic or lacks the geometry of a seed.
@@ -605,7 +607,7 @@ export function* verifyPairs(
             minParallaxDeg: Math.min(pointAngle, 0.1),
             maxReprojectionErrorPx: maxError,
             homographyThresholdPx: maxError,
-            homographyIterations: Math.min(iterations, 500),
+            homographyIterations: imagePairHomographyIterations(iterations),
           },
         ],
       });
@@ -771,7 +773,7 @@ export function* incrementalSteps(
   for (const track of graph.tracks)
     for (const o of track.observations) {
       viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(`${o.viewId}:${o.featureId}`, track.id);
+      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
     }
   const pixelOf = (viewId: number, featureId: number): [number, number] => {
     const k = byId.get(viewId)!.keypoints;
@@ -801,13 +803,13 @@ export function* incrementalSteps(
     for (const point of resume.landmarks) {
       // Track ids are rebuilt from the current edges; adopt a landmark through its observations.
       const trackId = point.observations
-        .map((o) => trackOfObservation.get(`${o.viewId}:${o.featureId}`))
+        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
         .find((id) => id !== undefined);
       if (trackId === undefined) continue;
       const observations = point.observations.filter(
         (o) =>
           registered.has(o.viewId) &&
-          trackOfObservation.get(`${o.viewId}:${o.featureId}`) === trackId,
+          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
       );
       const existing = landmarks.get(trackId);
       if (
@@ -852,7 +854,7 @@ export function* incrementalSteps(
     groups.forEach((g, i) => {
       const detailed = results[i]!,
         result = detailed.track;
-      if (detailed.status === 5) depthDeferred.add(g.trackId);
+      if (detailed.status === TriangulationStatus.depthSensitivity) depthDeferred.add(g.trackId);
       if (result) {
         depthDeferred.delete(g.trackId);
         landmarks.set(g.trackId, {
@@ -950,7 +952,7 @@ export function* incrementalSteps(
       iterations: steps,
       anchorViewId: subset?.anchorViewId ?? first.id,
       scaleViewId: subset?.scaleViewId ?? second.id,
-      huberPx: maxError / 2,
+      huberPx: bundleHuberPx(maxError),
       variableViewIds: window,
       refineSharedFocal,
       focalGroups: refineSharedFocal ? options.focalGroups : undefined,
@@ -1179,7 +1181,12 @@ export function* incrementalSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, finalize);
+  yield* adjust(
+    finalBundle,
+    false,
+    options.refineSharedFocal ?? MAPPER_DEFAULTS.refineSharedFocal,
+    finalize,
+  );
   let finalModel = model();
   let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',

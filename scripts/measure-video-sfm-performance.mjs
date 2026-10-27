@@ -6,6 +6,7 @@ import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
+import { LAB_MAPPER } from '../src/sfm/config/lab-preset.ts';
 const args = process.argv.slice(2),
   flag = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d),
   video = resolve(flag('--video')),
@@ -63,7 +64,7 @@ for (const [id, time] of times.entries()) {
 }
 const extractionMs = performance.now() - extractionStarted;
 const { result, errors } = await inBrowser(
-  async ({ frames, repetitions }) => {
+  async ({ frames, repetitions, labMapper }) => {
     const baseline = await import('/baseline/gpu.mjs'),
       optimized = await import('/dist/gpu.js'),
       adapter = await navigator.gpu.requestAdapter(),
@@ -153,15 +154,7 @@ const { result, errors } = await inBrowser(
           }
         }
         const at = performance.now(),
-          mapping = await api.reconstructIncrementalGpu(device, images, pairs, {
-            ransacIterations: 500,
-            maxErrorPx: 3,
-            minInitialAngleDeg: 1,
-            minTriangulationAngleDeg: 0.5,
-            bundleIterations: 4,
-            finalBundleIterations: 8,
-            refineSharedFocal: true,
-          });
+          mapping = await api.reconstructIncrementalGpu(device, images, pairs, { ...labMapper });
         mapperMs = performance.now() - at;
         const elapsedMs = performance.now() - started,
           after = device.statistics;
@@ -228,7 +221,7 @@ const { result, errors } = await inBrowser(
       validation,
     };
   },
-  { frames, repetitions },
+  { frames, repetitions, labMapper: LAB_MAPPER },
   { serve, timeoutMs: 1200000 },
 );
 assert.deepEqual(errors, []);

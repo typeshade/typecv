@@ -33,6 +33,7 @@ import {
   type MultiVideoSummary,
   type VideoPairEdges,
 } from './multi-video.ts';
+import { LAB_OPTIONS } from './lab-options.ts';
 
 /** A decoded or sampled analysis frame, as the page posts it. */
 export interface JobFrame {
@@ -102,7 +103,7 @@ export interface JobDenseOptions {
   mesh: boolean;
   /** The fusion (3.10 or 10.4). Default `DENSE_LAB_FUSION`. */
   fusion?: DenseFusion;
-  /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
+  /** The MVS options, `LAB_OPTIONS.dense` of `lib/lab-options.ts`. */
   options: Readonly<Record<string, unknown>>;
   /** The options of `cleanDenseCloudGpu`. */
   cleanOptions?: unknown;
@@ -115,7 +116,7 @@ export interface JobOptions {
   maxFeatures: number;
   firstOctave: -1 | 0;
   clahe?: boolean;
-  /** The mapper's fixed controls (`LAB_OPTIONS` of the worker). */
+  /** The mapper's fixed controls: the lab preset (`LAB_MAPPER`, `src/sfm/config/lab-preset.ts`). */
   mapper: Record<string, unknown>;
   /** The graph controls that the lab changes from the defaults of 3.3 and 3.4. */
   graph?: Record<string, unknown>;
@@ -194,7 +195,7 @@ function sampleColors(frame: JobFrame, points: Float64Array): Uint8Array {
 }
 
 /** Map snapshots go to the page at most this often (the single-video worker's interval). */
-export const SNAPSHOT_INTERVAL_MS = 500;
+export const SNAPSHOT_INTERVAL_MS = LAB_OPTIONS.snapshotIntervalMs;
 
 interface Snapshot {
   component: number;

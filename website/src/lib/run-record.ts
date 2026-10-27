@@ -207,7 +207,7 @@ export interface RunRecordDensePerformance {
 export interface RunRecordDense {
   readonly status: 'completed' | 'cancelled' | 'failed' | 'skipped';
   readonly skipped: string;
-  /** The MVS options of the lab (`LAB_OPTIONS.dense` of the worker). */
+  /** The MVS options of the lab (`LAB_OPTIONS.dense` of `lib/lab-options.ts`). */
   readonly options: {
     readonly maxSources: number;
     readonly bestSources: number;

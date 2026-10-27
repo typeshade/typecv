@@ -40,11 +40,14 @@ import {
   packBundleResult,
 } from './bundle.shade.ts';
 import {
+  BUNDLE_STATE,
   bundleStallMonitor,
   cooperativeBundleSchur,
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle-shared.ts';
+import { BUNDLE_DEFAULTS } from '../../config/defaults.ts';
+import { MODEL_STRIDE, PIXEL_STRIDE, POINT_STRIDE, POSE_STRIDE } from '../../scene/scene.ts';
 
 /** @internal */
 export { bundleStallMonitor, cooperativeBundleSchur } from './bundle-shared.ts';
@@ -82,10 +85,10 @@ function bundleAdjustGpuFixed(
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
   if (![C, P, M].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff))
     throw new RangeError('GPU BA scene dimensions exceed integer index bounds');
-  const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2,
+  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
+    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
     maxCg = options.maxCgIterations ?? Math.min(96, Math.max(24, C * 12)),
-    tolerance = options.cgRelativeTolerance ?? 1e-6;
+    tolerance = options.cgRelativeTolerance ?? BUNDLE_DEFAULTS.cgRelativeTolerance;
   if (
     C < 2 ||
     finitePoints < 1 ||
@@ -134,14 +137,14 @@ function bundleAdjustGpuFixed(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('GPU BA requires one connected observation graph');
-  const sceneSize = 18 * C + 3 * P + 2 * M,
-    trialSize = 12 * C + 3 * P,
+  const sceneSize = (POSE_STRIDE + MODEL_STRIDE) * C + POINT_STRIDE * P + PIXEL_STRIDE * M,
+    trialSize = POSE_STRIDE * C + POINT_STRIDE * P,
     indexSize = 3 * M + P + 2 * C + 2,
     cameraScratchSize = 36 * C,
     vectorSize = 30 * C + 3 * P,
-    stateSize = 26,
+    stateSize = BUNDLE_STATE.size,
     partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
-    outputSize = trialSize + 26;
+    outputSize = trialSize + BUNDLE_STATE.size;
   // These logical lengths bound every positive u32 shader offset sum. The sizes of the arrays are
   // not a limit of the problem: the plan below cuts the observation and point sections of `blocks`
   // to the budget (docs/gpu-budget.md, section 3).
@@ -181,20 +184,23 @@ function bundleAdjustGpuFixed(
   for (let c = 0; c < C; c++) {
     const v = model.views[c]!,
       k = validateGpuCamera(v.camera);
-    source.set([...v.pose.R, ...v.pose.t], c * 12);
-    source.set([k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!], 12 * C + 3 * P + c * 6);
+    source.set([...v.pose.R, ...v.pose.t], c * POSE_STRIDE);
+    source.set(
+      [k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!],
+      POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE,
+    );
     indices[3 * M + P + C + 2 + c] = Number(active[c]);
   }
   let obs = 0;
   for (let p = 0; p < P; p++) {
     const point = model.landmarks[p]!;
-    source.set(point.xyz, 12 * C + p * 3);
+    source.set(point.xyz, POSE_STRIDE * C + p * POINT_STRIDE);
     indices[2 * M + p] = obs;
     for (const o of point.observations) {
       const c = byId.get(o.viewId)!;
       indices[obs] = c;
       indices[M + obs] = p;
-      source.set(o.pixel, 18 * C + 3 * P + obs * 2);
+      source.set(o.pixel, (POSE_STRIDE + MODEL_STRIDE) * C + POINT_STRIDE * P + obs * PIXEL_STRIDE);
       cameraLists[c]!.push(obs);
       obs++;
     }
@@ -849,24 +855,33 @@ function bundleAdjustGpuFixed(
       );
       const values = await device.read(output, outputSize),
         base = trialSize;
-      if (values[base + 14] === 1) throw new RangeError('GPU BA gauge requires a nonzero baseline');
-      if (values[base + 14] === 2)
+      if (values[base + BUNDLE_STATE.inputError] === 1)
+        throw new RangeError('GPU BA gauge requires a nonzero baseline');
+      if (values[base + BUNDLE_STATE.inputError] === 2)
         throw new RangeError(
           'GPU BA observations must initially project in front of their cameras',
         );
       // Preserve fixed host constants exactly, including bits beyond the emulated format.
-      const changed = values[base + 10]! > 0;
+      const changed = values[base + BUNDLE_STATE.accepted]! > 0;
       const reconstruction: SparseReconstruction = {
         views: model.views.map((v, c) => ({
           ...v,
           pose:
             changed && active[c]
-              ? { R: values.slice(c * 12, c * 12 + 9), t: values.slice(c * 12 + 9, c * 12 + 12) }
+              ? {
+                  R: values.slice(c * POSE_STRIDE, c * POSE_STRIDE + 9),
+                  t: values.slice(c * POSE_STRIDE + 9, (c + 1) * POSE_STRIDE),
+                }
               : v.pose,
         })),
         landmarks: model.landmarks.map((p, i) => ({
           ...p,
-          xyz: changed ? values.slice(C * 12 + i * 3, C * 12 + i * 3 + 3) : p.xyz,
+          xyz: changed
+            ? values.slice(
+                C * POSE_STRIDE + i * POINT_STRIDE,
+                C * POSE_STRIDE + (i + 1) * POINT_STRIDE,
+              )
+            : p.xyz,
         })),
       };
       // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
@@ -887,17 +902,17 @@ function bundleAdjustGpuFixed(
         {
           reconstruction,
           diagnostics: {
-            initialCost: values[base + 8]!,
-            finalCost: values[base + 6]!,
-            initialRmsePx: values[base + 24]!,
-            finalRmsePx: values[base + 25]!,
-            acceptedSteps: values[base + 10]!,
-            rejectedSteps: values[base + 11]!,
+            initialCost: values[base + BUNDLE_STATE.initialCost]!,
+            finalCost: values[base + BUNDLE_STATE.cost]!,
+            initialRmsePx: values[base + BUNDLE_STATE.initialRmsePx]!,
+            finalRmsePx: values[base + BUNDLE_STATE.finalRmsePx]!,
+            acceptedSteps: values[base + BUNDLE_STATE.accepted]!,
+            rejectedSteps: values[base + BUNDLE_STATE.rejected]!,
             observations: M,
-            baseline: values[base + 2]!,
+            baseline: values[base + BUNDLE_STATE.baseline]!,
           },
-          cgIterations: values[base + 16]!,
-          linearSolverFailures: values[base + 17]!,
+          cgIterations: values[base + BUNDLE_STATE.cgSteps]!,
+          linearSolverFailures: values[base + BUNDLE_STATE.failedSolves]!,
           execution: {
             backend: device.backend,
             report,

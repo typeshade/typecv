@@ -1,5 +1,4 @@
 /// <reference lib="webworker" />
-import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling.ts';
 import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate.ts';
 import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching.ts';
 import {
@@ -13,9 +12,7 @@ import {
 import type { DenseQualityOptions } from '../lib/dense-quality.ts';
 import type { KltSetup } from '../lib/sift-quality.ts';
 import {
-  DENSE_CLEAN_OPTIONS,
   DENSE_LAB_FUSION,
-  DENSE_LAB_OPTIONS,
   createDenseJob,
   denseCleanDefault,
   denseGpuTimestampFields,
@@ -35,6 +32,15 @@ import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context.
 import type { GpuPreparationPhase } from '../lib/gpu-preparation.ts';
 import { initializationFailureRecord } from '../lib/initialization-failure.ts';
 import { sceneViewWithFrame } from '../lib/sfm-scene.ts';
+import {
+  LAB_KLT_CAPACITY,
+  LAB_OPTIONS,
+  LAB_WORKER_DEFAULTS,
+  ORB_LAB_FEATURES,
+  ORB_LAB_RATIO,
+  ORB_MAX_DISTANCE,
+  PHOTO_PROFILE,
+} from '../lib/lab-options.ts';
 export {};
 type Frame = {
   id: number;
@@ -121,48 +127,7 @@ type Request =
   /** Stop the dense MVS between chunks (5.3). The sparse result stays. */
   | { type: 'cancelDense'; id: number };
 
-/** The lab's fixed numerical controls; reported with every result so a run record can carry them. */
-export const LAB_OPTIONS = {
-  windowSize: 32,
-  ransacIterations: 500,
-  maxErrorPx: 3,
-  minInitialAngleDeg: 1,
-  minTriangulationAngleDeg: 0.5,
-  bundleIterations: 4,
-  finalBundleIterations: 8,
-  refineSharedFocal: true,
-  /** `sift`: scale-space SIFT with resident f32 descriptors (the lab's front end); `corner`: the FAST/BRIEF pyramid front end, kept for comparison runs. */
-  frontEnd: 'sift' as 'corner' | 'sift',
-  /** Corner threshold of the `corner` front end; unused by SIFT. */
-  threshold: 0.045,
-  maxFeatures: 4096,
-  smoothDescriptors: true,
-  matchRatio: 0.8 as number,
-  /** L2 bound of the SIFT matcher: no bound. */
-  maxDistance: 1e19 as number,
-  /** A frame becomes a keyframe when its median match displacement from the last keyframe reaches this many analysis pixels... */
-  keyframeMinMotionPx: 8,
-  /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
-  keyframeMaxGapSeconds: 1,
-  /** Analysis frames per second the page takes from an uploaded video (`?fps=` overrides it); photos and samples are not sampled. */
-  videoSampleFps: VIDEO_SAMPLE_FPS,
-  /** Map snapshots to the page are posted at most this often; the final one is always posted. */
-  snapshotIntervalMs: 500,
-  /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
-  detailedStageLimit: 400,
-  /** The cleanup of the fused cloud (3.12): `DENSE_CLEAN_OPTIONS` of `lib/dense-run.ts`. */
-  denseCleanOptions: DENSE_CLEAN_OPTIONS,
-  /** The dense MVS (`docs/dense-mvs.md` 5.3): `DENSE_LAB_OPTIONS` of `lib/dense-run.ts`. */
-  dense: DENSE_LAB_OPTIONS,
-} as const;
-/** The ORB front end's lab defaults, chosen by measurement (docs/gpu-features.md, ORB): features per frame, ratio test and Hamming bound (none). */
-const ORB_LAB_FEATURES = 4000;
-const ORB_LAB_RATIO = 0.95;
-const ORB_MAX_DISTANCE = 256;
-/** Still photographs with calibrated intrinsics: the shared focal is not refined. */
-export const PHOTO_PROFILE = {
-  refineSharedFocal: false,
-} as const;
+/** The controls of a run: `LAB_OPTIONS`, with `PHOTO_PROFILE` for still photographs (`lib/lab-options.ts`). */
 const controls = (profile: Profile) =>
   profile === 'photo' ? { ...LAB_OPTIONS, ...PHOTO_PROFILE } : LAB_OPTIONS;
 let apiPromise: Promise<any> | undefined;
@@ -445,9 +410,6 @@ function recordKlt(operation: string, elapsedMs: number) {
  * gray image (level 0); any other frame (a skipped one) goes in as RGBA. Selection is left to the
  * join, which seeds the keypoints first.
  */
-/** The tracks the lab's tracker holds unless `?kltCapacity=` says otherwise. */
-const LAB_KLT_CAPACITY = 512;
-
 async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?: any) {
   const active = job!;
   if (!active.options.klt) return;
@@ -571,20 +533,20 @@ async function start(
   boundedRequest: boolean | undefined,
   fp64?: 'float' | 'integer',
   budget?: number,
-  analysisEdge = 640,
-  firstOctave: -1 | 0 = 0,
-  guided = false,
-  dense = false,
+  analysisEdge = LAB_WORKER_DEFAULTS.analysisEdge,
+  firstOctave: -1 | 0 = LAB_WORKER_DEFAULTS.firstOctave,
+  guided = LAB_WORKER_DEFAULTS.guided,
+  dense = LAB_WORKER_DEFAULTS.dense,
   clahe = false,
   denseClean: boolean | undefined = undefined,
   denseMesh = false,
-  gate: KeyframeGateMode = 'legacy',
+  gate: KeyframeGateMode = LAB_WORKER_DEFAULTS.gate,
   features: 'sift' | 'orb' = 'sift',
   orbTuning: { maxFeatures?: number; ratio?: number; maxDistance?: number } = {},
   klt = false,
   kltSetup?: KltSetup,
   guidedKernel: 'tiled' | 'scalar' = 'scalar',
-  focalSearchRequest = false,
+  focalSearchRequest = LAB_WORKER_DEFAULTS.focalSearch,
   denseFusion: DenseFusion = DENSE_LAB_FUSION,
   denseQuality: DenseQualityOptions = {},
   denseGpuTimestamps?: boolean,

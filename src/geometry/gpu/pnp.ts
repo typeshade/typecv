@@ -26,6 +26,8 @@ import {
 } from './pnp.shade.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import type { GpuGeometryExecution } from './execution.ts';
+import { PNP_DEFAULTS, pnpMinInliers } from '../operator-defaults.ts';
+import { PROGRESS_INTERVAL } from './search-schedule.ts';
 
 /** @internal */
 export { finiteGpuArray, validateGpuCamera } from './bounds.ts';
@@ -44,14 +46,6 @@ export interface GpuPnPResult extends PnPResult {
   readonly execution: GpuGeometryExecution;
 }
 
-/**
- * The batches of a PnP search between two reads of the scheduling word. The GPU decides each
- * batch's work through the indirect workgroup counts (TypeShade change 0075), so the host reads
- * nothing between batches. It reads the adaptive budget after every fourth batch to leave the
- * search early: at most three batches past the budget are submitted, and each dispatches zero
- * workgroups but its one-workgroup `planPnPBatch`.
- */
-const PROGRESS_INTERVAL = 4;
 /** The trials a scoring batch holds at least, to fill the device (`docs/gpu-throughput.md`, item 2). */
 const PNP_SCORING_FLOOR = 512;
 /** The offsets, in words, of the workgroup counts of `pnp.shade.ts` (`batchCounts`). */
@@ -70,12 +64,12 @@ export function estimatePosePnPGpu(
 ): Promise<GpuPnPResult> {
   const k = validateGpuCamera({ ...camera }),
     n = worldPoints.length / 3;
-  const maximum = options.iterations ?? 1000,
-    threshold = options.thresholdPx ?? 3,
-    confidence = options.confidence ?? 0.999,
-    seed = options.seed ?? 17,
-    minimum = options.minInliers ?? Math.min(6, n),
-    refinement = options.refinementIterations ?? 20,
+  const maximum = options.iterations ?? PNP_DEFAULTS.iterations,
+    threshold = options.thresholdPx ?? PNP_DEFAULTS.thresholdPx,
+    confidence = options.confidence ?? PNP_DEFAULTS.confidence,
+    seed = options.seed ?? PNP_DEFAULTS.seed,
+    minimum = options.minInliers ?? pnpMinInliers(n),
+    refinement = options.refinementIterations ?? PNP_DEFAULTS.refinementIterations,
     minTrials = options.minIterations ?? Math.min(64, maximum),
     requestedBatch = options.batchSize ?? 512;
   if (

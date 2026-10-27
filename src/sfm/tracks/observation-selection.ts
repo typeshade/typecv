@@ -1,6 +1,7 @@
 import { validateFeatures } from './tracks.ts';
 import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
+import { pairKey } from '../../contracts/keys.ts';
 
 export type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 
@@ -99,7 +100,7 @@ export function snapshotCameraMasks(masks: readonly CameraObservationMask[] | un
     return { ...m, values: m.values.slice() };
   });
 }
-const key = (a: number, b: number) => `${Math.min(a, b)}:${Math.max(a, b)}`;
+
 /** @internal Filter before E/H/R consensus; retained ids and distances always refer to original features. */
 export function selectCameraObservations(
   images: readonly ImageFeatures[],
@@ -136,7 +137,7 @@ export function selectCameraObservations(
     inputMatchCount += p.matches.length / 2;
     backgroundMatchCount += used.length / 2;
     if (!apart.length) return p;
-    changedPairKeys.add(key(p.first, p.second));
+    changedPairKeys.add(pairKey(p.first, p.second));
     separatedPairs.push({
       first: p.first,
       second: p.second,

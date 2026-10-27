@@ -5,6 +5,7 @@ import type {
   ImageFeatures,
   PairMatches,
 } from '../../contracts/scene.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 export function validateFeatures(
   views: readonly ImageFeatures[],
@@ -54,7 +55,7 @@ export function buildTracks(
     parent: number[] = [],
     members: Map<number, number>[] = [];
   const node = (viewId: number, featureId: number) => {
-    const key = `${viewId}:${featureId}`;
+    const key = observationKey(viewId, featureId);
     let id = lookup.get(key);
     if (id === undefined) {
       id = nodes.length;

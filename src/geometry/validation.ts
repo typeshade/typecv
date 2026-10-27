@@ -1,6 +1,7 @@
 import { validateCamera } from './camera.ts';
 import { validatePose } from './pose.ts';
 import type { RegisteredView, SparseReconstruction } from '../contracts/scene.ts';
+import { observationKey } from '../contracts/keys.ts';
 
 export function validateReconstruction(input: SparseReconstruction): void {
   const views = new Map<number, RegisteredView>();
@@ -27,7 +28,7 @@ export function validateReconstruction(input: SparseReconstruction): void {
     if (p.observations.length < 2)
       throw new RangeError('Landmarks require at least two observations');
     for (const o of p.observations) {
-      const key = `${o.viewId}:${o.featureId}`;
+      const key = observationKey(o.viewId, o.featureId);
       if (
         !views.has(o.viewId) ||
         seen.has(o.viewId) ||

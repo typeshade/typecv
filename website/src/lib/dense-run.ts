@@ -1,5 +1,6 @@
 import { DepthArchive } from './depth-archive.ts';
 import { densePerformanceRecord } from './run-record.ts';
+import { DENSE_LAB_FUSION, type DenseFusion } from './lab-options.ts';
 /**
  * The lab worker's dense MVS (`docs/dense-mvs.md` 5.3, step 6 of section 8): the RGBA it keeps
  * for each keyframe, the run of `reconstructDenseGpu` after the sparse result, and the messages it
@@ -7,28 +8,14 @@ import { densePerformanceRecord } from './run-record.ts';
  * takes them as arguments, so that `website/dense-run.test.mjs` runs it with a fake MVS.
  */
 
-/** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3, for both lab workers. */
-export const DENSE_LAB_OPTIONS = {
-  maxSources: 6,
-  bestSources: 3,
-  windowRadius: 5,
-  windowStep: 2,
-  photometricIterations: 8,
-  geometricIterations: 4,
-  minConsistentViews: 3,
-  tsdf: { visibility: 'view-weighted' },
-  planarDepth: true,
-} as const;
-
-/**
- * The fusion of the lab (`docs/dense-mvs.md` 10.4, the step 3 record): the TSDF fusion, which beat
- * the per-pixel fusion of 3.10 on ETH3D `pipes` in F-score at 2 and 5 cm and in landmark coverage.
- * `?denseFusion=pixel` runs the fusion of 3.10.
- */
-export const DENSE_LAB_FUSION: DenseFusion = 'tsdf';
-
-/** The fusions of `reconstructDenseGpu` (`fusion`). */
-export type DenseFusion = 'pixel' | 'tsdf';
+/** The lab's dense defaults: the lab's options module (`lab-options.ts`) holds them. */
+export {
+  DENSE_CLEAN_OPTIONS,
+  DENSE_LAB_FUSION,
+  DENSE_LAB_OPTIONS,
+  denseCleanDefault,
+  type DenseFusion,
+} from './lab-options.ts';
 
 /** Only enabled features of the actual native Dense device establish timestamp mode. Adapter
  * support, requested options and the presence of timed groups are different measurements. */
@@ -43,22 +30,6 @@ export function denseGpuTimestampFields(device: unknown): { gpuTimestamps?: bool
     return {};
   }
 }
-
-/**
- * Whether the lab cleans the fused cloud (3.12) by default: after the pixel fusion only. On
- * `pipes` the cleanup lowered the TSDF cloud's F-score at every threshold and raised its uncovered
- * landmarks (the step 3 record), as it did the pixel cloud's. `?denseClean=1` or `0` overrides it.
- */
-export function denseCleanDefault(fusion: DenseFusion): boolean {
-  return fusion === 'pixel';
-}
-
-/**
- * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
- * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
- * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
- */
-export const DENSE_CLEAN_OPTIONS = { cluster: { minFraction: 0.1 } } as const;
 
 /** The stages of the MVS, in their order (5.3). */
 export type DenseStage = 'photometric' | 'geometric' | 'fusion';
@@ -189,7 +160,7 @@ export type DenseCleanInput = {
 export interface DenseRunContext {
   readonly component?: number;
   readonly dense: DenseJob;
-  /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
+  /** The MVS options, `LAB_OPTIONS.dense` of `lib/lab-options.ts`. */
   readonly options: Readonly<Record<string, unknown>>;
   /** The device's byte counts now (`ShadeDevice.statistics`). */
   readonly statistics: () => { liveBytes: number; pooledBytes: number };

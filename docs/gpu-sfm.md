@@ -478,7 +478,7 @@ only its row appends, null solve and finish are indirect.
 So the host reads nothing between the kernels of a batch, and between batches
 only the scheduling word. `snapshotPairModelBudget` copies the adaptive budget
 into it, and the host reads it after every fourth batch of a search
-(`PROGRESS_INTERVAL` in `src/geometry/gpu/pair-estimation.ts`). The host bounds the loop
+(`PROGRESS_INTERVAL` in `src/geometry/gpu/search-schedule.ts`). The host bounds the loop
 by the requested maximum, as before, and by the budget it read last. At most
 three batches past the budget are submitted: each runs its three one-workgroup
 control kernels (`planPairModelBatch`, `summarizePairModelWork`,
@@ -526,8 +526,8 @@ scoring rate the device learned. The CPU tier scores 64 trials a batch.
 twelve words, and those entries dispatch indirectly. A count is 0 when the
 batch's first trial is at or past the budget. The first batch always runs.
 `snapshotPnPBudget` copies the budget into the scheduling word, and the host
-reads it after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/pnp.ts`). The
-scoring of a batch is a chunk step of its own (key `scorePnP`, one unit a
+reads it after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/search-schedule.ts`).
+The scoring of a batch is a chunk step of its own (key `scorePnP`, one unit a
 trial), timed only when the host knows it runs. Before this change PnP ran
 batches of 32 trials up to the requested maximum, all in one plan with no time
 budget: 24 batches of four dispatches each for the mapper's 750 trials, most of

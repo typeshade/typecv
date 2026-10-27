@@ -693,7 +693,7 @@ Decisions (the observations above, the choice is the project's):
   SwiftShader). 8000 gives 70 % more landmarks. It stays available through `?orbFeatures=8000`.
 - The library default of `extractOrbGpuResident` stays 1000, and the matcher default ratio stays
   0.82. The lab sets 4000 and 0.95 for ORB (`ORB_LAB_FEATURES`, `ORB_LAB_RATIO` in
-  `website/src/workers/sfm.worker.ts`). SIFT stays the lab default front end.
+  `website/src/lib/lab-options.ts`). SIFT stays the lab default front end.
 
 The lab at its new ORB defaults (commit `f3c5ed7`, no overrides) reproduces the cells above:
 south-building 12 of 12 views, 2328 landmarks, 0.56 px; pyramid 8 of 8, 5144 landmarks, 0.49 px.

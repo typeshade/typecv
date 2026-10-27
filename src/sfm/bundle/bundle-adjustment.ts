@@ -13,8 +13,10 @@ import { validateReconstruction } from '../../geometry/validation.ts';
 import {
   bundleMetrics as metrics,
   bundleStallTolerance,
+  bundleStalled,
   cloneBundleReconstruction as clone,
 } from './bundle-shared.ts';
+import { BUNDLE_DEFAULTS } from '../config/defaults.ts';
 
 export { validateReconstruction } from '../../geometry/validation.ts';
 /** @internal The LM stop rule shared by the CPU and GPU solvers. */
@@ -80,8 +82,8 @@ function bundleAdjustFixedIntrinsics(
   options: BundleAdjustmentOptions = {},
 ): BundleAdjustmentResult {
   validateReconstruction(input);
-  const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2,
+  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
+    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
     stall = bundleStallTolerance(options);
   if (input.views.length < 2 || !input.landmarks.length)
     throw new RangeError('Bundle adjustment needs two views and landmarks');
@@ -263,7 +265,7 @@ function bundleAdjustFixedIntrinsics(
       current = next;
       lambda = Math.max(1e-10, lambda / 3);
       acceptedSteps++;
-      if (improvement < stall * Math.max(1, current.cost)) break;
+      if (bundleStalled(improvement, current.cost, stall)) break;
     } else {
       lambda *= 10;
       rejectedSteps++;

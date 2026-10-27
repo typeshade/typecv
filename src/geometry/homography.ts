@@ -1,5 +1,6 @@
 import { multiply } from './linear.ts';
 import { inverse3, nullspace, ransacBudget, sample, seededRandom } from './numerics.ts';
+import { HOMOGRAPHY_DEFAULTS } from './operator-defaults.ts';
 
 /** Normalized DLT, row-major H maps (x,y,1) to (u,v,1). */
 export function fitHomography(matches: readonly (readonly number[])[]): Float64Array {
@@ -51,10 +52,10 @@ export function estimateHomography(
       iterations: number;
     }
   | undefined {
-  const threshold = options.thresholdPx ?? 2,
-    iterations = options.iterations ?? 500,
-    confidence = options.confidence ?? 0.999,
-    seed = options.seed ?? 17;
+  const threshold = options.thresholdPx ?? HOMOGRAPHY_DEFAULTS.thresholdPx,
+    iterations = options.iterations ?? HOMOGRAPHY_DEFAULTS.iterations,
+    confidence = options.confidence ?? HOMOGRAPHY_DEFAULTS.confidence,
+    seed = options.seed ?? HOMOGRAPHY_DEFAULTS.seed;
   if (
     matches.length % 4 ||
     !matches.every(Number.isFinite) ||

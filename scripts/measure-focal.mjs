@@ -2,6 +2,7 @@
 // treated as uncalibrated: every view starts at fx = fy = ratio × width. See docs/auto-focal.md.
 import { readFileSync } from 'node:fs';
 import { reconstructIncremental } from '../src/index.ts';
+import { LAB_MAPPER_NUMBERS } from '../src/sfm/config/lab-preset.ts';
 
 const SAMPLES = ['south-building', 'gerrard-hall', 'person-hall', 'graham-hall'];
 
@@ -83,15 +84,8 @@ export function pyramidRelief(reconstruction, viewId = 7) {
   return median(ground) / median(apex) - 1;
 }
 
-/** The lab's numerical controls (`LAB_OPTIONS` in `website/src/workers/sfm.worker.ts`). */
-export const LAB = {
-  ransacIterations: 500,
-  maxErrorPx: 3,
-  minInitialAngleDeg: 1,
-  minTriangulationAngleDeg: 0.5,
-  bundleIterations: 4,
-  finalBundleIterations: 8,
-};
+/** The lab's numerical controls: the six mapper numbers of `src/sfm/config/lab-preset.ts`. */
+export const LAB = { ...LAB_MAPPER_NUMBERS };
 
 export function camerasAt(frames, ratio, distortion) {
   return frames.map((f) => ({
