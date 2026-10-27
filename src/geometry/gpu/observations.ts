@@ -63,6 +63,80 @@ function evaluateSceneObservationsGpu(
   options: DepthSensitivityOptions,
   lastOnly: boolean,
 ): Promise<GpuObservationResult> {
+  const { depth, guarded, lengths, count, layout, cameras, points, pixels, indices } =
+    observationRequest(device, model, maxErrorPx, options, lastOnly);
+  return device.enqueue(async () => {
+    const before = device.statistics,
+      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+    let successful = false;
+    const wide = (n: number, v?: Float64Array) => {
+      const r = device.allocateF64(n, v);
+      owned.push(r);
+      return r;
+    };
+    const words = (n: number, v?: Uint32Array) => {
+      const r = device.allocateU32(n, v);
+      owned.push(r);
+      return r;
+    };
+    try {
+      const starts = new Uint32Array(lengths.length + 1);
+      lengths.forEach((n, i) => {
+        starts[i + 1] = starts[i]! + n;
+      });
+      const offsets = guarded ? words(starts.length, starts) : undefined;
+      const cameraRecords = wide(cameras.length, cameras),
+        xyz = wide(points.length, points),
+        measurements = wide(pixels.length, pixels),
+        observationIndices = words(indices.length, indices),
+        errors = wide(layout.lengths.errors),
+        summary = wide(2),
+        blocks = Math.ceil(Math.max(1, count) / 64),
+        partials = wide(2 * blocks),
+        flags = words(layout.lengths.flags);
+      const control = { maxError: maxErrorPx, ...depth, observations: count };
+      const scene = {
+        control,
+        cameras: cameraRecords,
+        coordinates: xyz,
+        indices: observationIndices,
+        errors,
+        flags,
+      };
+      const report = await device.planSteps(
+        observationSteps(device, scene, measurements, offsets, partials, summary, {
+          count,
+          tracks: lengths.length,
+          blocks,
+        }),
+      );
+      const [values, flat] = await Promise.all([
+        device.read(summary, 2),
+        count || (guarded && lengths.length)
+          ? device.read(flags, count + (guarded ? lengths.length : 0))
+          : new Uint32Array(0),
+      ]);
+      const result = unpackObservations(values, flat, lengths, count, guarded);
+      const after = device.statistics;
+      successful = true;
+      return { ...result, execution: geometryExecution(device, report, before, after) };
+    } finally {
+      for (const b of owned) successful ? device.recycle(b) : device.drop(b);
+    }
+  });
+}
+
+/**
+ * The request checks of `evaluateSceneObservationsGpu` and its host packing: the camera, point,
+ * pixel and index arrays of the layout. A bad request throws before any GPU work.
+ */
+function observationRequest(
+  device: ShadeDevice,
+  model: SparseReconstruction,
+  maxErrorPx: number,
+  options: DepthSensitivityOptions,
+  lastOnly: boolean,
+) {
   const depth = depthSensitivityControls(options),
     guarded = depth.maxRelativeDepthStdDev > 0;
   validateReconstruction(model);
@@ -134,104 +208,89 @@ function evaluateSceneObservationsGpu(
     }
   }
   if (!finiteGpuArray(pixels)) throw new RangeError('Invalid GPU scene coordinate bounds');
-  return device.enqueue(async () => {
-    const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
-    let successful = false;
-    const wide = (n: number, v?: Float64Array) => {
-      const r = device.allocateF64(n, v);
-      owned.push(r);
-      return r;
-    };
-    const words = (n: number, v?: Uint32Array) => {
-      const r = device.allocateU32(n, v);
-      owned.push(r);
-      return r;
-    };
-    try {
-      const starts = new Uint32Array(lengths.length + 1);
-      lengths.forEach((n, i) => {
-        starts[i + 1] = starts[i]! + n;
-      });
-      const offsets = guarded ? words(starts.length, starts) : undefined;
-      const cameraRecords = wide(cameras.length, cameras),
-        xyz = wide(points.length, points),
-        measurements = wide(pixels.length, pixels),
-        observationIndices = words(indices.length, indices),
-        errors = wide(layout.lengths.errors),
-        summary = wide(2),
-        blocks = Math.ceil(Math.max(1, count) / 64),
-        partials = wide(2 * blocks),
-        flags = words(layout.lengths.flags);
-      const control = { maxError: maxErrorPx, ...depth, observations: count };
-      const scene = {
-        control,
-        cameras: cameraRecords,
-        coordinates: xyz,
-        indices: observationIndices,
-        errors,
-        flags,
-      };
-      // Named steps, so the device reports each kernel before it starts (a lost device names it).
-      const report = await device.planSteps([
-        [
-          'projectIndexedObservations',
-          () => {
-            if (count)
-              projectIndexedObservations({ ...scene, pixels: measurements }, Math.ceil(count / 64));
-          },
-        ],
-        ...(offsets
-          ? [
-              [
-                'filterIndexedObservationDepth',
-                () =>
-                  filterIndexedObservationDepth(
-                    { ...scene, offsets },
-                    Math.ceil(lengths.length / 64),
-                  ),
-              ] as const,
-            ]
-          : []),
-        [
-          'indexedObservationPartials',
-          () => {
-            if (device.backend === 'webgpu')
-              indexedObservationPartials({ control, flags, errors, partials }, blocks);
-            else
-              indexedObservationPartialsOracle(
-                { control, flags, errors, partials },
-                Math.ceil(blocks / 8),
-              );
-          },
-        ],
-        ['observationSummary', () => observationSummary({ partials, summary }, 1)],
-      ]);
-      const [values, flat] = await Promise.all([
-        device.read(summary, 2),
-        count || (guarded && lengths.length)
-          ? device.read(flags, count + (guarded ? lengths.length : 0))
-          : new Uint32Array(0),
-      ]);
-      let at = 0;
-      const masks = lengths.map((n) => {
-        const r = Uint8Array.from(flat.subarray(at, at + n));
-        at += n;
-        return r;
-      });
-      const after = device.statistics;
-      successful = true;
-      return {
-        ...(guarded
-          ? { depthRejected: Uint8Array.from(flat.subarray(count, count + lengths.length)) }
-          : {}),
-        masks,
-        inlierCount: values[1]!,
-        meanErrorPx: values[1]! > 0 ? values[0]! / values[1]! : Infinity,
-        execution: geometryExecution(device, report, before, after),
-      };
-    } finally {
-      for (const b of owned) successful ? device.recycle(b) : device.drop(b);
-    }
+  return { depth, guarded, lengths, count, layout, cameras, points, pixels, indices };
+}
+
+/** The bindings that every observation kernel reads. */
+interface ObservationScene {
+  control: {
+    maxError: number;
+    maxRelativeDepthStdDev: number;
+    pixelNoiseStdDevPx: number;
+    observations: number;
+  };
+  cameras: Resident<Float64Array>;
+  coordinates: Resident<Float64Array>;
+  indices: Resident<Uint32Array>;
+  errors: Resident<Float64Array>;
+  flags: Resident<Uint32Array>;
+}
+
+// Named steps, so the device reports each kernel before it starts (a lost device names it).
+function observationSteps(
+  device: ShadeDevice,
+  scene: ObservationScene,
+  measurements: Resident<Float64Array>,
+  offsets: Resident<Uint32Array> | undefined,
+  partials: Resident<Float64Array>,
+  summary: Resident<Float64Array>,
+  sizes: { count: number; tracks: number; blocks: number },
+) {
+  const { control, flags, errors } = scene,
+    { count, blocks } = sizes;
+  return [
+    [
+      'projectIndexedObservations',
+      () => {
+        if (count)
+          projectIndexedObservations({ ...scene, pixels: measurements }, Math.ceil(count / 64));
+      },
+    ],
+    ...(offsets
+      ? [
+          [
+            'filterIndexedObservationDepth',
+            () =>
+              filterIndexedObservationDepth({ ...scene, offsets }, Math.ceil(sizes.tracks / 64)),
+          ] as const,
+        ]
+      : []),
+    [
+      'indexedObservationPartials',
+      () => {
+        if (device.backend === 'webgpu')
+          indexedObservationPartials({ control, flags, errors, partials }, blocks);
+        else
+          indexedObservationPartialsOracle(
+            { control, flags, errors, partials },
+            Math.ceil(blocks / 8),
+          );
+      },
+    ],
+    ['observationSummary', () => observationSummary({ partials, summary }, 1)],
+  ] as const;
+}
+
+/** The result of an evaluation from its reads: the masks in landmark order and the summary. */
+function unpackObservations(
+  values: Float64Array,
+  flat: Uint32Array,
+  lengths: readonly number[],
+  count: number,
+  guarded: boolean,
+) {
+  let at = 0;
+  const masks = lengths.map((n) => {
+    const r = Uint8Array.from(flat.subarray(at, at + n));
+    at += n;
+    return r;
   });
+  return {
+    ...(guarded
+      ? { depthRejected: Uint8Array.from(flat.subarray(count, count + lengths.length)) }
+      : {}),
+    masks,
+    inlierCount: values[1]!,
+    meanErrorPx: values[1]! > 0 ? values[0]! / values[1]! : Infinity,
+  };
 }

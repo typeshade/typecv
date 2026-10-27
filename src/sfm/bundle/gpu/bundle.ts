@@ -1,14 +1,12 @@
 import type { Resident } from 'typeshade/runtime';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
-import { validateReconstruction } from '../../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
-import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
+import { separateBundleDirections } from '../bundle-directions.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../../device/gpu/device.ts';
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';
-import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/bounds.ts';
+import { finiteGpuArray } from '../../../geometry/gpu/bounds.ts';
 import { geometryExecution, mergedReport } from '../../../geometry/gpu/execution.ts';
-import { cameraRecord, poseRecord } from '../../../contracts/camera-record.ts';
 import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
   initializeBundle,
@@ -48,8 +46,20 @@ import {
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle-shared.ts';
-import { BUNDLE_DEFAULTS } from '../../config/defaults.ts';
-import { MODEL_STRIDE, PIXEL_STRIDE, POINT_STRIDE, POSE_STRIDE } from '../../scene/scene.ts';
+import {
+  BUNDLE_BLOCK_WORDS,
+  bundleArraySizes,
+  bundleOutputLandmarks,
+  bundleOutputPose,
+  bundleOutputReport,
+  bundlePieces,
+  bundlePointStarts,
+  bundleProblem,
+  bundleWindowControls,
+  checkBundleOutput,
+  packBundleScene,
+  snapshotBundleModel,
+} from './bundle-host.ts';
 
 /** @internal */
 export { bundleStallMonitor, cooperativeBundleSchur } from './bundle-shared.ts';
@@ -72,146 +82,63 @@ function cameraAssemblyWorkgroup(
   return Math.ceil(rows / width) <= device.maxKernelElements / 64 ? width : 64;
 }
 
+/** The words of the `blocks` array per observation on the fixed route (`BUNDLE_BLOCK_WORDS`). */
+const FIXED_OBSERVATION_WORDS = 42;
+
 /** Matrix-free point-eliminated Schur PCG, block preconditioning and joint GPU pose/point LM. */
 function bundleAdjustGpuFixed(
   device: ShadeDevice,
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
-  validateReconstruction(input);
-  const finiteLandmarks = input.landmarks,
-    finitePoints = finiteLandmarks.length;
-  input = appendBundleDirections(input, options);
-  const C = input.views.length,
-    P = input.landmarks.length,
-    M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
-  if (![C, P, M].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff))
-    throw new RangeError('GPU BA scene dimensions exceed integer index bounds');
-  const iterations = options.iterations ?? BUNDLE_DEFAULTS.iterations,
-    huber = options.huberPx ?? BUNDLE_DEFAULTS.huberPx,
-    maxCg = options.maxCgIterations ?? Math.min(96, Math.max(24, C * 12)),
-    tolerance = options.cgRelativeTolerance ?? BUNDLE_DEFAULTS.cgRelativeTolerance;
-  if (
-    C < 2 ||
-    finitePoints < 1 ||
-    !Number.isSafeInteger(iterations) ||
-    iterations < 0 ||
-    iterations > 100 ||
-    !Number.isFinite(huber) ||
-    huber < 1e-12 ||
-    huber > 1e6 ||
-    !Number.isSafeInteger(maxCg) ||
-    maxCg < 1 ||
-    maxCg > 256 ||
-    !Number.isFinite(tolerance) ||
-    tolerance < 1e-12 ||
-    tolerance > 1e-2
-  )
-    throw new RangeError('Invalid GPU BA scene/options');
-  const byId = new Map(input.views.map((v, i) => [v.id, i])),
-    anchorId = options.anchorViewId ?? input.views[0]!.id,
-    scaleId = options.scaleViewId ?? input.views[1]!.id;
-  if (!byId.has(anchorId) || !byId.has(scaleId) || anchorId === scaleId)
-    throw new RangeError('Invalid GPU BA gauge cameras');
-  const variable =
-    options.variableViewIds === undefined ? undefined : new Set(options.variableViewIds);
-  if (
-    variable &&
-    (variable.size !== options.variableViewIds!.length ||
-      [...variable].some((id) => id === anchorId || !byId.has(id)))
-  )
-    throw new RangeError('Invalid GPU BA variable camera window');
-  const active = input.views.map((v) => v.id !== anchorId && (!variable || variable.has(v.id))),
-    fixed = active.filter((x) => !x).length;
-  if (fixed > 1 && variable?.has(scaleId))
-    throw new RangeError('Local GPU BA scale camera must be fixed');
-  const connected = new Set([anchorId]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const p of finiteLandmarks)
-      if (p.observations.some((o) => connected.has(o.viewId)))
-        for (const o of p.observations)
-          if (!connected.has(o.viewId)) {
-            connected.add(o.viewId);
-            grew = true;
-          }
-  }
-  if (input.views.some((v) => !connected.has(v.id)))
-    throw new RangeError('GPU BA requires one connected observation graph');
-  const sceneSize = (POSE_STRIDE + MODEL_STRIDE) * C + POINT_STRIDE * P + PIXEL_STRIDE * M,
-    trialSize = POSE_STRIDE * C + POINT_STRIDE * P,
-    indexSize = 3 * M + P + 2 * C + 2,
-    cameraScratchSize = 36 * C,
+  const problem = bundleProblem(input, options, (C) => Math.min(96, Math.max(24, C * 12)));
+  input = problem.input;
+  const {
+    finitePoints,
+    C,
+    P,
+    M,
+    iterations,
+    huber,
+    maxCg,
+    tolerance,
+    byId,
+    anchorId,
+    scaleId,
+    active,
+    fixed,
+  } = problem;
+  const { sceneSize, trialSize, indexSize, cameraScratchSize, stateSize, partialsSize } =
+      bundleArraySizes(C, P, M),
     vectorSize = 30 * C + 3 * P,
-    stateSize = BUNDLE_STATE.size,
-    partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + BUNDLE_STATE.size;
   // These logical lengths bound every positive u32 shader offset sum. The sizes of the arrays are
   // not a limit of the problem: the plan below cuts the observation and point sections of `blocks`
   // to the budget (docs/gpu-budget.md, section 3).
   if (
-    ![sceneSize, trialSize, 42 * M + 13 * P + 78 * C, vectorSize, indexSize].every(
-      (n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff,
-    )
+    ![
+      sceneSize,
+      trialSize,
+      FIXED_OBSERVATION_WORDS * M + BUNDLE_BLOCK_WORDS.point * P + BUNDLE_BLOCK_WORDS.camera * C,
+      vectorSize,
+      indexSize,
+    ].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff)
   )
     throw new RangeError('GPU BA array lengths exceed integer index bounds');
-  const pointStarts = new Uint32Array(P + 1);
-  let longestTrack = 1;
-  for (let p = 0; p < P; p++) {
-    const n = input.landmarks[p]!.observations.length;
-    pointStarts[p + 1] = pointStarts[p]! + n;
-    longestTrack = Math.max(longestTrack, n);
-  }
+  const { pointStarts, longestTrack } = bundlePointStarts(input, P);
   if (C * 6 > device.maxKernelElements)
     throw new RangeError(
       'GPU BA reduced camera system exceeds the dispatch limit (docs/gpu-budget.md, 3.6)',
     );
   // Snapshot metadata separately from the mutable numerical arrays.
-  const model: SparseReconstruction = {
-    views: input.views.map((v) => ({
-      ...v,
-      camera: { ...v.camera },
-      pose: { R: v.pose.R.slice(), t: v.pose.t.slice() },
-    })),
-    landmarks: input.landmarks.map((p) => ({
-      ...p,
-      xyz: p.xyz.slice(),
-      observations: p.observations.map((o) => ({ ...o, pixel: [...o.pixel] as const })),
-    })),
-  };
-  const source = new Float64Array(sceneSize),
-    indices = new Uint32Array(indexSize),
-    cameraLists: number[][] = Array.from({ length: C }, () => []);
-  for (let c = 0; c < C; c++) {
-    const v = model.views[c]!,
-      k = validateGpuCamera(v.camera);
-    source.set(poseRecord(v.pose), c * POSE_STRIDE);
-    source.set(cameraRecord(k), POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE);
-    indices[3 * M + P + C + 2 + c] = Number(active[c]);
-  }
-  let obs = 0;
-  for (let p = 0; p < P; p++) {
-    const point = model.landmarks[p]!;
-    source.set(point.xyz, POSE_STRIDE * C + p * POINT_STRIDE);
-    indices[2 * M + p] = obs;
-    for (const o of point.observations) {
-      const c = byId.get(o.viewId)!;
-      indices[obs] = c;
-      indices[M + obs] = p;
-      source.set(o.pixel, (POSE_STRIDE + MODEL_STRIDE) * C + POINT_STRIDE * P + obs * PIXEL_STRIDE);
-      cameraLists[c]!.push(obs);
-      obs++;
-    }
-  }
-  indices[2 * M + P] = obs;
-  let cursor = 0;
-  for (let c = 0; c < C; c++) {
-    indices[2 * M + P + 1 + c] = cursor;
-    indices.set(cameraLists[c]!, 2 * M + P + C + 2 + cursor);
-    cursor += cameraLists[c]!.length;
-  }
-  indices[2 * M + P + 1 + C] = cursor;
+  const model = snapshotBundleModel(input);
+  const { source, indices, cameraLists } = packBundleScene(model, byId, active, {
+    C,
+    P,
+    M,
+    sceneSize,
+    indexSize,
+  });
   const cameraWorkgroups =
     device.backend === 'webgpu' &&
     device.fp64Flavor === 'float' &&
@@ -267,12 +194,15 @@ function bundleAdjustGpuFixed(
       indexSize * 4,
       ...(segmented ? [cameraPlan!.tasks.byteLength, cameraPlan!.partialElements * 8] : []),
     ];
-    const cameraBlocksBytes = 78 * C * 8,
+    const cameraBlocksBytes = BUNDLE_BLOCK_WORDS.camera * C * 8,
       scratchBytes = cameraScratchSize * 8,
       sum = (xs: readonly number[]) => xs.reduce((n, x) => n + x, 0);
     const residentArrays = [
         ...common,
-        (42 * M + 13 * P + 78 * C) * 8,
+        (FIXED_OBSERVATION_WORDS * M +
+          BUNDLE_BLOCK_WORDS.point * P +
+          BUNDLE_BLOCK_WORDS.camera * C) *
+          8,
         ...(device.backend === 'webgpu' ? [scratchBytes] : []),
       ],
       floorArrays = [
@@ -293,9 +223,14 @@ function bundleAdjustGpuFixed(
       residentArrays,
       floorBytes: sum(floorArrays) + 4 * activityWords,
       floorArrays,
-      observationBytes: 42 * 8,
-      pointBytes: 13 * 8,
-      windowArrays: (m, p) => [(42 * m + 13 * p + 78 * C) * 8],
+      observationBytes: FIXED_OBSERVATION_WORDS * 8,
+      pointBytes: BUNDLE_BLOCK_WORDS.point * 8,
+      windowArrays: (m, p) => [
+        (FIXED_OBSERVATION_WORDS * m +
+          BUNDLE_BLOCK_WORDS.point * p +
+          BUNDLE_BLOCK_WORDS.camera * C) *
+          8,
+      ],
     });
     if (!plan.fits)
       throw new RangeError(
@@ -306,45 +241,28 @@ function bundleAdjustGpuFixed(
           ' bytes (docs/gpu-budget.md, 3.6)',
       );
     const streamed = plan.mode === 'streamed',
-      blockSize = 42 * plan.obsCapacity + 13 * plan.pointCapacity + 78 * C;
+      blockSize =
+        FIXED_OBSERVATION_WORDS * plan.obsCapacity +
+        BUNDLE_BLOCK_WORDS.point * plan.pointCapacity +
+        BUNDLE_BLOCK_WORDS.camera * C;
     // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
     // camera rows from window to window, as the WebGPU route does.
     const rows = device.backend === 'webgpu' || streamed;
-    const full = {
-      ...control,
-      obsBase: 0,
-      obsEnd: M,
-      pointBase: 0,
-      pointEnd: P,
-      obsCapacity: plan.obsCapacity,
-      pointCapacity: plan.pointCapacity,
-      first: 1,
-      last: 1,
-      sweep: 0,
-      streamed: Number(streamed),
-      base: 0,
-    };
     // The control of window `k` of a sweep (1: PCG, 2: update, 0: assembly), and of cost window `k`.
-    const windowControl = (k: number, sweep: number) => ({
-      ...full,
-      ...plan.windows[k]!,
-      first: Number(k === 0),
-      last: Number(k === plan.windows.length - 1),
-      sweep,
-    });
-    const costControl = (k: number) => ({ ...full, ...plan.costWindows[k]! });
-    const groups = (n: number) => Math.ceil(n / 64);
+    const { full, windowControl, costControl } = bundleWindowControls(
+      control,
+      plan,
+      M,
+      P,
+      streamed,
+    );
     const wide = (n: number, v?: Float64Array) => {
       const b = device.allocateF64(n, v);
       owned.push(b);
       return b;
     };
     // A dispatch over `n` elements that exceeds the dispatch limit is split: piece `base`.
-    const piece = Math.max(64, device.maxKernelElements - (device.maxKernelElements % 64));
-    function* pieces(name: string, n: number, run: (control: typeof full, count: number) => void) {
-      for (let at = 0; at < n; at += piece)
-        yield [name, () => run({ ...full, base: at }, groups(Math.min(piece, n - at)))] as const;
-    }
+    const { groups, piece, pieces } = bundlePieces(device, full);
     const reports: ShadePlanReport[] = [];
     try {
       const scene = wide(sceneSize, source),
@@ -854,34 +772,15 @@ function bundleAdjustGpuFixed(
       );
       const values = await device.read(output, outputSize),
         base = trialSize;
-      if (values[base + BUNDLE_STATE.inputError] === 1)
-        throw new RangeError('GPU BA gauge requires a nonzero baseline');
-      if (values[base + BUNDLE_STATE.inputError] === 2)
-        throw new RangeError(
-          'GPU BA observations must initially project in front of their cameras',
-        );
+      checkBundleOutput(values, base);
       // Preserve fixed host constants exactly, including bits beyond the emulated format.
       const changed = values[base + BUNDLE_STATE.accepted]! > 0;
       const reconstruction: SparseReconstruction = {
         views: model.views.map((v, c) => ({
           ...v,
-          pose:
-            changed && active[c]
-              ? {
-                  R: values.slice(c * POSE_STRIDE, c * POSE_STRIDE + 9),
-                  t: values.slice(c * POSE_STRIDE + 9, (c + 1) * POSE_STRIDE),
-                }
-              : v.pose,
+          pose: bundleOutputPose(values, v, c, changed, active),
         })),
-        landmarks: model.landmarks.map((p, i) => ({
-          ...p,
-          xyz: changed
-            ? values.slice(
-                C * POSE_STRIDE + i * POINT_STRIDE,
-                C * POSE_STRIDE + (i + 1) * POINT_STRIDE,
-              )
-            : p.xyz,
-        })),
+        landmarks: bundleOutputLandmarks(model, values, C, changed),
       };
       const after = device.statistics,
         report = mergedReport(device.backend, reports);
@@ -889,18 +788,7 @@ function bundleAdjustGpuFixed(
       return separateBundleDirections(
         {
           reconstruction,
-          diagnostics: {
-            initialCost: values[base + BUNDLE_STATE.initialCost]!,
-            finalCost: values[base + BUNDLE_STATE.cost]!,
-            initialRmsePx: values[base + BUNDLE_STATE.initialRmsePx]!,
-            finalRmsePx: values[base + BUNDLE_STATE.finalRmsePx]!,
-            acceptedSteps: values[base + BUNDLE_STATE.accepted]!,
-            rejectedSteps: values[base + BUNDLE_STATE.rejected]!,
-            observations: M,
-            baseline: values[base + BUNDLE_STATE.baseline]!,
-          },
-          cgIterations: values[base + BUNDLE_STATE.cgSteps]!,
-          linearSolverFailures: values[base + BUNDLE_STATE.failedSolves]!,
+          ...bundleOutputReport(values, base, M),
           execution: geometryExecution(device, report, before, after),
         },
         finitePoints,
