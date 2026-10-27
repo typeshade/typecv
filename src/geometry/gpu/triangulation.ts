@@ -2,10 +2,10 @@ import type { Resident } from 'typeshade/runtime';
 import type { TrackTriangulation, TriangulationObservation } from '../multiview.ts';
 import { depthSensitivityControls, type DepthSensitivityOptions } from '../multiview.ts';
 import { validatePose } from '../pose.ts';
-import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../device/gpu/device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { planTriangulationChunks } from '../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
-import { type GpuGeometryExecution } from './execution.ts';
+import { geometryExecution, mergedReport, type GpuGeometryExecution } from './execution.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
 import { TRIANGULATION_DEFAULTS } from '../operator-defaults.ts';
 import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
@@ -120,28 +120,13 @@ export function triangulateTracksGpu(
       statuses.set(part.status, chunk.first);
       reports.push(part.report);
     }
-    const after = device.statistics,
-      rates: Record<string, ChunkRate> = Object.assign({}, ...reports.map((r) => r.chunks ?? {}));
+    const after = device.statistics;
     const report: ShadePlanReport =
-      reports.length === 1
-        ? reports[0]!
-        : {
-            tier: device.backend,
-            dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
-            submissions: reports.reduce((n, r) => n + r.submissions, 0),
-            groups: reports.flatMap((r) => r.groups),
-            ...(Object.keys(rates).length ? { chunks: rates } : {}),
-          };
+      reports.length === 1 ? reports[0]! : mergedReport(device.backend, reports);
     return {
       tracks: output,
       status: statuses,
-      execution: {
-        backend: device.backend,
-        report,
-        applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-        applicationReadbackBytes: after.applicationReadbackBytes - before.applicationReadbackBytes,
-        cpuStages: [],
-      },
+      execution: geometryExecution(device, report, before, after),
     };
   });
 }

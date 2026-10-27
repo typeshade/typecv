@@ -4,9 +4,10 @@ import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
-import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../../device/gpu/device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../../../device/gpu/device.ts';
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/bounds.ts';
+import { geometryExecution, mergedReport } from '../../../geometry/gpu/execution.ts';
 import {
   initializeBundle,
   linearizeBundle,
@@ -1016,19 +1017,8 @@ export function bundleAdjustJointFocalGpu(
             : p.xyz,
         })),
       };
-      // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
       const after = device.statistics,
-        chunks: Record<string, ChunkRate> = Object.assign(
-          {},
-          ...reports.map((r) => r.chunks ?? {}),
-        ),
-        report: ShadePlanReport = {
-          tier: device.backend,
-          dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
-          submissions: reports.reduce((n, r) => n + r.submissions, 0),
-          groups: reports.flatMap((r) => r.groups),
-          ...(Object.keys(chunks).length ? { chunks } : {}),
-        };
+        report = mergedReport(device.backend, reports);
       successful = true;
       return separateBundleDirections(
         {
@@ -1045,14 +1035,7 @@ export function bundleAdjustJointFocalGpu(
           },
           cgIterations: values[base + BUNDLE_STATE.cgSteps]!,
           linearSolverFailures: values[base + BUNDLE_STATE.failedSolves]!,
-          execution: {
-            backend: device.backend,
-            report,
-            applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-            applicationReadbackBytes:
-              after.applicationReadbackBytes - before.applicationReadbackBytes,
-            cpuStages: [],
-          },
+          execution: geometryExecution(device, report, before, after),
         },
         finitePoints,
       );

@@ -25,7 +25,7 @@ import {
   summarizePnP,
 } from './pnp.shade.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
-import type { GpuGeometryExecution } from './execution.ts';
+import { geometryExecution, type GpuGeometryExecution } from './execution.ts';
 import { PNP_DEFAULTS, pnpMinInliers } from '../operator-defaults.ts';
 import { PROGRESS_INTERVAL } from './search-schedule.ts';
 
@@ -412,14 +412,7 @@ export function estimatePosePnPGpu(
         hypothesisBatches: metadata[8]!,
         refinementAcceptedSteps: metadata[5]!,
         refinementRejectedSteps: metadata[6]!,
-        execution: {
-          backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
-          cpuStages: [],
-        },
+        execution: geometryExecution(device, report, before, after),
       };
     } finally {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);

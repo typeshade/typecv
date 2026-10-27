@@ -44,7 +44,8 @@ import {
   evaluateObservationsGpu,
   evaluateContinuedObservationsGpu,
 } from '../../geometry/gpu/observations.ts';
-import { bundleAdjustGpu } from '../bundle/gpu/bundle.ts';
+import { bundleAdjustGpu, type GpuBundleAdjustmentResult } from '../bundle/gpu/bundle.ts';
+import type { BundleAdjustmentOptions } from '../bundle/bundle-adjustment.ts';
 import type { GpuConsensusExecution } from '../../geometry/gpu/two-view.ts';
 import { verifyImagePairGpu } from '../../geometry/gpu/image-pair.ts';
 import { validateFeatures } from '../tracks/tracks.ts';
@@ -313,6 +314,40 @@ function verificationKey(
   ])}`;
 }
 
+/**
+ * The record of a GPU bundle adjustment stage (`onStage`), with the problem as the solver saw it.
+ * For a request of the mapper (`request`), the record also names the variable views and counts
+ * the bearing observations. The archive solve of `finish` passes no request.
+ */
+function bundleStage(
+  started: number,
+  model: SparseReconstruction,
+  bundle: GpuBundleAdjustmentResult,
+  request?: { readonly options: BundleAdjustmentOptions | undefined },
+): GpuIncrementalResult['execution']['stages'][number] {
+  const elapsedMs = performance.now() - started,
+    observations = model.landmarks.reduce((sum, p) => sum + p.observations.length, 0);
+  return {
+    operation: 'bundle',
+    elapsedMs,
+    execution: bundle.execution,
+    problem: request
+      ? {
+          views: model.views.length,
+          variableViewIds: request.options?.variableViewIds?.slice(),
+          landmarks: model.landmarks.length,
+          observations: observations + (bundle.diagnostics.directionalObservations ?? 0),
+          ...(bundle.directionalConstraints
+            ? {
+                directionalConstraints: bundle.directionalConstraints.length,
+                directionalObservations: bundle.diagnostics.directionalObservations,
+              }
+            : {}),
+        }
+      : { views: model.views.length, landmarks: model.landmarks.length, observations },
+  };
+}
+
 type SessionState = {
   model?: SparseReconstruction;
   verification: Map<string, Awaited<ReturnType<typeof verifyImagePairGpu>>>;
@@ -431,27 +466,7 @@ async function runIncrementalGpu(
           schurCache: controls.schurCache,
         });
         gpuBundleAdjustments++;
-        stages.push({
-          operation: 'bundle',
-          elapsedMs: performance.now() - started,
-          execution: result.execution,
-          problem: {
-            views: job.args[0].views.length,
-            variableViewIds: job.args[1]?.variableViewIds?.slice(),
-            landmarks: job.args[0].landmarks.length,
-            observations:
-              job.args[0].landmarks.reduce(
-                (sum, landmark) => sum + landmark.observations.length,
-                0,
-              ) + (result.diagnostics.directionalObservations ?? 0),
-            ...(result.directionalConstraints
-              ? {
-                  directionalConstraints: result.directionalConstraints.length,
-                  directionalObservations: result.diagnostics.directionalObservations,
-                }
-              : {}),
-          },
-        });
+        stages.push(bundleStage(started, job.args[0], result, { options: job.args[1] }));
         return result;
       }
     }
@@ -873,16 +888,7 @@ export class IncrementalSfmSession {
               } finally {
                 this.options.onProgress?.({ operation: 'bundle', index, phase: 'complete' });
               }
-              const stage: GpuIncrementalResult['execution']['stages'][number] = {
-                operation: 'bundle',
-                elapsedMs: performance.now() - started,
-                execution: bundle.execution,
-                problem: {
-                  views: model.views.length,
-                  landmarks: model.landmarks.length,
-                  observations: model.landmarks.reduce((sum, p) => sum + p.observations.length, 0),
-                },
-              };
+              const stage = bundleStage(started, model, bundle);
               completed = {
                 ...completed,
                 execution: {
