@@ -60,6 +60,8 @@ const routes = [
   '/ko/lab/',
   '/lab/probe/',
   '/ko/lab/probe/',
+  '/lab/check/',
+  '/ko/lab/check/',
   '/404.html',
   ...docFiles.flatMap((file) => {
     const rel = path
@@ -96,10 +98,24 @@ await writeFile(
     .map((route) => `<url><loc>https://cv.typeshade.dev${route}</loc></url>`)
     .join('')}</urlset>\n`,
 );
+// The TypeShade pin of the runtime: the commit of the archive that package.json installs. A device
+// reports only TypeShade's version, and a source install has no revision (`ShadeDevice.info.build`),
+// so the hardware check reads the pin from here (docs/lab-run-records.md, "Hardware check").
+const rootPackage = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const typeshade =
+  /\/archive\/([0-9a-f]{7,40})\.tar\.gz$/.exec(
+    rootPackage.devDependencies?.typeshade ?? rootPackage.dependencies?.typeshade ?? '',
+  )?.[1] ?? null;
 await writeFile(
   path.join(out, 'version.json'),
   JSON.stringify(
-    { project: 'TypeCV', commit, runtime: 'TypeShade compiled GPU bundle', localProcessing: true },
+    {
+      project: 'TypeCV',
+      commit,
+      runtime: 'TypeShade compiled GPU bundle',
+      typeshade,
+      localProcessing: true,
+    },
     null,
     2,
   ) + '\n',

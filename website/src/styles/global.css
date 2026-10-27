@@ -3081,6 +3081,23 @@
   min-height: 3em;
   white-space: pre-wrap;
 }
+/* The hardware check's device field (`HardwareCheck.tsx`). */
+.check-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.check-note input {
+  width: 100%;
+  max-width: 560px;
+  padding: 8px 10px;
+  color: inherit;
+  font: inherit;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
 /* Text for screen readers only: it takes no space on the page. */
 .sr-only {
   position: absolute;

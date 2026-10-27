@@ -219,6 +219,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       '/ko/playground/',
       '/ko/lab/',
       '/lab/probe/',
+      '/lab/check/',
     ]) {
       await page.goto(url + route);
       assert.ok(

@@ -932,6 +932,34 @@ the digests of each case's input and of its answer on the CPU tier of Node 22 in
 `tests/digests/hardware-check.json` (`npm run test:digests`). The page computes the same two
 digests in the browser.
 
+### Running the check
+
+The lab's run settings hold the entry, under **Standard benchmark**: **Hardware check** opens
+`/lab/check/` (`website/src/components/HardwareCheckEntry.tsx`). The page
+(`website/src/components/HardwareCheck.tsx`) starts the check's worker
+(`website/src/workers/hardware-check.worker.ts`). It reads the site commit from `/version.json`
+and the TypeShade pin from `/runtime/version.json` (`website/scripts/prepare.mjs`), because a
+device reports only TypeShade's version. To run the check on a device:
+
+1. Close the other tabs that use the GPU.
+2. Open `https://cv.typeshade.dev/lab/` in the browser of the device. Select **Settings**, then
+   **Hardware check**. Or open `https://cv.typeshade.dev/lab/check/` directly.
+3. Type the device in the field: the GPU model and the computer.
+4. Select the checkbox "I agree to send the check result to the TypeCV developers".
+5. Select **Run check**. Keep the tab open until the log says `Done.`
+6. Read the id after `Sent:`.
+7. Optionally, in the lab, select the checkbox "Send run record and all result files", then
+   select **Standard benchmark**. Read the ids of its two records.
+8. Give the ids to the person who asked for the check.
+
+If the line says `Not sent:`, select **Copy JSON** or **Download JSON**, and give the JSON to the
+person who asked for the check. The check sends no token, and the page needs none.
+
+After a device loss or a timeout the check stops. The cases after it are `skipped`, and `resume`
+holds a query such as `?cases=kernel-functions`. To run them, restart the browser, open the page
+with that query, and do steps 3 to 8 again. The page does not reload itself. On D3D12 a lost
+device takes the adapter with it for the page (`docs/hardware-observations.md`, A4).
+
 A digest is the SHA-256 of the canonical encoding of `tests/typeshade/digest.mjs`: each number as
 its IEEE 754 binary64 bit pattern, each typed array with its type name. A digest covers the answer
 of a case only, with no tier name, plan report or time. An answer whose order depends on the

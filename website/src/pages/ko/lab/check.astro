@@ -1,0 +1,26 @@
+---
+import SiteLayout from '../../../layouts/SiteLayout.astro';
+import HardwareCheck from '../../../components/HardwareCheck';
+const description =
+  '이 기기에서 정해진 GPU 점검을 실행하고 CPU 기준과 비교한 뒤 기록 하나를 보냅니다.';
+---
+
+<SiteLayout locale="ko" active="lab" title="하드웨어 점검" description={description}>
+  <div class="lab-main">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / SFＭ LAB / CHECK</p>
+      <h1>하드웨어 점검</h1>
+      <p>
+        TypeCV GPU 커널 다섯 묶음을 작은 고정 입력으로 실행합니다. CLAHE, 평면 깊이 보완, 점군 정리,
+        장치 손실이 알려진 삼각측량 워크그룹, 에피폴라 점수 계산의 커널 함수입니다. 각 사례를 이
+        기기와 이 브라우저의 CPU 계층에서 실행하고 두 결과를 비교합니다. 기기가 고른 에뮬레이션
+        배정밀도 방식도 기록합니다. 동의하지 않으면 아무것도 보내지 않습니다.
+      </p>
+      <p>
+        표준 벤치마크는 <a href="/ko/lab/">SfM 실험실</a>에 있습니다. 점검 뒤에 실행하면 그 기록 두
+        개도 보낼 수 있습니다.
+      </p>
+    </header>
+    <HardwareCheck client:load locale="ko" />
+  </div>
+</SiteLayout>

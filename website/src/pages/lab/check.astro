@@ -1,0 +1,27 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import HardwareCheck from '../../components/HardwareCheck';
+const description =
+  'Run fixed GPU checks on this device, compare them with the CPU reference and send one record.';
+---
+
+<SiteLayout locale="en" active="lab" title="Hardware check" description={description}>
+  <div class="lab-main">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / SFＭ LAB / CHECK</p>
+      <h1>Hardware check</h1>
+      <p>
+        The check runs five families of TypeCV's GPU kernels on small fixed inputs: CLAHE, planar
+        depth completion, the cloud cleanup, the triangulation workgroup of a known device loss, and
+        the kernel functions of the epipolar scoring. Each case runs on this device and on the CPU
+        tier of this browser, and the check compares the two. It also records the flavor of the
+        emulated double that the device selects. The check sends nothing without your consent.
+      </p>
+      <p>
+        The <a href="/lab/">SfM lab</a> holds the standard benchmark. Run it after the check to send
+        its two records too.
+      </p>
+    </header>
+    <HardwareCheck client:load locale="en" />
+  </div>
+</SiteLayout>
