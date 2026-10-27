@@ -1998,4 +1998,4 @@ recorded here by amendment.
   #264 and the disposition of item 11, the declarations fix of #265 for #251, the declared digest
   changes of #268 in rule 2, the bug lane as item 22, preview deploys as item 21,
   typeshade/typeshade#796, #798, #799 and #800, the next pin, the status of the programme), pull
-  request #PRNUM.
+  request #269.
