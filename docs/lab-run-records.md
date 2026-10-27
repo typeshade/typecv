@@ -878,7 +878,11 @@ paths. `signals` holds what the rule reads: the adapter info of a `GPUDevice` of
 the info of the adapter that WebGPU offers, and the user agent. `info` is the device's own
 `ShadeDevice.info.webgpu`: its identity strings and where TypeShade read them (`provenance`).
 `same` is true when both selections equal the rule, false when one differs, and null when the
-page forced a flavor (`?fp64=`) or no device opened.
+page forced a flavor (`?fp64=`) or no device opened. `website/src/lib/hardware-check/flavor.ts`
+holds the rule as one pure function (`previousFp64Flavor`), copied from `recommendedFlavor` of
+`87724f9` and TypeShade's selector at the pin `725b2969`. `tests/hardware-check-flavor.test.ts`
+holds it to a table of devices, to the pin's selector and, where the git history holds `87724f9`,
+to that commit's code on 5600 combinations of the signals.
 
 Each case runs one family of kernels on a small fixed input. A case holds:
 
