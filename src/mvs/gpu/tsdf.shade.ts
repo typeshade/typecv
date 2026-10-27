@@ -114,7 +114,7 @@ declare const tsdfPoints: storage<array<f32>, 'read_write'>;
 declare const tsdfPointData: storage<array<u32>, 'read_write'>;
 declare const tsdfVotes: storage<array<u32>, 'read_write'>;
 
-const EMPTY: u32 = 0xffffffff;
+export const EMPTY: u32 = 0xffffffff;
 const HEADER: u32 = 8;
 const VOXEL_WORDS: u32 = 7;
 const BLOCK_VOXELS: u32 = 512;
