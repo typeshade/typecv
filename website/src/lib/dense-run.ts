@@ -160,7 +160,7 @@ export type DenseCleanInput = {
 export interface DenseRunContext {
   readonly component?: number;
   readonly dense: DenseJob;
-  /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
+  /** The MVS options, `LAB_OPTIONS.dense` of `lib/lab-options.ts`. */
   readonly options: Readonly<Record<string, unknown>>;
   /** The device's byte counts now (`ShadeDevice.statistics`). */
   readonly statistics: () => { liveBytes: number; pooledBytes: number };

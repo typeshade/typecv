@@ -116,8 +116,8 @@ of `samplePnP`, `solveP3p`, `scorePnP` (or `scorePnPOracle`) and `selectPnP`
 into `batchCounts`, zero for a batch at or past the budget, and those entries
 dispatch with `{ indirect: batchCounts, offset }`. No entry that dispatches with
 the counts binds them. The host reads the budget word (`snapshotPnPBudget`)
-after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/pnp.ts`), so at most
-three batches past the budget are submitted, each with no workgroup but its
+after every fourth batch (`PROGRESS_INTERVAL` in `src/geometry/gpu/search-schedule.ts`), so
+at most three batches past the budget are submitted, each with no workgroup but its
 `planPnPBatch`. The scoring of a batch is a plan of its own, timed only when the
 host knows it runs: the first batch, and the first batch after a read that
 showed the search goes on.

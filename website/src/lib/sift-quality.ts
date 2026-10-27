@@ -101,7 +101,8 @@ export function kltTracking(search = ''): boolean {
  * The step 6 settings of a KLT run (`docs/klt-tracking.md` 3.4, 3.6 and 8, "Step 6 record"). Each one
  * is a measurement switch on top of `?klt=1`, and a run without it behaves as step 5 did.
  *
- * - `kltCapacity=<n>`: the tracks the tracker holds (1 to 8192; the default is 1024).
+ * - `kltCapacity=<n>`: the tracks the tracker holds (1 to 8192). The lab's default is 512
+ *   (`LAB_KLT_CAPACITY` of `lib/lab-options.ts`); the library's is 1024.
  * - `kltFill=1`: fill-in points at a join (3.4). The lab leaves them out by default, because they
  *   added nothing in the step 6 measurement.
  * - `kltMatching=tracks`: a pair of keyframes that the tracks cover with enough matches skips the

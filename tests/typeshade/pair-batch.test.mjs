@@ -74,7 +74,7 @@ function plain(value) {
 }
 
 // The batches of a search between two reads of the scheduling word (`PROGRESS_INTERVAL` of
-// `src/geometry/gpu/pair-estimation.ts`).
+// `src/geometry/gpu/search-schedule.ts`).
 const PROGRESS_INTERVAL = 4;
 // The digest of the results the last test reads, from the loop that read the scheduling word
 // after each batch (main at 15f895f, TypeShade 41a140a, Node 22.22.0). A change of it is a change

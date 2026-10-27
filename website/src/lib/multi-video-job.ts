@@ -103,7 +103,7 @@ export interface JobDenseOptions {
   mesh: boolean;
   /** The fusion (3.10 or 10.4). Default `DENSE_LAB_FUSION`. */
   fusion?: DenseFusion;
-  /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
+  /** The MVS options, `LAB_OPTIONS.dense` of `lib/lab-options.ts`. */
   options: Readonly<Record<string, unknown>>;
   /** The options of `cleanDenseCloudGpu`. */
   cleanOptions?: unknown;
@@ -116,7 +116,7 @@ export interface JobOptions {
   maxFeatures: number;
   firstOctave: -1 | 0;
   clahe?: boolean;
-  /** The mapper's fixed controls (`LAB_OPTIONS` of the worker). */
+  /** The mapper's fixed controls: the lab preset (`LAB_MAPPER`, `src/sfm/config/lab-preset.ts`). */
   mapper: Record<string, unknown>;
   /** The graph controls that the lab changes from the defaults of 3.3 and 3.4. */
   graph?: Record<string, unknown>;

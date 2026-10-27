@@ -31,7 +31,7 @@ const early = [['early', { iterations: 500, minIterations: 1, seed: 5, refinemen
 // 4, the batch of 32 trials the search used before, and the most trials of a batch.
 const BATCH_SIZES = [4, 32, 512];
 // The batches of a search between two reads of the scheduling word (`PROGRESS_INTERVAL` of
-// `src/geometry/gpu/pnp.ts`).
+// `src/geometry/gpu/search-schedule.ts`).
 const PROGRESS_INTERVAL = 4;
 // The digests of the results the last test reads (the base 909aa54, TypeShade d70b539, Node
 // 22.22.0, the CPU tier). `PREVIOUS_RESULTS` is the search of the mapper's and the short settings

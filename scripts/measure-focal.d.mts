@@ -16,7 +16,7 @@ export declare function pyramidRelief(
   reconstruction: SparseReconstruction,
   viewId?: number,
 ): number;
-/** The lab's numerical controls (`LAB_OPTIONS` of website/src/workers/sfm.worker.ts). */
+/** The lab's numerical controls: the six mapper numbers of `src/sfm/config/lab-preset.ts`. */
 export declare const LAB: {
   readonly ransacIterations: number;
   readonly maxErrorPx: number;

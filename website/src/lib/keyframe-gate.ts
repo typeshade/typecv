@@ -6,7 +6,7 @@
  *
  * - `legacy` decides after SIFT and matching: a frame is skipped when the median displacement of
  *   its matches from the last keyframe is under 8 px (at 640 px) and under one second has passed
- *   (`LAB_OPTIONS.keyframeMinMotionPx` and `keyframeMaxGapSeconds` of the SfM worker).
+ *   (`LAB_OPTIONS.keyframeMinMotionPx` and `keyframeMaxGapSeconds` of `lib/lab-options.ts`).
  * - `phase` decides before SIFT, from the global translation between the last keyframe and the
  *   candidate that phase correlation of a 128 × 128 grayscale thumbnail gives
  *   (`lib/phase-correlation.ts`). A skipped frame costs no feature extraction and no matching.
