@@ -30,7 +30,7 @@ export interface TwoViewOptions {
   readonly maxReprojectionErrorPx?: number;
 }
 /**
- * @internal The essential matrix of trial `trial` of the consensus search, or undefined when its
+ * The essential matrix of trial `trial` of the consensus search, or undefined when its
  * sample is degenerate. The focal search supplies the trials of one pair from a cache
  * (`src/sfm/focal/focal-pairs.ts`) in place of an eight-point fit for each focal.
  */
