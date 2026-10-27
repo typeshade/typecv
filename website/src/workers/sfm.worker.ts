@@ -2,6 +2,7 @@
 import {
   PhaseGate,
   legacyGateSkips,
+  medianMotionPx,
   trackGateDecision,
   type KeyframeGateMode,
 } from '../lib/keyframe-gate.ts';
@@ -26,6 +27,7 @@ import {
   retainedReferences,
   tracksCoverPair,
 } from '../lib/lab-matching.ts';
+import { trimStages } from '../lib/lab-ledger.ts';
 import type { DenseQualityOptions } from '../lib/dense-quality.ts';
 import type { KltSetup } from '../lib/sift-quality.ts';
 import {
@@ -339,21 +341,6 @@ function record(stage: any) {
   // The detailed list is bounded; the totals above keep the whole run.
   trimStages(active.stages);
 }
-/**
- * Bound the detailed stage list to `detailedStageLimit`: drop the oldest entries, keyframe entries
- * last. The focal search runs hundreds of operations at once, and the page still lists each
- * keyframe.
- */
-export function trimStages(stages: { operation: string }[]) {
-  let excess = stages.length - LAB_OPTIONS.detailedStageLimit;
-  for (let i = 0; excess > 0 && i < stages.length;)
-    if (stages[i]!.operation === 'keyframe') i++;
-    else {
-      stages.splice(i, 1);
-      excess--;
-    }
-  if (excess > 0) stages.splice(0, excess);
-}
 /** Post the map to the page at most every snapshotIntervalMs; the latest model wins. */
 function publish(model: any, force = false) {
   const active = job!,
@@ -374,29 +361,6 @@ function publish(model: any, force = false) {
     active.snapshot.timer = undefined;
     if (active.snapshot.pending) publish(active.snapshot.pending, true);
   }, wait);
-}
-/** Median displacement of matched features between two frames, in the current frame's pixels. */
-function medianMotionPx(
-  matches: Uint32Array,
-  previousPoints: Float64Array,
-  previous: { width: number; height: number },
-  points: Float64Array,
-  frame: { width: number; height: number },
-): number {
-  const distances: number[] = [];
-  for (let i = 0; i < matches.length; i += 2) {
-    const a = matches[i] * 2,
-      b = matches[i + 1] * 2;
-    distances.push(
-      Math.hypot(
-        points[b] - (previousPoints[a] * frame.width) / previous.width,
-        points[b + 1] - (previousPoints[a + 1] * frame.height) / previous.height,
-      ),
-    );
-  }
-  if (!distances.length) return Infinity;
-  distances.sort((x, y) => x - y);
-  return distances[distances.length >> 1];
 }
 async function releaseFeatures() {
   if (!job) return;

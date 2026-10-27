@@ -22,7 +22,8 @@
  *    on to SIFT and the legacy rule decides.
  *
  * The SfM worker also applies two rules of its own, which this module names: the legacy rule
- * (`legacyGateSkips`) and the track gate of `?kltGate=1` (`trackGateDecision`).
+ * (`legacyGateSkips`, on the median motion of `medianMotionPx`) and the track gate of `?kltGate=1`
+ * (`trackGateDecision`).
  *
  * This module has no DOM and no worker globals, so a unit test runs it in Node.
  */
@@ -150,6 +151,35 @@ export function scaledMotionThresholdPx(minMotionPx: number, width: number): num
 
 /** The legacy rule judges a pair with at least this many match entries (8 matches). */
 export const LEGACY_GATE_MIN_MATCH_ENTRIES = 16;
+
+/**
+ * Median displacement of matched features between two frames, in the current frame's pixels. The
+ * legacy rule (`legacyGateSkips`) judges it. `matches` holds two entries for each match: the
+ * feature index in the previous frame and in the current one. The median of an even count is the
+ * upper middle one. Without a match the displacement is `Infinity`.
+ */
+export function medianMotionPx(
+  matches: Uint32Array,
+  previousPoints: Float64Array,
+  previous: { width: number; height: number },
+  points: Float64Array,
+  frame: { width: number; height: number },
+): number {
+  const distances: number[] = [];
+  for (let i = 0; i < matches.length; i += 2) {
+    const a = matches[i] * 2,
+      b = matches[i + 1] * 2;
+    distances.push(
+      Math.hypot(
+        points[b] - (previousPoints[a] * frame.width) / previous.width,
+        points[b + 1] - (previousPoints[a + 1] * frame.height) / previous.height,
+      ),
+    );
+  }
+  if (!distances.length) return Infinity;
+  distances.sort((x, y) => x - y);
+  return distances[distances.length >> 1];
+}
 
 /** The worker's keyframe numbers that the legacy and track rules read (`LAB_OPTIONS`). */
 export type KeyframeMotionOptions = {

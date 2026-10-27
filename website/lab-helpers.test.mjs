@@ -17,6 +17,8 @@ import {
 import { denseWorkingBytes } from './src/lib/dense-run.ts';
 import { MAX_FEATURE_CAP, featureCap } from './src/lib/lab-features.ts';
 import { LAB_OPTIONS } from './src/lib/lab-options.ts';
+import { medianMotionPx } from './src/lib/keyframe-gate.ts';
+import { trimStages } from './src/lib/lab-ledger.ts';
 
 const MiB = 1024 ** 2;
 
@@ -91,5 +93,112 @@ test('the feature cap: 4096 features at 640 px, at most 16384 (start of both wor
     assert.equal(featureCap(LAB_OPTIONS.maxFeatures, scale), cap, `scale ${scale}, controls`);
     assert.equal(inlineSfm(LAB_OPTIONS, scale), cap, `scale ${scale}, inline`);
     assert.equal(inlineMulti(scale), cap, `scale ${scale}, multi-video, inline`);
+  }
+});
+
+test('the median motion of the legacy rule: the median displacement of the matches, in the pixels of this frame (processFrame)', () => {
+  // sfm.worker.ts `medianMotionPx`, as it stood.
+  const inline = (matches, previousPoints, previous, points, frame) => {
+    const distances = [];
+    for (let i = 0; i < matches.length; i += 2) {
+      const a = matches[i] * 2,
+        b = matches[i + 1] * 2;
+      distances.push(
+        Math.hypot(
+          points[b] - (previousPoints[a] * frame.width) / previous.width,
+          points[b + 1] - (previousPoints[a + 1] * frame.height) / previous.height,
+        ),
+      );
+    }
+    if (!distances.length) return Infinity;
+    distances.sort((x, y) => x - y);
+    return distances[distances.length >> 1];
+  };
+  const size = (width, height) => ({ width, height });
+  const f64 = (...values) => Float64Array.from(values);
+  for (const [what, matches, previousPoints, previous, points, frame, motion] of [
+    ['no match', [], f64(1, 1), size(128, 96), f64(1, 1), size(128, 96), Infinity],
+    ['one match', [0, 0], f64(10, 10), size(128, 96), f64(13, 14), size(128, 96), 5],
+    [
+      'an odd count',
+      [0, 0, 1, 1, 2, 2],
+      f64(0, 0, 0, 0, 0, 0),
+      size(9, 9),
+      f64(3, 0, 1, 0, 2, 0),
+      size(9, 9),
+      2,
+    ],
+    [
+      'an even count: the upper middle',
+      [0, 0, 1, 1, 2, 2, 3, 3],
+      f64(0, 0, 0, 0, 0, 0, 0, 0),
+      size(9, 9),
+      f64(4, 0, 1, 0, 3, 0, 2, 0),
+      size(9, 9),
+      3,
+    ],
+    [
+      'the previous points scaled to this frame',
+      [0, 0],
+      f64(100, 200),
+      size(1280, 960),
+      f64(53, 104),
+      size(640, 480),
+      5,
+    ],
+    ['a scale in x only', [0, 0], f64(100, 40), size(200, 100), f64(50, 43), size(100, 100), 3],
+    [
+      'the indices of each frame',
+      [1, 0, 0, 1],
+      f64(0, 0, 7, 7),
+      size(16, 16),
+      f64(7, 11, 3, 4),
+      size(16, 16),
+      5,
+    ],
+  ]) {
+    const args = [Uint32Array.from(matches), previousPoints, previous, points, frame];
+    assert.equal(medianMotionPx(...args), motion, what);
+    assert.equal(inline(...args), motion, what + ', inline');
+  }
+});
+
+test('the detailed stage list: 400 entries, keyframe entries dropped last (record, registerFrame)', () => {
+  assert.equal(LAB_OPTIONS.detailedStageLimit, 400);
+  // sfm.worker.ts `trimStages`, as it stood, with `LAB_OPTIONS.detailedStageLimit` written out.
+  const inline = (stages) => {
+    let excess = stages.length - 400;
+    for (let i = 0; excess > 0 && i < stages.length;)
+      if (stages[i].operation === 'keyframe') i++;
+      else {
+        stages.splice(i, 1);
+        excess--;
+      }
+    if (excess > 0) stages.splice(0, excess);
+  };
+  // A list of `n` entries; the entries at the indices of `keyframes` are keyframe entries.
+  const list = (n, keyframes = () => false) =>
+    Array.from({ length: n }, (_, id) => ({
+      operation: keyframes(id) ? 'keyframe' : 'matches',
+      id,
+    }));
+  const ids = (stages) => stages.map((stage) => stage.id);
+  const range = (from, to) => Array.from({ length: to - from }, (_, i) => from + i);
+  for (const [what, stages, kept] of [
+    ['an empty list', list(0), []],
+    ['400 entries', list(400), range(0, 400)],
+    ['401 entries: the oldest goes', list(401), range(1, 401)],
+    ['the oldest keyframe entries stay', list(401, (id) => id < 3), [0, 1, 2, ...range(4, 401)]],
+    ['403 entries: three go', list(403, (id) => id % 2 === 0), [0, 2, 4, ...range(6, 403)]],
+    ['only keyframe entries: the oldest go', list(402, () => true), range(2, 402)],
+    ['keyframe entries go when the others are gone', list(405, (id) => id < 403), range(3, 403)],
+  ]) {
+    const helper = stages.map((stage) => ({ ...stage })),
+      copy = stages.map((stage) => ({ ...stage }));
+    trimStages(helper);
+    inline(copy);
+    assert.deepEqual(ids(helper), kept, what);
+    assert.deepEqual(ids(copy), kept, what + ', inline');
+    assert.deepEqual(helper, copy, what + ', the entries');
   }
 });
