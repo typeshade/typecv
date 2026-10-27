@@ -53,6 +53,8 @@ test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
           'src/sfm/focal/focal-search.ts',
           'src/sfm/mapper/mapper.ts',
           'src/sfm/pairs/pair-verdict.ts',
+          'src/sfm/protocol/depth-step.ts',
+          'src/sfm/protocol/drive.ts',
           'src/sfm/protocol/errors.ts',
         ],
         typeOnly: [
@@ -60,6 +62,7 @@ test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
           'src/sfm/depth/depth-publication.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/focal/focal-search.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/pairs/pair-verdict.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/protocol/depth-step.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/protocol/errors.ts -> src/sfm/focal/focal-search.ts',
           'src/sfm/protocol/errors.ts -> src/sfm/mapper/mapper.ts',
         ],

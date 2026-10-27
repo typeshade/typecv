@@ -1,9 +1,10 @@
-import { isInverseDepthTracker } from '../depth/inverse-depth-tracker.ts';
+import { depthTrackingInput } from '../depth/depth-publication.ts';
+import { driveAsync } from '../protocol/drive.ts';
 import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+  checkDepthTracker,
+  publishTrackedDepth,
+  recordFailedDepth,
+} from '../protocol/depth-step.ts';
 import { bundleAdjustInverseDepthGpu } from '../depth/gpu/inverse-depth.ts';
 import {
   incrementalSteps,
@@ -13,10 +14,7 @@ import {
   type IncrementalResult,
   type ReconstructionJob,
 } from '../mapper/mapper.ts';
-import {
-  ReconstructionOperationError,
-  ReconstructionInitializationError,
-} from '../protocol/errors.ts';
+import { ReconstructionInitializationError } from '../protocol/errors.ts';
 import { copyReconstruction } from '../model/copy.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { MapHistory } from '../session/map-history.ts';
@@ -31,7 +29,6 @@ import {
   type ReconstructionTracking,
 } from '../tracks/tracking.ts';
 import { cameraCenter } from '../../geometry/pose.ts';
-import { GeometryEstimationError } from '../../geometry/errors.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
 import { estimatePosePnPGpu } from '../../geometry/gpu/pnp.ts';
 import { type GpuGeometryExecution } from '../../geometry/gpu/execution.ts';
@@ -334,8 +331,7 @@ async function runIncrementalGpu(
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
-  if (options.depthTracking !== undefined && !isInverseDepthTracker(options.depthTracking))
-    throw new RangeError('Invalid depth tracker');
+  checkDepthTracker(options);
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
     ...v,
@@ -471,28 +467,21 @@ async function runIncrementalGpu(
       finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
       completeRegisteredObservations,
     );
-    let step = machine.next();
-    while (!step.done) {
-      let value: unknown;
-      const event = { operation: step.value.kind, index: ++operationIndex };
-      try {
+    const mapped = await driveAsync(
+      machine,
+      async (job) => {
+        const event = { operation: job.kind, index: ++operationIndex };
         options.onProgress?.({ ...event, phase: 'start' });
         const beforeStages = stages.length;
-        value = await execute(step.value);
+        const value = await execute(job);
         if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
         options.onProgress?.({ ...event, phase: 'complete' });
-      } catch (error) {
-        step = machine.throw(
-          error instanceof GeometryEstimationError
-            ? error
-            : new ReconstructionOperationError(error),
-        );
-        continue;
-      }
-      step = machine.next(value);
-    }
+        return value;
+      },
+      'wrap',
+    );
     const result: GpuIncrementalResult = {
-      ...step.value,
+      ...mapped,
       execution: {
         backend: device.backend,
         stages,
@@ -514,8 +503,7 @@ async function runIncrementalGpu(
       depthTrackingInput(result, views, controls.cameraObservationMasks),
       (m, c, o) => bundleAdjustInverseDepthGpu(device, m, c, o),
     );
-    const published = publishDepth(result, updated);
-    options.onReconstruction?.(copyReconstruction(published.reconstruction));
+    const published = publishTrackedDepth(result, updated, options);
     return {
       ...published,
       execution: {
@@ -527,8 +515,7 @@ async function runIncrementalGpu(
       },
     };
   } catch (error) {
-    if (options.depthTracking && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
+    recordFailedDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
     throw error;
   }
 }

@@ -12,6 +12,7 @@ import {
   type IncrementalResult,
   type PreVerifiedPair,
 } from '../mapper/mapper.ts';
+import { drive } from '../protocol/drive.ts';
 import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 import type { ViewGraph, ViewGraphEdge, ViewGraphKeyframe } from './view-graph.ts';
 
@@ -82,7 +83,10 @@ export function componentInput(
   };
 }
 
-/** Reconstruct one component on the CPU. A device driver runs `componentInput` instead. */
+/**
+ * Reconstruct one component on the CPU. A device driver runs `componentInput` instead. An error of
+ * a request ends the run (the error rule `'end'` of `drive`).
+ */
 export function reconstructComponent(
   graph: ViewGraph,
   keyframes: readonly ViewGraphKeyframe[],
@@ -90,8 +94,9 @@ export function reconstructComponent(
   options: ComponentOptions = {},
 ): IncrementalResult {
   const input = componentInput(graph, keyframes, componentIndex, options);
-  const machine = incrementalSteps(input.images, input.pairs, input.options);
-  let step = machine.next();
-  while (!step.done) step = machine.next(executeReconstructionJob(step.value));
-  return step.value;
+  return drive(
+    incrementalSteps(input.images, input.pairs, input.options),
+    executeReconstructionJob,
+    'end',
+  );
 }

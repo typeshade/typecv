@@ -1,14 +1,7 @@
 import { identityPose, projectPoint } from '../../geometry/pose.ts';
-import {
-  isInverseDepthTracker,
-  type InverseDepthTracking,
-  type InverseDepthSnapshot,
-} from '../depth/inverse-depth-tracker.ts';
-import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+import type { InverseDepthTracking, InverseDepthSnapshot } from '../depth/inverse-depth-tracker.ts';
+import { drive } from '../protocol/drive.ts';
+import { withDepthStep } from '../protocol/depth-step.ts';
 import {
   verifyImagePair,
   type ImagePairVerification,
@@ -399,34 +392,9 @@ function executeCpuMapper(
     controls: IncrementalOptions,
   ) => Generator<ReconstructionJob, IncrementalResult, unknown>,
 ): IncrementalResult {
-  const tracker = options.depthTracking;
-  if (tracker !== undefined && !isInverseDepthTracker(tracker))
-    throw new RangeError('Invalid depth tracker');
-  try {
-    const machine = create(tracker ? { ...options, onReconstruction: undefined } : options);
-    let step = machine.next();
-    while (!step.done) {
-      let result: unknown;
-      try {
-        result = executeReconstructionJob(step.value);
-      } catch (error) {
-        step = machine.throw(error);
-        continue;
-      }
-      step = machine.next(result);
-    }
-    if (!tracker) return step.value;
-    const result = publishDepth(
-      step.value,
-      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
-    );
-    options.onReconstruction?.(copyReconstruction(result.reconstruction));
-    return result;
-  } catch (error) {
-    if (tracker && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
-    throw error;
-  }
+  return withDepthStep(images, options, (controls) =>
+    drive(create(controls), executeReconstructionJob, 'pass'),
+  );
 }
 
 /** A registered view is retried after each PnP failure only while the map has grown, at most this often. */

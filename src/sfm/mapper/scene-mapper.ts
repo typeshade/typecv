@@ -1,9 +1,5 @@
-import { isInverseDepthTracker } from '../depth/inverse-depth-tracker.ts';
-import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+import { drive } from '../protocol/drive.ts';
+import { withDepthStep } from '../protocol/depth-step.ts';
 import { identityPose, projectPoint } from '../../geometry/pose.ts';
 import type { Pose, Camera } from '../../contracts/camera.ts';
 import { estimatePosePnP } from '../../geometry/pnp.ts';
@@ -30,7 +26,6 @@ import {
   executeReconstructionJob,
   verifyPairs,
 } from './mapper.ts';
-import { copyReconstruction } from '../model/copy.ts';
 import {
   ReconstructionInitializationError,
   ReconstructionOperationError,
@@ -759,37 +754,8 @@ export function reconstructIncrementalScene(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const tracker = options.depthTracking;
-  if (tracker !== undefined && !isInverseDepthTracker(tracker))
-    throw new RangeError('Invalid depth tracker');
-  try {
-    const driver = new HostSceneDriver(),
-      machine = sceneSteps(
-        images,
-        inputPairs,
-        tracker ? { ...options, onReconstruction: undefined } : options,
-      );
-    let step = machine.next();
-    while (!step.done) {
-      let result: unknown;
-      try {
-        result = driver.execute(step.value);
-      } catch (error) {
-        step = machine.throw(error);
-        continue;
-      }
-      step = machine.next(result);
-    }
-    if (!tracker) return step.value;
-    const result = publishDepth(
-      step.value,
-      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
-    );
-    options.onReconstruction?.(copyReconstruction(result.reconstruction));
-    return result;
-  } catch (error) {
-    if (tracker && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
-    throw error;
-  }
+  return withDepthStep(images, options, (controls) => {
+    const driver = new HostSceneDriver();
+    return drive(sceneSteps(images, inputPairs, controls), (job) => driver.execute(job), 'pass');
+  });
 }
