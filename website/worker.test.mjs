@@ -19,6 +19,7 @@ import {
   sparsePerformanceRecord,
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
+import { HARDWARE_CHECK_FORMAT, hardwareCheckProblem } from './src/lib/hardware-check/record.ts';
 import { planFiles, postRecord, putFiles } from './src/lib/send-record.ts';
 import { olderRecord, sampleRecord } from './record-fixture.mjs';
 import { initializationFailureRecord } from './src/lib/initialization-failure.ts';
@@ -1092,6 +1093,233 @@ test('POST stores a probe record with probe metadata and rejects a malformed one
   const runMeta = RECORDS.store.get('record/' + (await run.json()).id).metadata;
   assert.equal(runMeta.kind, undefined);
   assert.equal(runMeta.registered, 8);
+});
+
+/** A hardware-check record of `/lab/check/` as the page builds it, shortened to two cases. */
+export function sampleCheckRecord(overrides = {}) {
+  const identity = { vendor: 'nvidia', architecture: 'blackwell', device: '', description: '' };
+  const digest = (c) => c.repeat(64);
+  const completed = {
+    name: 'clahe',
+    family: ['claheHistogram', 'claheMapTiles', 'claheApply'],
+    bound: { kind: 'abs', value: 0.00025, source: 'tests/typeshade/clahe-webgpu.test.mjs' },
+    outcome: 'completed',
+    skipped: null,
+    coldMs: 131,
+    warmMs: 12,
+    cpuMs: 126,
+    repeatable: true,
+    digests: {
+      input: digest('a'),
+      device: digest('b'),
+      deviceWarm: digest('b'),
+      cpu: digest('c'),
+      deviceParts: { images: digest('b') },
+      cpuParts: { images: digest('c') },
+    },
+    agreement: { maxAbs: 1.2e-7, maxRel: null, mismatches: 0, compared: 25414, problems: [] },
+    pass: true,
+    summary: { pixels: 12707, partialLastWorkgroup: 35 },
+    gpu: [{ name: 'claheApply', groups: 2, dispatches: 2, timedGroups: 2, gpuMs: 1.25 }],
+    chunks: null,
+    loss: null,
+    error: null,
+  };
+  const lost = {
+    ...completed,
+    name: 'a1-triangulation',
+    family: ['triangulateTracks'],
+    bound: { kind: 'exact', value: 0, source: 'docs/hardware-observations.md, A1' },
+    outcome: 'lost',
+    warmMs: null,
+    repeatable: null,
+    digests: { ...completed.digests, device: null, deviceWarm: null, deviceParts: null },
+    agreement: null,
+    pass: null,
+    chunks: { triangulateTracks: { msPerUnit: 0.76, chunks: 3, longestMs: 15.1, lastUnits: 16 } },
+    loss: {
+      message: 'D3D12 device removed: DXGI_ERROR_DEVICE_HUNG (0x887A0006)',
+      reason: 'unknown',
+      lastKernel: 'triangulateTracks',
+      uncaptured: [{ name: 'GPUInternalError', message: 'Device lost' }],
+    },
+  };
+  return {
+    format: HARDWARE_CHECK_FORMAT,
+    startedAt: '2026-10-28T01:00:00.000Z',
+    finishedAt: '2026-10-28T01:01:10.000Z',
+    site: {
+      commit: 'db7216a4d0d763996b677bbf27deb0f3913c930c',
+      href: 'https://cv.typeshade.dev/lab/check/',
+      typeshade: '725b2969a9cac37400980c2c0058680368407602',
+    },
+    client: {
+      userAgent: 'test',
+      platform: 'Win32',
+      language: 'ko-KR',
+      hardwareConcurrency: 16,
+      deviceMemory: 8,
+    },
+    adapter: {
+      ...identity,
+      fallbackAdapter: false,
+      limits: { maxBufferSize: 4294967296, maxStorageBufferBindingSize: 2147483648 },
+      features: ['shader-f16', 'timestamp-query'],
+    },
+    flavor: {
+      requested: 'auto',
+      selected: 'float',
+      selectedDefault: 'float',
+      previous: 'float',
+      previousRequested: 'float',
+      same: true,
+      signals: { deviceAdapterInfo: identity, requestedAdapterInfo: identity, userAgent: 'test' },
+      info: {
+        provenance: 'device',
+        vendor: 'nvidia',
+        architecture: 'blackwell',
+        device: null,
+        description: null,
+      },
+      error: null,
+    },
+    device: { timeBudgetMs: 250, timestampQuery: true, typeshadeVersion: '0.1.0' },
+    cases: [completed, lost],
+    aborted: 'The device was lost in a1-triangulation; the cases after it did not run',
+    resume: '?cases=kernel-functions',
+    note: 'RTX 5060 Ti, Windows 11',
+    ...overrides,
+  };
+}
+
+test('the hardware-check validator accepts the check record and names the first broken field', () => {
+  assert.equal(hardwareCheckProblem(sampleCheckRecord()), undefined);
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ adapter: null, aborted: null, resume: null })),
+    undefined,
+  );
+  assert.equal(hardwareCheckProblem(null), 'not an object');
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ format: 'typecv-check-v0' })), 'format');
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ finishedAt: 'later' })), 'finishedAt');
+  const site = sampleCheckRecord().site;
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ site: { ...site, typeshade: 7 } })),
+    'site',
+  );
+  const client = sampleCheckRecord().client;
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ client: { ...client, language: 'x'.repeat(36) } })),
+    'client',
+  );
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ adapter: { vendor: 'nvidia' } })),
+    'adapter',
+  );
+  const flavor = sampleCheckRecord().flavor;
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ flavor: { ...flavor, selected: 'double' } })),
+    'flavor',
+  );
+  assert.equal(
+    hardwareCheckProblem(
+      sampleCheckRecord({ flavor: { ...flavor, info: { ...flavor.info, provenance: 'guess' } } }),
+    ),
+    'flavor',
+  );
+  const device = sampleCheckRecord().device;
+  assert.equal(
+    hardwareCheckProblem(sampleCheckRecord({ device: { ...device, timestampQuery: 'yes' } })),
+    'device',
+  );
+  const [completed, lost] = sampleCheckRecord().cases;
+  const withCase = (c) => hardwareCheckProblem(sampleCheckRecord({ cases: [c] }));
+  assert.equal(withCase({ ...completed, outcome: 'hung' }), 'cases');
+  // A skipped case says why, and a case that ran gives no such reason.
+  assert.equal(withCase({ ...completed, outcome: 'skipped', skipped: null }), 'cases');
+  assert.equal(
+    withCase({ ...completed, outcome: 'skipped', skipped: 'not run after a device loss' }),
+    undefined,
+  );
+  assert.equal(withCase({ ...completed, skipped: 'why' }), 'cases');
+  assert.equal(
+    withCase({ ...completed, digests: { ...completed.digests, device: 'not hex' } }),
+    'cases',
+  );
+  assert.equal(
+    withCase({
+      ...completed,
+      gpu: [{ name: 'claheApply', groups: 1, dispatches: 1, timedGroups: 2, gpuMs: 1 }],
+    }),
+    'cases',
+  );
+  assert.equal(withCase({ ...lost, loss: { ...lost.loss, message: 7 } }), 'cases');
+  assert.equal(
+    withCase({
+      ...completed,
+      summary: Object.fromEntries([...'abcdefghijklmnopq'].map((k) => [k, 1])),
+    }),
+    'cases',
+  );
+  assert.equal(
+    hardwareCheckProblem(
+      sampleCheckRecord({
+        cases: Array.from({ length: 33 }, (_, i) => ({ ...completed, name: 'case-' + i })),
+      }),
+    ),
+    'cases',
+  );
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ cases: [completed, completed] })), 'cases');
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ aborted: 'x'.repeat(2001) })), 'aborted');
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ resume: '?tracks=0-1' })), 'resume');
+  assert.equal(hardwareCheckProblem(sampleCheckRecord({ note: 'x'.repeat(501) })), 'note');
+  // A check record is neither a run record nor a probe record, and the other way round.
+  assert.equal(runRecordProblem(sampleCheckRecord()), 'format');
+  assert.equal(probeRecordProblem(sampleCheckRecord()), 'format');
+  assert.equal(hardwareCheckProblem(sampleRecord()), 'format');
+  assert.equal(hardwareCheckProblem(sampleProbeRecord()), 'format');
+});
+
+test('POST stores a hardware-check record with check metadata and rejects a malformed one', async () => {
+  const RECORDS = fakeKv(),
+    env = { RECORDS, RECORDS_READ_TOKEN: 'secret' };
+  const created = await handle(post(sampleCheckRecord()), env);
+  assert.equal(created.status, 201);
+  const { id, receivedAt } = await created.json();
+  const entry = RECORDS.store.get('record/' + id);
+  assert.equal(JSON.parse(entry.value).server.id, id);
+  assert.equal(JSON.parse(entry.value).note, 'RTX 5060 Ti, Windows 11');
+  assert.deepEqual(entry.metadata, {
+    receivedAt,
+    kind: 'check',
+    gpu: 'blackwell',
+    fp64Flavor: 'float',
+    sameFlavor: true,
+    cases: 2,
+    failed: 1,
+    failedCases: ['a1-triangulation'],
+    aborted: true,
+    site: 'db7216a4d0d7',
+  });
+  assert.ok(JSON.stringify(entry.metadata).length < 1024);
+  const read = await handle(
+    new Request('https://cv.typeshade.dev/api/records/' + id + '/', {
+      headers: { authorization: 'Bearer secret' },
+    }),
+    env,
+  );
+  assert.equal(read.status, 200);
+  assert.equal((await read.json()).format, HARDWARE_CHECK_FORMAT);
+  const unread = await handle(new Request('https://cv.typeshade.dev/api/records/' + id + '/'), env);
+  assert.equal(unread.status, 401);
+  const malformed = await handle(post(sampleCheckRecord({ cases: null })), env);
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { error: 'invalid record', field: 'cases' });
+  // The run records and the probe records keep their own validation and metadata.
+  const run = await handle(post(sampleRecord()), env);
+  assert.equal(run.status, 201);
+  assert.equal(RECORDS.store.get('record/' + (await run.json()).id).metadata.kind, undefined);
+  const probe = await handle(post(sampleProbeRecord()), env);
+  assert.equal(RECORDS.store.get('record/' + (await probe.json()).id).metadata.kind, 'probe');
 });
 
 /** An in-memory R2 bucket with the subset of the binding the Worker uses for result files. */

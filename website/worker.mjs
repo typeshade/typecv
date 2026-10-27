@@ -1,6 +1,6 @@
-// Cloudflare Worker in front of the static site: stores lab run records and probe records in KV,
-// and serves the lab's video samples from R2 under /sample/. Every other path is served from
-// the static assets binding.
+// Cloudflare Worker in front of the static site: stores lab run records, probe records and
+// hardware-check records in KV, and serves the lab's video samples from R2 under /sample/. Every
+// other path is served from the static assets binding.
 import {
   RESULT_FILE_MAX_BYTES,
   resultFileNameValid,
@@ -8,6 +8,11 @@ import {
   runRecordProblem,
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
+import {
+  failedCases,
+  HARDWARE_CHECK_FORMAT,
+  hardwareCheckProblem,
+} from './src/lib/hardware-check/record.ts';
 
 const RECORD_PREFIX = 'record/';
 const RATE_PREFIX = 'rate/';
@@ -118,6 +123,30 @@ function probeMetadata(record, receivedAt) {
   };
 }
 
+/**
+ * The listing metadata of a hardware-check record (`website/src/lib/hardware-check/record.ts`):
+ * the GPU, the selected flavor and whether it equals the rule before change 0085, the number of
+ * cases and the first 8 that failed, whether the check stopped early, and the site commit.
+ */
+function checkMetadata(record, receivedAt) {
+  const adapter = record.adapter,
+    failed = failedCases(record);
+  return {
+    receivedAt,
+    kind: 'check',
+    gpu: adapter
+      ? (adapter.description || adapter.architecture || adapter.vendor).slice(0, 128)
+      : '',
+    fp64Flavor: record.flavor.selected,
+    sameFlavor: record.flavor.same,
+    cases: record.cases.length,
+    failed: failed.length,
+    failedCases: failed.slice(0, 8).map((name) => name.slice(0, 32)),
+    aborted: record.aborted !== null,
+    site: record.site.commit ? record.site.commit.slice(0, 12) : null,
+  };
+}
+
 async function postRecord(request, url, env) {
   if (!env.RECORDS) return json(503, { error: 'collector not configured' });
   if (!originAllowed(request, url)) return json(403, { error: 'origin' });
@@ -132,7 +161,12 @@ async function postRecord(request, url, env) {
     return json(400, { error: 'invalid JSON' });
   }
   const probe = record?.format === PROBE_RECORD_FORMAT;
-  const problem = probe ? probeRecordProblem(record) : runRecordProblem(record);
+  const check = record?.format === HARDWARE_CHECK_FORMAT;
+  const problem = probe
+    ? probeRecordProblem(record)
+    : check
+      ? hardwareCheckProblem(record)
+      : runRecordProblem(record);
   if (problem) return json(400, { error: 'invalid record', field: problem });
   if (await rateLimited(env, request)) return json(429, { error: 'rate limit' });
   const receivedAt = new Date().toISOString();
@@ -147,7 +181,11 @@ async function postRecord(request, url, env) {
     },
   };
   await env.RECORDS.put(RECORD_PREFIX + id, JSON.stringify(stored), {
-    metadata: probe ? probeMetadata(record, receivedAt) : runMetadata(record, receivedAt),
+    metadata: probe
+      ? probeMetadata(record, receivedAt)
+      : check
+        ? checkMetadata(record, receivedAt)
+        : runMetadata(record, receivedAt),
   });
   return json(201, { id, receivedAt });
 }
