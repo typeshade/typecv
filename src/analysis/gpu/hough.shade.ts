@@ -64,10 +64,10 @@ declare const houghSegments: storage<array<u32>, 'read_write'>;
 
 // The most segments kept for one line, and the u32 per line in `houghSegments`: the count, then four
 // coordinates per segment.
-const MAX_SEGMENTS: u32 = 16;
-const SEGMENT_STRIDE: u32 = 65;
+export const MAX_SEGMENTS: u32 = 16;
+export const SEGMENT_STRIDE: u32 = 65;
 // Two gradient magnitudes closer than this are a tie: the tie is broken the same way in f32 and f64.
-const TIE: f32 = 0.00001;
+export const TIE: f32 = 0.00001;
 
 /** One invocation per pixel: gray with scikit-image's `rgb2gray` weights, in [0, 1]. */
 @compute([64])

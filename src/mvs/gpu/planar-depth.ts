@@ -2,26 +2,12 @@ import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice, GpuStep, ShadePlanReport } from '../../device/gpu/device.ts';
 import type { TsdfInput, TsdfView } from '../tsdf.ts';
 import { tsdfVisibilityGroups } from '../tsdf.ts';
-import { chunkedPass as basePass } from '../../device/gpu/chunked-pass.ts';
+import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 import { planarFit, planarPropose, planarVerify, planarFinish } from './planar-depth.shade.ts';
 import { OwnedPlanarMaps, type PlanarHostMaps } from './planar-depth-lifetime.ts';
 
-/** Keep each dispatch within the adapter's one-dimensional workgroup limit. */
-function* chunkedPass(
-  device: ShadeDevice,
-  key: string,
-  name: string,
-  total: number,
-  dispatch: (range: { first: number; end: number }, groups: number) => void,
-) {
-  const limit = Math.max(64, Math.floor(device.maxKernelElements / 64) * 64);
-  for (let first = 0; first < total; first += limit) {
-    const offset = first;
-    yield* basePass(device, key, name, Math.min(limit, total - first), (range, groups) =>
-      dispatch({ first: offset + range.first, end: offset + range.end }, groups),
-    );
-  }
-}
+/** Planar depth cuts each pass at the adapter's workgroup limit before it chunks the parts. */
+const PLANAR_CHUNKS = { limit: 'split' } as const;
 
 export interface PlanarDepthReport {
   readonly filled: number;
@@ -237,35 +223,47 @@ async function completePlanarDepthsImpl(
         reports.push(await device.planSteps(checked()));
       };
       await run(
-        chunkedPass(device, 'planarFit', 'planarFit', tilesX * tilesY, (planarRange, groups) =>
-          planarFit(
-            {
-              planar,
-              planarRange,
-              planarDepth: depth,
-              planarConfidence: trust,
-              planarRgba: rgba,
-              planarPlanes: planes,
-            },
-            groups,
-          ),
+        chunkedPass(
+          device,
+          'planarFit',
+          'planarFit',
+          tilesX * tilesY,
+          (planarRange, groups) =>
+            planarFit(
+              {
+                planar,
+                planarRange,
+                planarDepth: depth,
+                planarConfidence: trust,
+                planarRgba: rgba,
+                planarPlanes: planes,
+              },
+              groups,
+            ),
+          PLANAR_CHUNKS,
         ),
       );
       await run(
-        chunkedPass(device, 'planarPropose', 'planarPropose', P, (planarRange, groups) =>
-          planarPropose(
-            {
-              planar,
-              planarRange,
-              planarDepth: depth,
-              planarRgba: rgba,
-              planarPlanes: planes,
-              planarCandidate: candidate,
-              planarCandidateNormal: candidateNormal,
-              planarCandidateConfidence: candidateConfidence,
-            },
-            groups,
-          ),
+        chunkedPass(
+          device,
+          'planarPropose',
+          'planarPropose',
+          P,
+          (planarRange, groups) =>
+            planarPropose(
+              {
+                planar,
+                planarRange,
+                planarDepth: depth,
+                planarRgba: rgba,
+                planarPlanes: planes,
+                planarCandidate: candidate,
+                planarCandidateNormal: candidateNormal,
+                planarCandidateConfidence: candidateConfidence,
+              },
+              groups,
+            ),
+          PLANAR_CHUNKS,
         ),
       );
       const allowed = options.sources ? new Set(options.sources[reference]) : undefined;
@@ -280,26 +278,37 @@ async function completePlanarDepthsImpl(
           sourceConfidence.write(confidenceOf(source));
           const planarSource = { ...camera(source), group: group + 1 };
           await run(
-            chunkedPass(device, 'planarVerify', 'planarVerify', P, (planarRange, groups) =>
-              planarVerify(
-                {
-                  planar,
-                  planarSource,
-                  planarRange,
-                  planarCandidate: candidate,
-                  planarSupport: support,
-                  planarSupportGroup: supportGroup,
-                  planarSourceDepth: sourceDepth,
-                  planarSourceConfidence: sourceConfidence,
-                },
-                groups,
-              ),
+            chunkedPass(
+              device,
+              'planarVerify',
+              'planarVerify',
+              P,
+              (planarRange, groups) =>
+                planarVerify(
+                  {
+                    planar,
+                    planarSource,
+                    planarRange,
+                    planarCandidate: candidate,
+                    planarSupport: support,
+                    planarSupportGroup: supportGroup,
+                    planarSourceDepth: sourceDepth,
+                    planarSourceConfidence: sourceConfidence,
+                  },
+                  groups,
+                ),
+              PLANAR_CHUNKS,
             ),
           );
         }
       await run(
-        chunkedPass(device, 'planarFinish', 'planarFinish', P, (planarRange, groups) =>
-          planarFinish({ ...common, planarRange }, groups),
+        chunkedPass(
+          device,
+          'planarFinish',
+          'planarFinish',
+          P,
+          (planarRange, groups) => planarFinish({ ...common, planarRange }, groups),
+          PLANAR_CHUNKS,
         ),
       );
       options.signal?.throwIfAborted();
