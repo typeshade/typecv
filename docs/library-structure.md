@@ -1520,8 +1520,9 @@ package root in the generated fuse record, the form TypeShade's own shipped face
 is a key the planner compares, never a file it opens, so no comparison changes. `dist/` holds 0
 absolute paths, and a second build of the same tree at another path is byte-identical. The
 guard `tests/surface/dist-paths.test.ts` runs in `test:surface` and fails on any absolute path of
-the build machine under `dist/`. The cause stays in TypeShade (`src/vite.ts` and `hostFace`), recorded as
-typeshade/typeshade#805; the plugin finds nothing to replace once a pin carries that fix.
+the build machine under `dist/`. The cause stays in TypeShade (`src/vite.ts` and `hostFace`),
+recorded as typeshade/typeshade#805; the plugin finds nothing to replace once a pin carries that
+fix.
 
 Open after #264: preview deploys (section 7, item 21); the A1 record (section 7, item 11); the copy
 `LAB_DEVICE_OPTIONS` until phase 5c (the phase 5 row). #266 is closed by #271 (amendment 7).
@@ -1549,8 +1550,9 @@ module-private.
   `carryAnchorEdges`) and `src/sfm/session/archive-solve.ts` (`archiveSolvePlan`), with
   `tests/session-policies.test.ts`: 25 tests, each row held to a copy of the inline code of
   `src/sfm/gpu/mapper.ts` on `60b4dd9` and to B1's rebuild rule of `5017480`; eight mutations,
-  one at a time, each made at least one test fail. `IncrementalSfmSession.add` goes from 159 to 103 lines
-  and `update` from 203 to 166, and the session applies what the policies return where the code was.
+  one at a time, each made at least one test fail. `IncrementalSfmSession.add` goes from 159 to 103
+  lines and `update` from 203 to 166, and the session applies what the policies return where the
+  code was.
 - `src/sfm/bundle/gpu/bundle-host.ts` holds what `bundleAdjustGpuFixed` and
   `bundleAdjustJointFocalGpu` repeated verbatim: `bundleProblem`, `bundleArraySizes`,
   `bundlePointStarts`, `snapshotBundleModel`, `packBundleScene`, `bundleWindowControls`,
@@ -2141,4 +2143,4 @@ recorded here by amendment.
   #271 and issue typeshade/typeshade#805, the focal search fix of #267 and the declared digest
   changes of #268 in force, typeshade/typeshade#798 and #804 merged, the drafts 0101 and 0102, the
   owner's decision on the first question of item 20, the next pin, the status of the programme),
-  pull request #PRNUM.
+  pull request #273.
