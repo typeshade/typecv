@@ -1,4 +1,5 @@
-import { cameraCenter, clonePose, projectPoint } from '../../geometry/pose.ts';
+import { cameraCenter, clonePose, projectPoint, transformPoint } from '../../geometry/pose.ts';
+import { unprojectPixel } from '../../geometry/camera.ts';
 import { refineTrackPoint, triangulateLinear } from '../../geometry/multiview.ts';
 import { cameraAtRatio } from '../focal/focal-search.ts';
 import { copyReconstruction } from '../model/copy.ts';
@@ -84,9 +85,12 @@ export function historyTracks(
 
 /**
  * The archive with the poses of `rebuilt` and the camera at `ratio`, and each landmark
- * triangulated again from its own observations with those poses. Undefined when the rebuild
- * did not register every view of the archive or a landmark does not triangulate: the restart
- * then has no map at its focal.
+ * triangulated again from its own observations with those poses. A landmark that does not land
+ * in front of all its cameras (an outlier of the rebuilt geometry) is placed on the ray of one of
+ * its observations at the median depth of the others, the first such point in front of all its
+ * cameras: the bundle adjustment requires that, and its robust loss then judges the landmark.
+ * Undefined when the rebuild did not register every view of the archive or a landmark has no
+ * such point: the restart then has no map at its focal.
  */
 function reseeded(
   original: SparseReconstruction,
@@ -101,16 +105,46 @@ function reseeded(
       pose: clonePose(posed.get(v.id)!.pose),
     })),
     byId = new Map(views.map((v) => [v.id, v])),
-    landmarks = [];
-  for (const point of original.landmarks) {
-    const observations = point.observations.map((o) => ({
+    tracks = original.landmarks.map((point) =>
+      point.observations.map((o) => ({
         camera: byId.get(o.viewId)!.camera,
         pose: byId.get(o.viewId)!.pose,
         pixel: o.pixel,
       })),
-      initial = triangulateLinear(observations);
-    if (!initial) return undefined;
-    landmarks.push({ ...point, xyz: refineTrackPoint(initial, observations) });
+    ),
+    inFront = (observations: (typeof tracks)[number], X: Float64Array) =>
+      observations.every((o) => projectPoint(o.camera, o.pose, X) !== undefined),
+    points = tracks.map((observations) => {
+      const initial = triangulateLinear(observations),
+        X = initial && refineTrackPoint(initial, observations);
+      return X && inFront(observations, X) ? X : undefined;
+    }),
+    depths = points
+      .flatMap((X, i) => (X ? [transformPoint(tracks[i]![0]!.pose, X)[2]!] : []))
+      .sort((a, b) => a - b),
+    depth = depths[Math.floor(depths.length / 2)];
+  const landmarks = [];
+  for (const [i, point] of original.landmarks.entries()) {
+    let X = points[i];
+    for (const o of tracks[i]!) {
+      if (X || depth === undefined) break;
+      const ray = unprojectPixel(o.camera, o.pixel);
+      if (!ray) continue;
+      // The camera point (x·d, y·d, d) in world coordinates: Rᵀ(Xc − t).
+      const c = [
+          ray[0] * depth - o.pose.t[0]!,
+          ray[1] * depth - o.pose.t[1]!,
+          depth - o.pose.t[2]!,
+        ],
+        R = o.pose.R,
+        candidate = Float64Array.from(
+          { length: 3 },
+          (_, k) => R[k]! * c[0]! + R[k + 3]! * c[1]! + R[k + 6]! * c[2]!,
+        );
+      if (inFront(tracks[i]!, candidate)) X = candidate;
+    }
+    if (!X) return undefined;
+    landmarks.push({ ...point, xyz: X });
   }
   return { views, landmarks };
 }
@@ -186,20 +220,28 @@ export async function refineHistory(
                   camera: cameraAtRatio(v.camera, ratio),
                 })),
               };
-        if (ratio !== undefined && index > 0 && rebuildAtRatio) {
-          const rebuilt = await rebuildAtRatio(ratio);
+        const fromRebuild = ratio !== undefined && index > 0 && !!rebuildAtRatio;
+        if (fromRebuild) {
+          const rebuilt = await rebuildAtRatio!(ratio);
           initial = rebuilt && reseeded(original, rebuilt, ratio);
           // No map at this focal: the restart has nothing to start from.
           if (!initial) continue;
         }
         const plan = planConnectedBundles(initial, fullOptions),
           refined: SparseReconstruction[] = [];
+        let refused = false;
         for (const problem of plan.problems) {
           try {
             const result = await solve(problem.reconstruction, problem.options);
             reports.push(result.diagnostics);
             refined.push(result.reconstruction);
           } catch (error) {
+            // A rebuilt start that the solver refuses (for example a point behind a camera)
+            // is no candidate; the other starts still compete.
+            if (fromRebuild && error instanceof RangeError) {
+              refused = true;
+              break;
+            }
             // A mandatory resident floor can exceed a device budget. Preserve the
             // unsolved geometry; cancellations, device loss and other faults propagate.
             if (!(
@@ -210,8 +252,10 @@ export async function refineHistory(
             deferred = true;
           }
         }
+        if (refused) continue;
         deferred ||= (plan.partition?.deferredViewIds.length ?? 0) > 0;
-        const merged = mergeBundleRefinements(original, refined),
+        // A rebuilt start is in its own frame: an unsolved part keeps the rebuilt geometry.
+        const merged = mergeBundleRefinements(fromRebuild ? initial : original, refined),
           candidate = {
             ...merged,
             // A numerical solve owns coordinates, not admission or feature identity.

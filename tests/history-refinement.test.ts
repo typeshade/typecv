@@ -396,3 +396,46 @@ test('restart focals after the first start from a rebuilt map and keep the least
   const partial = await run(() => ({ ...shifted, views: shifted.views.slice(1) }));
   assert.equal(partial.result.after.cost, none.result.after.cost);
 });
+
+test('a rebuilt start places a landmark that triangulates behind a camera in front of them', async () => {
+  const { reconstruction: truth } = scene({ count: 40, views: 8 }),
+    first = truth.views[0]!,
+    last = truth.views.at(-1)!,
+    seen = truth.landmarks[0]!.observations[0]!.pixel,
+    // The cameras move along +x, so a point shifts left from the first view to the last. This
+    // pair shifts right: it triangulates behind the cameras.
+    outlier = {
+      trackId: 99,
+      xyz: Float64Array.of(0, 0, 6),
+      observations: [
+        { viewId: first.id, featureId: 99, pixel: seen },
+        { viewId: last.id, featureId: 99, pixel: [seen[0] + 150, seen[1]] as const },
+      ],
+    },
+    archive = {
+      views: truth.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera, fx: v.camera.fx * 0.5, fy: v.camera.fy * 0.5 },
+      })),
+      landmarks: [...truth.landmarks, outlier],
+    },
+    trueRatio = first.camera.fx / cameraWidth(first.camera),
+    starts: number[] = [];
+  const result = await refineHistory(
+    archive,
+    {
+      iterations: 16,
+      refineSharedFocal: true,
+      commonFocalRatios: [trueRatio * 0.5, trueRatio],
+      rebuildAtRatio: async () => truth,
+    },
+    async (model, options) => {
+      starts.push(model.views[0]!.camera.fx);
+      return bundleAdjust(model, options);
+    },
+  );
+  // Both starts were solved: the rebuilt one was not refused for the point behind its cameras.
+  assert.deepEqual(starts, [first.camera.fx * 0.5, first.camera.fx]);
+  assert.ok(Number.isFinite(result.after.cost) && result.after.cost < result.before.cost);
+  assert.equal(result.reconstruction.landmarks.length, 41);
+});
