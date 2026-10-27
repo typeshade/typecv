@@ -27,8 +27,6 @@ declare const clahe: uniform<ClaheControl>;
 declare const claheIn: storage<array<f32>>;
 declare const claheHist: storage<array<u32>, 'read_write'>;
 declare const claheMap: storage<array<f32>, 'read_write'>;
-declare const claheMapIn: storage<array<f32>>;
-declare const claheOut: storage<array<f32>, 'read_write'>;
 
 function claheBin(value: f32, binSize: u32): u32 {
   const level: u32 = u32(clamp(value, 0.0, 1.0) * 16383.0 + 0.5);
@@ -127,35 +125,43 @@ export function claheMapTiles(@builtin('global_invocation_id') gid: vec3u): void
   }
 }
 
-function mapAt(tx: u32, ty: u32, bin: u32): f32 {
-  return claheMapIn[(ty * clahe.tilesX + tx) * clahe.bins + bin];
+/** The index of `bin` in the map of tile (`tx`, `ty`). */
+function mapIndex(tx: u32, ty: u32, bin: u32, tilesX: u32, bins: u32): u32 {
+  return (ty * tilesX + tx) * bins + bin;
 }
 
-/** One invocation per pixel: interpolate bilinearly between the maps of the four nearest tile centres. */
-@compute([64])
-export function claheApply(@builtin('global_invocation_id') gid: vec3u): void {
-  const i: u32 = gid.x;
-  if (i >= clahe.width * clahe.height) return;
-  const x: u32 = i % clahe.width;
-  const y: u32 = i / clahe.width;
-  const bin: u32 = claheBin(claheIn[i], clahe.binSize);
-  const fx: f32 = clamp(
-    (f32(x) + 0.5) / f32(clahe.tileWidth) - 0.5,
-    0.0,
-    f32(clahe.tilesX - 1),
-  );
-  const fy: f32 = clamp(
-    (f32(y) + 0.5) / f32(clahe.tileHeight) - 0.5,
-    0.0,
-    f32(clahe.tilesY - 1),
-  );
-  const x0: u32 = min(u32(floor(fx)), clahe.tilesX - 1);
-  const y0: u32 = min(u32(floor(fy)), clahe.tilesY - 1);
-  const x1: u32 = min(x0 + 1, clahe.tilesX - 1);
-  const y1: u32 = min(y0 + 1, clahe.tilesY - 1);
-  const ax: f32 = fx - f32(x0);
-  const ay: f32 = fy - f32(y0);
-  const top: f32 = mapAt(x0, y0, bin) * (1.0 - ax) + mapAt(x1, y0, bin) * ax;
-  const bottom: f32 = mapAt(x0, y1, bin) * (1.0 - ax) + mapAt(x1, y1, bin) * ax;
-  claheOut[i] = top * (1.0 - ay) + bottom * ay;
+/** Each pixel: interpolate bilinearly between the maps of the four nearest tile centres. */
+export function claheApply(
+  width: u32,
+  height: u32,
+  tilesX: u32,
+  tilesY: u32,
+  tileWidth: u32,
+  tileHeight: u32,
+  bins: u32,
+  binSize: u32,
+  input: array<f32>,
+  maps: array<f32>,
+  out: array<f32>,
+): void {
+  for (let i: u32 = 0; i < width * height; i++) {
+    const x: u32 = i % width;
+    const y: u32 = i / width;
+    const bin: u32 = claheBin(input[i], binSize);
+    const fx: f32 = clamp((f32(x) + 0.5) / f32(tileWidth) - 0.5, 0.0, f32(tilesX - 1));
+    const fy: f32 = clamp((f32(y) + 0.5) / f32(tileHeight) - 0.5, 0.0, f32(tilesY - 1));
+    const x0: u32 = min(u32(floor(fx)), tilesX - 1);
+    const y0: u32 = min(u32(floor(fy)), tilesY - 1);
+    const x1: u32 = min(x0 + 1, tilesX - 1);
+    const y1: u32 = min(y0 + 1, tilesY - 1);
+    const ax: f32 = fx - f32(x0);
+    const ay: f32 = fy - f32(y0);
+    const top: f32 =
+      maps[mapIndex(x0, y0, bin, tilesX, bins)] * (1.0 - ax) +
+      maps[mapIndex(x1, y0, bin, tilesX, bins)] * ax;
+    const bottom: f32 =
+      maps[mapIndex(x0, y1, bin, tilesX, bins)] * (1.0 - ax) +
+      maps[mapIndex(x1, y1, bin, tilesX, bins)] * ax;
+    out[i] = top * (1.0 - ay) + bottom * ay;
+  }
 }

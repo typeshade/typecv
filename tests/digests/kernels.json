@@ -4,7 +4,7 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "78eb471835e5482e4f4ff0e9c7996d6baf78537d"
+    "commit": "6d02a780543da7ed6baa450c8ad613bae07ea6d8"
   },
   "compiler": "725b2969a9cac37400980c2c0058680368407602",
   "modules": {
@@ -18,10 +18,10 @@
       "withoutGlsl": 29
     },
     "clahe.shade.ts": {
-      "wgsl": "e06c5f4bedec203dd181e884c7f0ebe2261e62f3e00895f83939fc2e6f1e4b99",
-      "glsl": "db9fc1190e3c68a42052e0023a47201263f8083e9f7e2b0260893bb4dc63da44",
-      "entries": 3,
-      "kernelFunctions": 0,
+      "wgsl": "a172fb3bec0ffb73b2edb5038d753ab6f4326f977498d072adc167c0163ef772",
+      "glsl": "26a5cc90fb9c63730cdba6a15baf68fa2afa733a2feef82604a380e2311161e8",
+      "entries": 2,
+      "kernelFunctions": 1,
       "glslPrograms": 3,
       "withoutGlsl": 0
     },
