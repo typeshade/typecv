@@ -20,7 +20,8 @@ import {
 import { splitModel } from '../lib/model-chunks';
 import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
-import { workingBytesFromAdapter } from '../lib/working-budget';
+import { analysisScale, deviceBudgets } from '../lib/working-budget';
+import { featureCap } from '../lib/lab-features.ts';
 import type { GpuPreparationPhase } from '../lib/gpu-preparation';
 import { LAB_MAPPER } from '../../../src/sfm/config/lab-preset.ts';
 
@@ -98,9 +99,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
     new Uint8Array(await response.arrayBuffer()),
     VOCABULARY_WORDS,
   );
-  const scale =
-    ((message.analysisEdge * message.analysisEdge) / (640 * 640)) *
-    (message.firstOctave === -1 ? 4 : 1);
+  const scale = analysisScale(message.analysisEdge, message.firstOctave);
   preparing('adapter');
   const adapter = await adapterInfo();
   preparing('device');
@@ -110,11 +109,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
     timeBudgetMs: message.budget,
     // `docs/gpu-budget.md` section 2: the budget and the buffer limits come from the adapter.
     adapterLimits: true,
-    workingBytes: workingBytesFromAdapter(
-      Math.round(64 * 1024 ** 2 * scale),
-      adapter?.limits?.maxBufferSize,
-    ),
-    poolBytes: Math.round(32 * 1024 ** 2 * scale),
+    ...deviceBudgets(scale, adapter?.limits?.maxBufferSize),
     solverCheckpoints: true,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
       if (performance.now() - lastProgress < 100) return;
@@ -132,7 +127,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
         'WebGPU device lost during the multi-video job: ' + info.message + ' [' + info.reason + ']',
     });
   });
-  const maxFeatures = message.query.maxFeatures ?? Math.min(16384, Math.round(4096 * scale));
+  const maxFeatures = message.query.maxFeatures ?? featureCap(4096, scale);
   const job = new MultiVideoJob(
     api as JobApi,
     device,
@@ -184,11 +179,7 @@ async function runDenseStage(current: NonNullable<typeof active>) {
       gpuTimestamps: message.denseGpuTimestamps ?? false,
       fp64Flavor: message.fp64 ?? 'auto',
       timeBudgetMs: message.budget,
-      workingBytes: denseWorkingBytes(
-        Math.round(64 * 1024 ** 2 * scale),
-        adapter?.limits.maxBufferSize,
-      ),
-      poolBytes: Math.round(32 * 1024 ** 2 * scale),
+      ...deviceBudgets(scale, adapter?.limits.maxBufferSize, denseWorkingBytes),
       adapterLimits: true,
       solverCheckpoints: true,
       onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {

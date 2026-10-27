@@ -1,7 +1,8 @@
 /**
  * The rules of the lab's matching stage (`docs/library-structure.md`, section 3.4, `matching`):
  * which pairs go to the mapper, which pairs the KLT tracks cover, and which feature sets the SfM
- * worker keeps for the next frames (descriptor retention).
+ * worker keeps for the next frames (descriptor retention). Beside them, the camera of a frame,
+ * which guided matching and the mapper read, and the match lines of the overlay.
  *
  * A match array holds two entries for each match: the feature index in each frame. So a minimum of
  * 16 entries is 8 matches. The minimums differ by path, and each keeps its value and its unit
@@ -77,4 +78,75 @@ export function retainedFeatureIds(
   ids: Iterable<number>,
 ): Set<number> {
   return new Set([...references, ...[...ids].slice(-ADJACENT_KEYFRAMES)]);
+}
+
+/** The camera of an analysis frame: pinhole intrinsics in analysis pixels and two radial terms. */
+export type FrameCamera = {
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  k1: number;
+  k2: number;
+};
+
+/**
+ * The camera of a frame in analysis pixels: the frame's own calibration (a sample's), else a
+ * camera with the focal `focalRatio` times the source width, scaled to the analysis frame, the
+ * principal point at the centre and no distortion. The SfM worker passes the focal search's
+ * estimate once it ran, else the assumed focal; the multi-video job passes the focal ratio of the
+ * video.
+ */
+export function frameCamera(
+  frame: {
+    readonly width: number;
+    readonly height: number;
+    readonly sourceWidth?: number;
+    readonly sourceHeight?: number;
+    readonly camera?: FrameCamera;
+  },
+  focalRatio: number,
+): FrameCamera {
+  const sourceWidth = frame.sourceWidth ?? frame.width;
+  const sourceHeight = frame.sourceHeight ?? frame.height;
+  const sourceFocal = sourceWidth * focalRatio;
+  return (
+    frame.camera ?? {
+      fx: (sourceFocal * frame.width) / sourceWidth,
+      fy: (sourceFocal * frame.height) / sourceHeight,
+      cx: (frame.width - 1) / 2,
+      cy: (frame.height - 1) / 2,
+      k1: 0,
+      k2: 0,
+    }
+  );
+}
+
+/** The overlay draws the lines of at most this many match entries (80 matches). */
+export const MATCH_LINE_ENTRIES = 160;
+
+/**
+ * The candidate match lines between the last matched frame and this one, for the overlay: four
+ * numbers for each match, the earlier frame's point scaled to this frame and this frame's point,
+ * in this frame's pixels. The lines of the first `MATCH_LINE_ENTRIES` match entries are drawn.
+ */
+export function matchLines(
+  otherPoints: Float64Array,
+  otherFrame: { readonly width: number; readonly height: number },
+  points: Float64Array,
+  frame: { readonly width: number; readonly height: number },
+  matches: ArrayLike<number>,
+): number[] {
+  const lines: number[] = [];
+  for (let i = 0; i < Math.min(matches.length, MATCH_LINE_ENTRIES); i += 2) {
+    const a = matches[i] * 2,
+      b = matches[i + 1] * 2;
+    lines.push(
+      (otherPoints[a] * frame.width) / otherFrame.width,
+      (otherPoints[a + 1] * frame.height) / otherFrame.height,
+      points[b],
+      points[b + 1],
+    );
+  }
+  return lines;
 }
