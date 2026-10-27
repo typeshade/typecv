@@ -1,5 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import { radialLimitSquared } from '../../../geometry/camera.ts';
+import { cameraRecord, poseRecord } from '../../../contracts/camera-record.ts';
 import type { InverseDepthLinearization } from '../../../geometry/inverse-depth.ts';
 import {
   inverseDepthBundleSteps,
@@ -52,20 +53,10 @@ async function linearizeBatches(
             at = i * 34,
             k = view.camera;
           input.set(point.parameters, at);
-          input.set(point.reference.R, at + 3);
-          input.set(point.reference.t, at + 12);
-          input.set(view.pose.R, at + 15);
-          input.set(view.pose.t, at + 24);
+          input.set(poseRecord(point.reference), at + 3);
+          input.set(poseRecord(view.pose), at + 15);
           input.set(
-            [
-              k.fx,
-              k.fy,
-              k.cx,
-              k.cy,
-              k.k1 ?? 0,
-              k.k2 ?? 0,
-              Math.min(1e30, radialLimitSquared(k.k1 ?? 0, k.k2 ?? 0)),
-            ],
+            [...cameraRecord(k), Math.min(1e30, radialLimitSquared(k.k1 ?? 0, k.k2 ?? 0))],
             at + 27,
           );
         }

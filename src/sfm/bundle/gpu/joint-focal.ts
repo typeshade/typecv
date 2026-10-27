@@ -8,6 +8,7 @@ import { ShadeDevice, type ShadePlanReport } from '../../../device/gpu/device.ts
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/bounds.ts';
 import { geometryExecution, mergedReport } from '../../../geometry/gpu/execution.ts';
+import { cameraRecord, poseRecord } from '../../../contracts/camera-record.ts';
 import {
   initializeBundle,
   linearizeBundle,
@@ -192,11 +193,8 @@ export function bundleAdjustJointFocalGpu(
   for (let c = 0; c < C; c++) {
     const v = model.views[c]!,
       k = validateGpuCamera(v.camera);
-    source.set([...v.pose.R, ...v.pose.t], c * POSE_STRIDE);
-    source.set(
-      [k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!],
-      POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE,
-    );
+    source.set(poseRecord(v.pose), c * POSE_STRIDE);
+    source.set(cameraRecord(k), POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE);
     indices[3 * M + P + C + 2 + c] = Number(active[c]);
   }
   let obs = 0;

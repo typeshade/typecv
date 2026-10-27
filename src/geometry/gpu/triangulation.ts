@@ -6,6 +6,7 @@ import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { planTriangulationChunks } from '../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { geometryExecution, mergedReport, type GpuGeometryExecution } from './execution.ts';
+import { cameraRecord, poseRecord } from '../../contracts/camera-record.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
 import { TRIANGULATION_DEFAULTS } from '../operator-defaults.ts';
 import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
@@ -75,17 +76,7 @@ export function triangulateTracksGpu(
     for (const o of tracks[h]!) {
       const k = validateGpuCamera({ ...o.camera });
       validatePose(o.pose);
-      const record = Float64Array.of(
-        ...o.pose.R,
-        ...o.pose.t,
-        k.fx,
-        k.fy,
-        k.cx,
-        k.cy,
-        k.k1!,
-        k.k2!,
-        ...o.pixel,
-      );
+      const record = Float64Array.of(...poseRecord(o.pose), ...cameraRecord(k), ...o.pixel);
       if (o.pixel.length !== 2 || !finiteGpuArray(record))
         throw new RangeError('Invalid GPU triangulation observation');
       raw.set(record, at * 20);

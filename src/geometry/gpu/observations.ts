@@ -5,6 +5,7 @@ import { validateReconstruction } from '../validation.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { geometryExecution, type GpuGeometryExecution } from './execution.ts';
+import { cameraRecord, poseRecord } from '../../contracts/camera-record.ts';
 import { observationSummary } from './triangulation.shade.ts';
 import {
   projectIndexedObservations,
@@ -116,9 +117,8 @@ function evaluateSceneObservationsGpu(
         index === undefined
           ? (cameraScratch ??= new Float64Array(18))
           : cameras.subarray(index * 18, (index + 1) * 18);
-    row.set(v.pose.R);
-    row.set(v.pose.t, 9);
-    row.set([k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!], 12);
+    row.set(poseRecord(v.pose));
+    row.set(cameraRecord(k), 12);
     if (!finiteGpuArray(row)) throw new RangeError('Invalid GPU scene coordinate bounds');
   }
   let index = 0;
