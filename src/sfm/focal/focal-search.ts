@@ -306,7 +306,11 @@ export function commonSetScore(
  * `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber threshold. A supported bearing model enables
  * the complexity correction below; its runs carry no `commonScore`.
  */
-export function scoreCandidates(runs: readonly FocalRun[], huberPx: number): FocalCandidate[] {
+export function scoreCandidates(
+  // FocalRun, spelled out: the declarations strip the internal alias (tsconfig.gpu.json).
+  runs: readonly (Omit<FocalCandidate, 'score'> & { readonly commonScore?: number })[],
+  huberPx: number,
+): FocalCandidate[] {
   const most = new Map<number, number>();
   for (const run of runs)
     if (run.views) most.set(run.views, Math.max(most.get(run.views) ?? 0, run.observations));
