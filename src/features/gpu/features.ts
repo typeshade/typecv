@@ -1,6 +1,7 @@
 import type { Resident } from 'typeshade/runtime';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 import {
   flagFeatures,
   scatterFeatures,
@@ -538,24 +539,6 @@ async function extractFeaturesFromPackedResident(
       success ? device.recycle(buffer) : device.drop(buffer);
     }
   }
-}
-
-function packRgba(rgbaInput: Uint8Array | Uint8ClampedArray, pixelCount: number): Uint32Array {
-  // Canvas image data is byte-aligned RGBA. On little-endian hosts its u32 view is exactly the
-  // packed word consumed by rgbaToGray. Snapshot the view once for caller ownership safety.
-  const littleEndian = new Uint8Array(Uint32Array.of(0x01020304).buffer)[0] === 4;
-  if (littleEndian && rgbaInput.byteOffset % 4 === 0 && rgbaInput.byteLength % 4 === 0)
-    return new Uint32Array(rgbaInput.buffer, rgbaInput.byteOffset, pixelCount).slice();
-  const packed = new Uint32Array(pixelCount);
-  for (let i = 0; i < pixelCount; i++) {
-    const at = i * 4;
-    packed[i] =
-      rgbaInput[at]! |
-      (rgbaInput[at + 1]! << 8) |
-      (rgbaInput[at + 2]! << 16) |
-      (rgbaInput[at + 3]! << 24);
-  }
-  return packed;
 }
 
 function readPoints(state: ResidentState): Promise<Float32Array> {
