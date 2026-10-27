@@ -5,6 +5,7 @@ import {
   accountId,
   namespaceId,
   printed,
+  recordIds,
   selectKeys,
   summaryLine,
 } from '../scripts/export-run-records.mjs';
@@ -120,4 +121,62 @@ test('the export finds the account and the namespace, orders the keys and summar
   assert.equal(printed({ ...probe, bisection: { hangingTracks: [] } }, 'failures'), false);
   assert.equal(printed(probe, 'all'), true);
   assert.equal(printed({ ...probe, aborted: 'x' }, 'none'), false);
+  // A hardware-check record of `/lab/check/`: its own line, printed in full when a case failed,
+  // the flavor changed or the check stopped early.
+  assert.equal(
+    summaryLine({
+      name: 'record/20261028010000000-ffff',
+      metadata: {
+        kind: 'check',
+        gpu: 'blackwell',
+        fp64Flavor: 'float',
+        sameFlavor: true,
+        cases: 5,
+        failed: 0,
+        failedCases: [],
+        aborted: false,
+        site: 'db7216a4d0d7',
+      },
+    }),
+    '20261028010000000-ffff | blackwell | check | fp64 float | flavor as before 0085 | 5 cases | failed none | site db7216a4d0d7',
+  );
+  assert.equal(
+    summaryLine({
+      name: 'record/20261028010100000-abcd',
+      metadata: {
+        kind: 'check',
+        gpu: '',
+        fp64Flavor: 'integer',
+        sameFlavor: false,
+        cases: 5,
+        failed: 2,
+        failedCases: ['planar-depth', 'cloud-clean'],
+        aborted: true,
+        site: null,
+      },
+    }),
+    '20261028010100000-abcd | ? | check | fp64 integer | FLAVOR CHANGED | 5 cases | FAILED 2: planar-depth, cloud-clean | ABORTED',
+  );
+  const passed = { outcome: 'completed', pass: true, repeatable: true, name: 'clahe' };
+  const check = {
+    format: 'typecv-hardware-check-v1',
+    aborted: null,
+    flavor: { same: true },
+    cases: [passed, { ...passed, name: 'kernel-functions', outcome: 'skipped', pass: null }],
+  };
+  assert.equal(printed(check, 'failures'), false);
+  assert.equal(printed({ ...check, cases: [{ ...passed, outcome: 'lost' }] }, 'failures'), true);
+  assert.equal(printed({ ...check, cases: [{ ...passed, pass: false }] }, 'failures'), true);
+  assert.equal(printed({ ...check, cases: [{ ...passed, repeatable: false }] }, 'failures'), true);
+  assert.equal(printed({ ...check, flavor: { same: false } }, 'failures'), true);
+  assert.equal(printed({ ...check, aborted: 'Device lost in clahe' }, 'failures'), true);
+  assert.equal(printed(check, 'all'), true);
+  // --record exports the records that a person names by their ids.
+  assert.deepEqual(recordIds(''), []);
+  assert.deepEqual(recordIds(undefined), []);
+  assert.deepEqual(recordIds(' 20261028010000000-0a1b2c3d, 20261028010100000-ffffffff '), [
+    '20261028010000000-0a1b2c3d',
+    '20261028010100000-ffffffff',
+  ]);
+  assert.throws(() => recordIds('20261028-abcd'), /Not a record id: 20261028-abcd/);
 });

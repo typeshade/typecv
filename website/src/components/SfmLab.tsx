@@ -47,6 +47,7 @@ import WorkProgress from './WorkProgress';
 import VideoRangeEditor from './VideoRange';
 import { videoRangeProgress, type VideoRange } from '../lib/video-range';
 import GpuPreparationProgress from './GpuPreparation';
+import HardwareCheckEntry from './HardwareCheckEntry';
 import MultiVideoActivityPanel from './MultiVideoActivity';
 import {
   appendKeyframeThumbnail,
@@ -3482,6 +3483,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           ? '표준 벤치마크는 원본 피라미드 영상에서 640 px로 읽은 8프레임을 두 번(처음 실행, 다시 실행) 처리합니다.'
           : 'The standard benchmark decodes eight frames from the pyramid source video at 640 px, then runs them twice, cold and warm.'}
       </p>
+      <HardwareCheckEntry ko={ko} />
     </div>
   );
   const runActions = (

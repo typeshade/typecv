@@ -1,10 +1,10 @@
 # Hardware observations
 
-The SfM lab at `/lab/` and the triangulation probe at `/lab/probe/` run TypeCV's GPU pipeline in
-the visitor's browser. With the visitor's consent, each run sends one record to the site's
-collector (`docs/lab-run-records.md`). The **Export lab run records** workflow
-(`.github/workflows/lab-records.yml`) reads the records back ("Reading the records" in that
-document).
+The SfM lab at `/lab/`, the triangulation probe at `/lab/probe/` and the hardware check at
+`/lab/check/` run TypeCV's GPU pipeline in the visitor's browser. With the visitor's consent, each
+run sends one record to the site's collector (`docs/lab-run-records.md`). The **Export lab run
+records** workflow (`.github/workflows/lab-records.yml`) reads the records back ("Reading the
+records" in that document).
 
 This document is the digest of those records by device. It covers the owner's two devices,
 2026-10-19 to 2026-10-20. [Lab run records](lab-run-records.md) is the chronological log, with
@@ -44,7 +44,10 @@ is the owner's statement of 2026-10-20. The owner also stated that every Windows
 Chrome 155 with Dawn on the D3D12 backend, 16 hardware threads and 32 GB of memory.
 
 The flavor of the emulated double on this device is `'float'`. `recommendFp64Flavor` picks it
-(`ShadeDevice.open`, `fp64Flavor: 'auto'`), and only `?fp64=integer` forces the other one.
+(`ShadeDevice.open`, `fp64Flavor: 'auto'`), and only `?fp64=integer` forces the other one. Since
+TypeShade change 0085 the TypeShade device selects the flavor itself. A hardware-check record from
+this device compares that selection with TypeCV's rule before the change ("Recording an
+observation from a hardware check", below). No such record from this device exists yet.
 
 ### A1. A workgroup whose idle lanes return before the loops hangs the device
 
@@ -222,7 +225,9 @@ An iPhone with iOS 18.7, Safari 27.0.1, an Apple GPU (adapter vendor `apple`) on
 hardware threads. The model of the iPhone is not recorded.
 
 The flavor of the emulated double on this device is `'integer'`. `recommendFp64Flavor` picks it on
-an Apple GPU (B1).
+an Apple GPU (B1). As on device A, a hardware-check record from this device compares the TypeShade
+device's own selection with the rule before change 0085. No such record from this device exists
+yet.
 
 ### B1. The `'float'` flavor collapses under Apple's compiler
 
@@ -335,6 +340,30 @@ Observed (2026-10-19): after a device loss, the 3D viewer failed to initialize o
 
 Remedy: pull request #48. The run goes on without the viewer. The map stays empty until the page
 is reloaded.
+
+## Recording an observation from a hardware check
+
+A hardware-check record (`docs/lab-run-records.md`, "Hardware check") holds the facts of one
+device and the result of each case of the check: its outcome, its digests, its agreement with the
+bound of its family's test, its times and any device loss. To record an observation from it:
+
+1. Export the record. Run the **Export lab run records** workflow with the input `record` set to
+   the record's id.
+2. Read the comparison in the job summary of that run. Or, on a checkout, run
+   `node scripts/compare-hardware-check.mjs --record lab-records/<id>.json`. Add
+   `--against lab-records/<earlier id>.json` when the observation is about a change on that
+   device.
+3. Find the section of the device: A for the NVIDIA Blackwell, B for the iPhone. For another
+   device, start a section. Name the device by the adapter's strings and the visitor's note in the
+   record (`note`), because the adapter does not report the model.
+4. Write the observation in its four parts. **Observed** holds the record id, the site commit, the
+   TypeShade pin (`site.typeshade`), the browser, and each row of the comparison that is not
+   `PASS` or `INFO`, with the commit of the comparison. For a case that lost the device, copy the
+   loss message and the last kernel. **Inference**, **Remedy** and **Open** follow as above.
+5. Add the site commit of the record to "Configurations" when it is not there.
+
+A check record that has only `PASS` and `INFO` rows is an observation too: it confirms the cases on
+that device at that site commit. Cite it where a document waits for a run on a device.
 
 ## What the compiler was told
 

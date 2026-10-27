@@ -12,6 +12,10 @@ on:
         description: Records to print in full (failures, all, none)
         default: failures
         required: false
+      record:
+        description: Record ids to export instead of the newest, comma-separated
+        default: ''
+        required: false
 
 permissions:
   contents: read
@@ -30,10 +34,25 @@ jobs:
       - name: Export the records
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RECORD: ${{ github.event.inputs.record }}
         run: |
           node scripts/export-run-records.mjs --out lab-records \
             --limit "${{ github.event.inputs.limit || '50' }}" \
-            --print "${{ github.event.inputs.print || 'failures' }}"
+            --print "${{ github.event.inputs.print || 'failures' }}" \
+            --record "$RECORD"
+      # Each hardware-check record of the export against Node's CPU-tier digests of this checkout
+      # (docs/lab-run-records.md, "Reading the records"). The table goes to the job summary; a
+      # failing row does not fail the export.
+      - name: Compare the hardware-check records
+        run: |
+          for file in lab-records/*.json; do
+            [ "$(basename "$file")" = index.json ] && continue
+            node -e "process.exit(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).format === 'typecv-hardware-check-v1' ? 0 : 1)" "$file" || continue
+            echo "### Hardware check $(basename "$file" .json)" >> "$GITHUB_STEP_SUMMARY"
+            status=0
+            node scripts/compare-hardware-check.mjs --record "$file" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+            echo "compare-hardware-check.mjs exited $status for $file"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: lab-records
