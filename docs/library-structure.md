@@ -749,17 +749,39 @@ of #246:
 
 1. The red `digests (24)` of `ba5cb5f` is recorded in section 4, rule 2.
 2. 0085's TypeCV product work is its own pull request. It covers automatic device selection, the
-   registration-only `import 'typeshade/fuse'` of `src/gpu/device.ts` and explicit fp64 overrides.
-   It also covers device ownership, execution reports, the chunks and the record in
-   `compiler-changes.md`.
+   registration-only `import 'typeshade/fuse'` of `src/device/gpu/device.ts` and explicit fp64
+   overrides. It also covers device ownership, execution reports, the chunks and the record in
+   `compiler-changes.md`. (Amendment 5: the path of the device module since #250, whose old path
+   `src/gpu/device.ts` is an alias.) **Closed** by #260, merged as `9592e2e` (amendment 5, below).
 3. The sentinel step waits for R03 (the next paragraphs).
 
-**0085's product work** (amendment 5). **Fact** (#260, a draft on 2026-10-27 at `3000200`). Open
-item 2 is in progress in #260, "build: adopt TypeShade change 0085, host calls without registration
-or setup". Its branch `claude/adopt-0085` starts from `94d28c8`. The device module of open item 2
-is `src/device/gpu/device.ts` since #250, and `src/gpu/device.ts` is its alias. Two TypeShade
-issues came from the planning of #260: typeshade/typeshade#790 and typeshade/typeshade#791 (section
-6, "TypeShade issues"). Open item 2 stays open until #260 merges.
+**0085's product work** (amendment 5). **Fact** (#260, merged as `9592e2e` on 2026-10-27; the 0085
+entry of `compiler-changes.md`). Open item 2 is closed. TypeCV adopted change 0085 at the pin
+`725b2969`, with no source migration:
+
+- the compiler's default fusion facts: the three `fuse: true` options go, and `dist/` stays
+  byte-identical, 593 of 593 files;
+- `src/device/gpu/device.ts` no longer imports `typeshade/fuse` for registration. It leaves the
+  fp64 flavor to the TypeShade device (`fp64Flavor ?? 'auto'`), with one adapter request fewer.
+
+Four things stay explicit, each with its reason in `compiler-changes.md`. The one-tier `prefer`
+keeps WebGPU required. TypeCV's own `GPUDevice` serves the adapter's limits and a device without
+`timestamp-query` (typeshade/typeshade#791). Every kernel call stays in a device plan. The lab and
+the tests keep their explicit flavors. `tshc init` is not used, since the build writes and removes
+the host views itself (typeshade/typeshade#790).
+
+**Fact** (#260, "Gate" and "CI"). The surface bake, the kernel digests, the CPU-tier digests, the
+plan reports and the step sequences are unchanged. In CI run 40448859754 on `3000200`, the
+GPU-tier digests of the base `94d28c8` and of the head are equal on Node 22 and on Node 24.
+
+**Deviation** (#260, deviation 1). 0085's "What it owes downstream" asks for a validated
+implementation pin. The pin `725b2969` carries six of 0085's stages, and 0085 is `accepted`: its
+console variants and its Apple/Metal validation are open upstream. **Disposition.** Open until a
+later pin carries the rest of 0085.
+
+**Inference** (#260, open item 1). The TypeShade device selects the same fp64 flavor as TypeCV's
+former selection, since the selector and its signals are the same. Physical hardware has not
+confirmed it: the run on the RTX 5060 Ti is open (section 7, item 11).
 
 **The sentinel step** (amendment 2). **Fact** (TypeShade change 0088, `status: implemented`,
 typeshade/typeshade#769, on TypeShade `main` at `6c6a1d1`). A local, a parameter and a function
@@ -1225,14 +1247,14 @@ decided under section 7, item 4, or in phase 8b.
 Open after phase 3: deviation 2, the two found items, and the facts that #258 gives for section 7,
 item 5 (recorded there).
 
-**Status of the programme** (amendments 3 to 5, 2026-10-27). **Fact** (`main` at `f4e2dbf`, and
+**Status of the programme** (amendments 3 to 5, 2026-10-27). **Fact** (`main` at `9592e2e`, and
 the pull requests named).
 
 | Step | Record | State on 2026-10-27 |
 | --- | --- | --- |
 | Phase 0 Characterize | #242, merged as `091a3e9` | done |
 | Phase 1a Build selection | #247, merged as `3e2777b` | done; open item 1 closed by amendment 3, item 2 moved to 1b (the phase 1 row) and closed by #250 |
-| The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open: 0085's TypeCV product work (#260, in progress) and the sentinel step (the paragraphs above) |
+| The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open item 2, 0085's TypeCV product work, closed by #260; open: the sentinel step (the paragraphs above) |
 | Phase 1b Moves | #250, merged as `0d012e9` | done; deviation 1 open, deviation 2 accepted by amendment 4; three open items ("Phase 1b" above) |
 | Phase 1c Cross-area imports | #252, merged as `2d02a61` | done; its deviation accepted by amendment 4; found item (b) closed by #255, items (a) and (c) left to later records ("Phase 1c" above) |
 | The Node 24 gate change | #249, merged as `4022861` (section 4, rule 2) | done; its deviation open until 32 green `digests (24)` jobs: 8 on 2026-10-27 |
@@ -1241,7 +1263,7 @@ the pull requests named).
 | The TypeScript surface audit | #259, merged as `a3eb1ed` (section 6) | done; its six proposals and six questions wait for the owner (section 7, item 20) |
 | The k-NN probes | #257, merged as `74d1636` (section 6) | done; its phase 9 step and row C15 added by amendment 5 |
 | Phase 3 Record split and named policies | #258, merged as `f4e2dbf` | done; deviation 1 accepted by amendment 5, deviation 2 open (section 7, item 4); two found items left to later records ("Phase 3" above) |
-| 0085's TypeCV product work | #260, a draft | in progress ("The pin bump", open item 2) |
+| 0085's TypeCV product work | #260, merged as `9592e2e` | done; its deviation open until a pin carries the rest of 0085; the flavor on physical hardware open until the RTX 5060 Ti run ("0085's product work" above) |
 | Phase 4 Shared mapper parts | none | next: phases 4 and 6 run in that order |
 | Phase 9 Kernels, no compiler change | none | next: it may run beside phases 4 to 7; item 11 is decided before its first step |
 | Phases 5 to 8, 10 and 11 | none | no pull request |
@@ -1680,6 +1702,6 @@ recorded here by amendment.
 - 2026-10-27: amendment 5 (phase 2 delivered in #255 with its three deviations, the shards of the
   job `webgpu` in #256, the TypeScript surface audit of #259 and its six questions, the k-NN probes
   of #257 with a phase 9 step and row C15, phase 3 delivered in #258 with its two deviations, 0085's
-  product work in #260, typeshade/typeshade#788 and #790 to #794, the next pin with change 0096,
-  the owner's standing approval, the count of the Node 24 monitor, the status of the programme),
-  pull request #261.
+  product work delivered in #260 with its deviation, typeshade/typeshade#788 and #790 to #794, the
+  next pin with change 0096, the owner's standing approval, the count of the Node 24 monitor, the
+  status of the programme), pull request #261.
