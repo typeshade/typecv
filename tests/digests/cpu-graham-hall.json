@@ -4,25 +4,26 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
-    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+    "commit": "dc46aa2d3bdbaf99d396a30d787477a7c2b0b40e",
+    "src": "ec2f160ccd3a3520c812776765ed58256801ffd5",
+    "execArgv": []
   },
   "cases": {
     "focalSearchSteps/graham-hall/start-1.2": {
-      "output": "509ea0f1ecef84fec2f2c35a627816a4689d3b62c45b89effcbb1bfaa590bccd",
+      "output": "85965d586c713353a20ef25a8368a17584189f7074e6d8096d2a0a9865f11dcc",
       "parts": {
-        "candidates": "a39498b20296b9004a3703b766dd8756e4d3c3c7ba2f86b98c51eb4835935e94",
-        "gridRatio": "4c51f55f29db92e50eaa1cb1cdd6dd4208c61c4d94893d1a4e7f3f27166b983e",
-        "ratio": "a59bcbf07cf5ce1c0cb874b2f30299100bbdf7a2d88160e25d7533979e2c6aa4",
+        "candidates": "b71523f5276b37397976f45b8f6fc439bf666c79110c3ce84812cdd19afe9bd6",
+        "gridRatio": "419cf5714865373e95f205c24228149744f17dd6444e4fb73920b2a3c5b54109",
+        "ratio": "09063d3de068e09d8ecffa2af98eecb7683f1442f04a168071f81742c41a3db5",
         "views": "d1db22c01a65fe980dd64b9b84a2573236f64e737d242e04de003d142f672399"
       },
-      "trace": "5717ad6ac1230a5bd4b3cf3c8efc1694784dff619bb452c1fc20f907309c6118",
+      "trace": "5cf2dfa257e88bc14174c0d0789b18d61e18fa194086527ce697d33432bc8d53",
       "requests": {
-        "bundle": 60,
-        "observations": 108,
-        "pnp": 36,
-        "triangulation": 84,
-        "verifyPair": 120
+        "bundle": 70,
+        "observations": 126,
+        "pnp": 42,
+        "triangulation": 98,
+        "verifyPair": 140
       },
       "summary": {
         "views": 5,

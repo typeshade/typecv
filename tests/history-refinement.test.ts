@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { measureHistory, refineHistory } from '../src/reconstruction/history-refinement.ts';
+import {
+  historyTracks,
+  measureHistory,
+  refineHistory,
+} from '../src/reconstruction/history-refinement.ts';
 import { bundleAdjust } from '../src/reconstruction/bundle-adjustment.ts';
 import { cameraWidth } from '../src/reconstruction/focal-search.ts';
 import { refinedHistoryWindow } from '../src/reconstruction/history-refinement.ts';
 import { scene } from './scene.ts';
+import type { SparseReconstruction } from '../src/index.ts';
 import { cameraCenter, rotationExp, transformPoint } from '../src/geometry/pose.ts';
 import { cameraProjection } from '../src/geometry/camera.ts';
 import { seededRandom } from '../src/geometry/numerics.ts';
@@ -327,4 +332,110 @@ test('invalid archived cheirality is reported without silently pruning or enteri
   assert.equal(result.deferred, true);
   assert.equal(result.after.meanErrorPx, Infinity);
   assert.deepEqual(result.reconstruction, model);
+});
+
+// docs/auto-focal.md, section 10: a restart focal after the first starts from a map rebuilt at
+// that focal, and the least-cost rule still decides on the archive's own observations.
+test('restart focals after the first start from a rebuilt map and keep the least cost', async () => {
+  const { reconstruction: truth } = scene({ count: 40, views: 8 }),
+    trueRatio = truth.views[0]!.camera.fx / cameraWidth(truth.views[0]!.camera),
+    // The archive: the true poses and points, held at a wrong focal.
+    archive = {
+      ...truth,
+      views: truth.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera, fx: v.camera.fx * 0.5, fy: v.camera.fy * 0.5 },
+      })),
+    },
+    wrongRatio = trueRatio * 0.5,
+    tracked = historyTracks(archive);
+  assert.equal(tracked.images.length, 8);
+  assert.equal(tracked.images[0]!.keypoints.length, 80);
+  assert.equal(tracked.pairs.length, 28);
+  assert.equal(tracked.pairs[0]!.matches.length, 80);
+  const run = async (rebuild: (ratio: number) => SparseReconstruction | undefined) => {
+    const asked: number[] = [];
+    const result = await refineHistory(
+      archive,
+      {
+        iterations: 16,
+        refineSharedFocal: true,
+        commonFocalRatios: [wrongRatio, trueRatio],
+        rebuildAtRatio: async (ratio) => {
+          asked.push(ratio);
+          return rebuild(ratio);
+        },
+      },
+      async (model, options) => bundleAdjust(model, options),
+    );
+    return { asked, result };
+  };
+  // A rebuild that registers every view with the true poses (in another gauge: shifted).
+  const shifted = {
+    ...truth,
+    views: truth.views.map((v) => ({
+      ...v,
+      pose: { R: v.pose.R.slice(), t: Float64Array.from(v.pose.t, (x) => 2 * x) },
+    })),
+  };
+  const rebuilt = await run(() => shifted);
+  assert.deepEqual(rebuilt.asked, [trueRatio]);
+  assert.ok(
+    Math.abs(rebuilt.result.reconstruction.views[0]!.camera.fx - truth.views[0]!.camera.fx) < 1e-6,
+  );
+  assert.ok(rebuilt.result.after.cost < 1e-12, `cost ${rebuilt.result.after.cost}`);
+  assert.deepEqual(
+    rebuilt.result.reconstruction.landmarks.map((p) => p.observations),
+    archive.landmarks.map((p) => p.observations),
+  );
+  // No map at the restart focal: that restart is skipped, and the cost never rises.
+  const none = await run(() => undefined);
+  assert.deepEqual(none.asked, [trueRatio]);
+  assert.ok(none.result.after.cost <= none.result.before.cost);
+  // A rebuild that misses a view of the archive is no map of it either.
+  const partial = await run(() => ({ ...shifted, views: shifted.views.slice(1) }));
+  assert.equal(partial.result.after.cost, none.result.after.cost);
+});
+
+test('a rebuilt start places a landmark that triangulates behind a camera in front of them', async () => {
+  const { reconstruction: truth } = scene({ count: 40, views: 8 }),
+    first = truth.views[0]!,
+    last = truth.views.at(-1)!,
+    seen = truth.landmarks[0]!.observations[0]!.pixel,
+    // The cameras move along +x, so a point shifts left from the first view to the last. This
+    // pair shifts right: it triangulates behind the cameras.
+    outlier = {
+      trackId: 99,
+      xyz: Float64Array.of(0, 0, 6),
+      observations: [
+        { viewId: first.id, featureId: 99, pixel: seen },
+        { viewId: last.id, featureId: 99, pixel: [seen[0] + 150, seen[1]] as const },
+      ],
+    },
+    archive = {
+      views: truth.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera, fx: v.camera.fx * 0.5, fy: v.camera.fy * 0.5 },
+      })),
+      landmarks: [...truth.landmarks, outlier],
+    },
+    trueRatio = first.camera.fx / cameraWidth(first.camera),
+    starts: number[] = [];
+  const result = await refineHistory(
+    archive,
+    {
+      iterations: 16,
+      refineSharedFocal: true,
+      commonFocalRatios: [trueRatio * 0.5, trueRatio],
+      rebuildAtRatio: async () => truth,
+    },
+    async (model, options) => {
+      starts.push(model.views[0]!.camera.fx);
+      return bundleAdjust(model, options);
+    },
+  );
+  // Both starts were solved: the rebuilt one was not refused for the point behind its cameras.
+  assert.deepEqual(starts, [first.camera.fx * 0.5, first.camera.fx]);
+  assert.ok(Number.isFinite(result.after.cost) && result.after.cost < result.before.cost);
+  assert.equal(result.reconstruction.landmarks.length, 41);
 });

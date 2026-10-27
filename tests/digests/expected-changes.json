@@ -1,0 +1,16 @@
+{
+  "pullRequest": 267,
+  "reason": "The focal search scores every grid point on one common observation set and rebuilds the map at each restart focal of a boundary calibration (docs/chimney-rock-58532c69.md section 5, candidates 1 and 2; docs/auto-focal.md section 10).",
+  "cases": [
+    "cpu-device.json: IncrementalSfmSession/scene-90x6-focal-1.2",
+    "cpu-device.json: reconstructIncrementalGpu/scene-90x6-focal-1.2/focal-search",
+    "cpu-gerrard-hall.json: focalSearchSteps/gerrard-hall/start-1.2",
+    "cpu-graham-hall.json: focalSearchSteps/graham-hall/start-1.2",
+    "cpu-person-hall.json: focalSearchSteps/person-hall/start-1.2",
+    "cpu-scenes.json: focalSearchSteps/scene-90x6-focal-1.2",
+    "cpu-scenes.json: reconstructIncremental/scene-90x6-focal-1.2/focal-search",
+    "cpu-south-building.json: focalSearchSteps/south-building/start-1.2",
+    "webgpu.json: IncrementalSfmSession/scene-90x6-focal-1.2",
+    "webgpu.json: reconstructIncrementalGpu/scene-90x6-focal-1.2/focal-search"
+  ]
+}

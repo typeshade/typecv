@@ -13,14 +13,23 @@ import {
 } from '../protocol/errors.ts';
 import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
 import type { Camera } from '../../contracts/camera.ts';
-import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
+import type {
+  FeatureTrack,
+  ImageFeatures,
+  PairMatches,
+  RegisteredView,
+} from '../../contracts/scene.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
+import { refineTrackPoint, triangulateLinear } from '../../geometry/multiview.ts';
+import { projectPoint } from '../../geometry/pose.ts';
+import { buildTracks } from '../tracks/tracks.ts';
 
 /**
  * The automatic estimate of one shared focal length (docs/auto-focal.md). The mapper runs on a
- * few views at selected focals of a fixed grid, with the focal held. Each run is scored by its
- * truncated reprojection error after bundle adjustment (`scoreCandidates`). The best grid point is refined by a parabola and
- * by a joint focal bundle adjustment on the same views.
+ * few views at selected focals of a fixed grid, with the focal held. Each run is scored by the
+ * truncated reprojection error of its map on one common observation set, the tracks of the
+ * subset's input matches (`commonSetScore`, `scoreCandidates`). The best grid point is refined by
+ * a parabola and by a joint focal bundle adjustment on the same views.
  */
 export interface FocalSearchOptions {
   /** Views in the first subset of a match-connected component (default 5). Input order breaks component ties. */
@@ -50,8 +59,9 @@ export interface FocalCandidate {
   /** Bearing-only observations included in this candidate's BA and RMS; present in directional mode. */
   readonly directionalObservations?: number;
   /**
-   * The truncated mean square error in px² (`scoreCandidates`): an observation that another grid
-   * point kept and this one dropped costs the square of the BA's Huber threshold. Infinity when it failed.
+   * The truncated mean square error in px² (`commonSetScore`): the run's poses triangulate every
+   * track of the subset's input matches, and each observation costs its squared reprojection
+   * error, at most the square of the BA's Huber threshold. Infinity when it failed.
    * With a supported bearing model at the largest view count, normalized BIC instead
    * (dimensionless; the search reports scoring='directional-bic'). See scoreCandidates.
    */
@@ -226,14 +236,79 @@ function directionalScoring(
 }
 
 /**
- * Score the runs of one subset. A run at a wrong focal both raises the error of what it keeps and
- * drops observations, and the RMS error alone rewards the dropping. Among the runs that
- * registered the same number of views, `n` is the most observations any of them kept; a run that
- * kept `m` observations at RMS error `e` scores `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber
- * threshold. A supported bearing model enables the complexity correction below.
+ * @internal One grid point's run before scoring. `commonScore` is its `commonSetScore`; a run
+ * without it is scored on the observations it kept.
+ */
+export type FocalRun = Omit<FocalCandidate, 'score'> & { readonly commonScore?: number };
+
+/**
+ * @internal The tracks that every grid point of a subset is scored on: the conflict-free tracks of
+ * the subset's input matches (`buildTracks`), fixed before the sweep, so the set does not depend
+ * on the focal (docs/auto-focal.md, section 10).
+ */
+export function commonTracks(
+  subset: readonly ImageFeatures[],
+  subsetPairs: readonly PairMatches[],
+): readonly FeatureTrack[] {
+  return buildTracks(subset, subsetPairs).tracks;
+}
+
+/**
+ * @internal The truncated mean square error in px² of one map on the common tracks. The map's
+ * registered views triangulate each track that has two or more observations in them (linear,
+ * then refined; no angle gate), and each such observation costs `min(e², τ²)`, with `e` its
+ * reprojection error and `τ` the BA's Huber threshold. A track that does not triangulate costs
+ * `τ²` for each observation. A smaller focal makes every triangulation angle larger, so the
+ * mapper's 0.5° gate keeps more tracks there; on this set a focal gains nothing from that.
+ */
+export function commonSetScore(
+  tracks: readonly FeatureTrack[],
+  subset: readonly ImageFeatures[],
+  views: readonly RegisteredView[],
+  huberPx: number,
+): number {
+  const registered = new Map(views.map((view) => [view.id, view])),
+    keypoints = new Map(subset.map((image) => [image.id, image.keypoints])),
+    cap = huberPx * huberPx;
+  let cost = 0,
+    count = 0;
+  for (const track of tracks) {
+    const observations = [];
+    for (const { viewId, featureId } of track.observations) {
+      const view = registered.get(viewId),
+        k = keypoints.get(viewId);
+      if (view && k)
+        observations.push({
+          camera: view.camera,
+          pose: view.pose,
+          pixel: [k[2 * featureId]!, k[2 * featureId + 1]!] as const,
+        });
+    }
+    if (observations.length < 2) continue;
+    count += observations.length;
+    const initial = triangulateLinear(observations),
+      point = initial && refineTrackPoint(initial, observations);
+    for (const o of observations) {
+      const pixel = point && projectPoint(o.camera, o.pose, point),
+        e = pixel ? Math.hypot(pixel[0] - o.pixel[0], pixel[1] - o.pixel[1]) : Infinity;
+      cost += Math.min(e * e, cap);
+    }
+  }
+  return count ? cost / count : Infinity;
+}
+
+/**
+ * Score the runs of one subset. A run with a `commonScore` scores it: the runs of a subset are
+ * then compared on one observation set (`commonSetScore`). Otherwise, a run at a wrong focal both
+ * raises the error of what it keeps and drops observations, and the RMS error alone rewards the
+ * dropping. Among the runs that registered the same number of views, `n` is the most observations
+ * any of them kept; a run that kept `m` observations at RMS error `e` scores
+ * `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber threshold. A supported bearing model enables
+ * the complexity correction below; its runs carry no `commonScore`.
  */
 export function scoreCandidates(
-  runs: readonly Omit<FocalCandidate, 'score'>[],
+  // FocalRun, spelled out: the declarations strip the internal alias (tsconfig.gpu.json).
+  runs: readonly (Omit<FocalCandidate, 'score'> & { readonly commonScore?: number })[],
   huberPx: number,
 ): FocalCandidate[] {
   const most = new Map<number, number>();
@@ -242,11 +317,12 @@ export function scoreCandidates(
   // Keep the established score when the best-covered calibration subset has no supported
   // bearing model. A weaker partial map must not switch finite-only calibration objectives.
   const directional = directionalScoring(runs);
-  return runs.map((run) => {
+  return runs.map(({ commonScore, ...run }) => {
     const n = most.get(run.views) ?? 0;
     let score =
       run.views && n && Number.isFinite(run.rmsePx)
-        ? (run.observations * run.rmsePx ** 2 + (n - run.observations) * huberPx ** 2) / n
+        ? (commonScore ??
+          (run.observations * run.rmsePx ** 2 + (n - run.observations) * huberPx ** 2) / n)
         : Infinity;
     // Under a common unknown-variance Gaussian residual model, normalized BIC is
     // log(SSE / N) + k log(N) / N. Each pixel observation contributes two scalar residuals.
@@ -310,8 +386,8 @@ export function* focalCandidateSteps(
   views: number,
   huberPx: number,
   exhaustive = false,
-): Generator<number, FocalCandidate[], Omit<FocalCandidate, 'score'>> {
-  const runs = new Map<number, Omit<FocalCandidate, 'score'>>();
+): Generator<number, FocalCandidate[], FocalRun> {
+  const runs = new Map<number, FocalRun>();
   const all = grid.map((_, i) => i);
   const coarse = all.filter((i) => i % 2 === 0 || i === grid.length - 1);
   const evaluate = function* (indices: readonly number[]) {
@@ -529,13 +605,28 @@ export function* focalSearchSteps(
       throw error;
     }
   };
+  const huberPx = bundleHuberPx(options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx);
   const candidateOf = (
     result: IncrementalResult | undefined,
     ratio: number,
-  ): Omit<FocalCandidate, 'score'> => {
+    common?: {
+      readonly tracks: readonly FeatureTrack[];
+      readonly subset: readonly ImageFeatures[];
+    },
+  ): FocalRun => {
     const last = result?.diagnostics.bundleAdjustments.at(-1);
     if (!result || !last) return { ratio, views: 0, rmsePx: Infinity, observations: 0 };
     return {
+      ...(common
+        ? {
+            commonScore: commonSetScore(
+              common.tracks,
+              common.subset,
+              result.reconstruction.views,
+              huberPx,
+            ),
+          }
+        : {}),
       ratio,
       views: result.reconstruction.views.length,
       rmsePx: last.finalRmsePx,
@@ -562,13 +653,13 @@ export function* focalSearchSteps(
         ids = new Set(subset.map((v) => v.id)),
         subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
       const verifications = sharedVerification(subset, subsetPairs);
+      // One observation set for every grid point of the subset (section 10 of docs/auto-focal.md).
+      // The bearing model keeps its own complexity-aware score on the observations it kept.
+      const common = options.separateDirectionalObservations
+        ? undefined
+        : { tracks: commonTracks(subset, subsetPairs), subset };
       // The mapper's BA runs with a Huber threshold of half the error bound.
-      const schedule = focalCandidateSteps(
-        grid,
-        size,
-        bundleHuberPx(options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx),
-        exhaustive,
-      );
+      const schedule = focalCandidateSteps(grid, size, huberPx, exhaustive);
       let next = schedule.next();
       while (!next.done) {
         const ratio = next.value;
@@ -580,7 +671,7 @@ export function* focalSearchSteps(
             subset.length,
             `Only ${result.reconstruction.views.length} views registered for focal calibration; need ${minimumViews}`,
           );
-        next = schedule.next(candidateOf(result, ratio));
+        next = schedule.next(candidateOf(result, ratio, common));
       }
       const candidates = next.value;
       const best = bestCandidate(
