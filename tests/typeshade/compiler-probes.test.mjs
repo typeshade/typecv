@@ -3,22 +3,25 @@
 //
 // What it is. Each probe compiles one small "use typeshade" program with the compiler that
 // package.json pins. It holds the verdict that the compiler gives today: a GPU loop and its
-// tiers, the CPU tier with TS8070 and its proof rule, a silent CPU fallback, or a refusal with
-// its code. The probes test no TypeCV code. They hold the compiler limits that TypeCV's
-// refactoring programme waits on. So a pin bump that closes a gap fails a probe, and the failure
-// names the conversion step that may open.
+// tiers, the CPU tier with TS8070 and its proof rule, a silent CPU fallback, a refusal with its
+// code, or an entry that compiles, with its shape on each target and its results on the CPU
+// tiers. The probes test no TypeCV code. They hold the compiler limits that TypeCV's refactoring
+// programme waits on, and the capabilities that a refactor may use. So a pin bump that closes a
+// gap fails a probe, and the failure names the conversion step that may open.
 //
 // The record:
 // - docs/library-structure.md: section 6 (rows C1 to C13 and the "Not gaps" list), section 3.6
 //   and the phase 9 and 10 rows of section 5;
 // - docs/audits/2026-10-26-kernel-style.md: section 0.1 (probes P1 to P30) and section 6 (the
 //   gaps, ranked).
-// Both are dated records. This suite does not change them.
+// Both are dated records. This suite does not change them. K1 to K6 have no dated record yet:
+// the pull request that added them holds their table.
 //
 // Measured on 2026-10-26: typeshade 725b2969 (MEASURED_AT, the package.json pin; package version
 // 0.1.0), Node 22.22.0, the CPU tier (no WebGPU device). The pin bump from d36ac502, where #243
 // first measured the suite, read every probe again (#246; docs/library-structure.md, amendment 2).
-// No verdict changed.
+// No verdict changed. K1 to K6 were measured on 2026-10-27 with the same pin and Node. Their WGSL
+// and their WebGL2 pass programs were read, not run.
 //
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
@@ -33,7 +36,9 @@
 // harness gave to shapes that the audit's table groups under P6, P9, P11 and P13. A letter splits
 // the shapes of one audit row (P5b, P9b, P20a to P20g, P30a, P30b). S1 to S6 are this suite's
 // own: the rows that the audit did not probe (C2, C5, C7, the max half of C9, the exported
-// constants of the Not gaps list) and the max reduction of the KLT maximum.
+// constants of the Not gaps list) and the max reduction of the KLT maximum. K1 to K6 are this
+// suite's own too: the loops of src/mvs/gpu/cloud-knn.shade.ts. K3b and K6b are neighbours of K3
+// and K6.
 //
 // Rows not probed. C4 (a proved loop cut into timed chunks): on the CPU tier a chunk is the whole
 // range by design (surface §65), so only a WebGPU device can observe a cut. C10 to C13 (the
@@ -802,3 +807,234 @@ const S6 = {
   },
 };
 probeTest(S6);
+
+// The loops of src/mvs/gpu/cloud-knn.shade.ts: what a refactor of knnMeanDistance may use (K1 to
+// K5), and the write that keeps it an entry (K6). Both CPU tiers: the oracle, which runs an entry
+// in the phased order of the WebGL2 tier (change 0054), and the host CPU tier of the generated
+// module.
+
+/** The points of the K probes, on a line. */
+const POINTS = [0, 1, 2, 5, 9];
+/** Each point's three smallest squared distances to the other points, summed. */
+const SUMS = [30, 18, 14, 41, 129];
+/** `100 * r + j` for the first point `j` within the smallest ring `r` of 1 to 4. */
+const RINGS = [101, 100, 101, 302, 403];
+/** The visit order of K6 and K6b: lane `l` takes point `VISIT[l]`. */
+const VISIT = [3, 0, 4, 1, 2];
+
+const sumBindings = () => ({ xs: Float32Array.from(POINTS), out: new Float32Array(5) });
+const ringBindings = () => ({ xs: Float32Array.from(POINTS), out: new Uint32Array(5) });
+
+/**
+ * Assert the verdict of K entry `p`. It compiles with no diagnostic. Its WGSL and the GLSL of its
+ * WebGL2 pass program have the shapes `p.wgsl` and `p.glsl`. The determinism report is empty, and
+ * both CPU tiers write `p.expect`.
+ */
+async function holdEntry(p, { result, face }) {
+  const say = says(p);
+  const codes = codesOf(result.diagnostics);
+  assert.deepEqual(codesOf(face.diagnostics), codes, say('hostFace() and compile() disagree'));
+  assert.deepEqual(codes, [], say(`the diagnostics are ${listed(result.diagnostics)}`));
+  for (const shape of p.wgsl) assert.match(result.wgsl, shape, say(`the WGSL lacks ${shape}`));
+  const entry = face.exports.find((e) => e.kind === 'compute' && e.name === p.fn)?.entry;
+  assert.ok(entry, say(`the host face has no compute entry "${p.fn}"`));
+  assert.equal(entry.barrier, undefined, say(`the entry reaches ${entry.barrier}`));
+  assert.equal(entry.noCpu, undefined, say(`the host CPU tier refuses it: ${entry.noCpu}`));
+  assert.ok(entry.gl, say(`it has no WebGL2 pass program: ${entry.noGl}`));
+  assert.deepEqual(
+    entry.gl.cuts,
+    {},
+    say('its pass program stops at a barrier, an atomic or a log'),
+  );
+  for (const shape of p.glsl) assert.match(entry.gl.vertex, shape, say(`the GLSL lacks ${shape}`));
+  assert.deepEqual(result.determinism, [], say('the determinism report lists an operation'));
+
+  const { compileModule } = await compiler();
+  const oracle = compileModule(result.module);
+  const bindings = p.bindings();
+  for (const [name, value] of Object.entries(bindings)) oracle.setBinding(name, value);
+  oracle.dispatch(p.fn, 1);
+  assert.deepEqual(Array.from(bindings.out), p.expect, say('the oracle writes other values'));
+
+  // The generated module, as a bundle ships it, with the CPU tier made the only tier.
+  const host = await load(`${face.code}\nexport { configure } from 'typeshade/runtime';`);
+  host.configure({ prefer: ['cpu'] });
+  const own = p.bindings();
+  await host[p.fn](own, 1);
+  assert.deepEqual(Array.from(own.out), p.expect, say('the host CPU tier writes other values'));
+}
+
+/** Register the test of K entry `p`. */
+function entryTest(p) {
+  test(`${p.id} (${p.row}) ${p.shape}: ${p.held}`, async () => {
+    await holdEntry(p, await compileProbe(p.source));
+  });
+}
+
+/** What kernel function `name` of `face` writes for POINTS and VISIT on the CPU tier, k = 3. */
+async function onCpuTier(face, name) {
+  const host = await load(`${face.code}\nexport { configure } from 'typeshade/runtime';`);
+  host.configure({ prefer: ['cpu'] });
+  const sums = new Float32Array(5);
+  await host[name](3, 5, Float32Array.from(POINTS), Uint32Array.from(VISIT), sums);
+  return Array.from(sums);
+}
+
+const K1 = {
+  id: 'K1',
+  row: 'none: the insertion in cloud-knn.shade.ts',
+  shape: 'a helper takes a local array<f32, 32> as @inout',
+  source: 'k1',
+  fn: 'insertByRef',
+  held: 'compiles; WGSL passes &best to a ptr<function> parameter, the WebGL2 pass program to an inout one, and both CPU tiers write the sums',
+  wgsl: [
+    /fn insertSorted\(best: ptr<function, array<f32, 32>>, k: u32, d2: f32\)/,
+    /\binsertSorted\(&best, 3u, /,
+  ],
+  glsl: [
+    /void insertSorted\(inout float\[32\] best, uint k, float d2\)/,
+    /\binsertSorted\(\w+, 3u, /,
+  ],
+  bindings: sumBindings,
+  expect: SUMS,
+  signal: REGRESSION(
+    'a helper can no longer take the list by reference (Rule 8.25), so the insertion of the k-NN stays written twice',
+  ),
+};
+entryTest(K1);
+
+const K2 = {
+  id: 'K2',
+  row: 'none: the bucket scan in cloud-knn.shade.ts',
+  shape: 'a helper takes the list as @inout, reads two bindings by name and hands the list on',
+  source: 'k2',
+  fn: 'scanByRef',
+  held: 'compiles; both helpers keep a ptr<function> parameter in WGSL and an inout one in GLSL, and both CPU tiers write the sums',
+  wgsl: [
+    /fn scanBucket\(best: ptr<function, array<f32, 32>>, k: u32, i: u32, bucket: u32\)/,
+    /\binsertSorted\(best, k, /,
+    /\bscanBucket\(&best, 3u, /,
+  ],
+  glsl: [
+    /void scanBucket\(inout float\[32\] best, uint k, uint i, uint bucket\)/,
+    /\binsertSorted\(best, k, /,
+  ],
+  bindings: () => ({ ...sumBindings(), bucketStart: Uint32Array.from([0, 2, 5]) }),
+  expect: SUMS,
+  signal: REGRESSION(
+    'a helper can no longer read the bindings and hand the list on by reference, so the bucket scan of the k-NN stays in the entry',
+  ),
+};
+entryTest(K2);
+
+const K3 = {
+  id: 'K3',
+  row: 'none: the ring loop in cloud-knn.shade.ts',
+  shape: 'break of an inner loop, and of the outer loop by a flag',
+  source: 'k3',
+  fn: 'ringBreak',
+  held: 'compiles; WGSL keeps both breaks, the WebGL2 pass program keeps the loops, and both CPU tiers write the first ring',
+  wgsl: [/\bbreak;[\s\S]*\bbreak;/],
+  glsl: [/for \(uint r = 1u; \(r <= 4u\); r = \(r \+ 1u\)\)/, /for \(uint j = 0u; /],
+  bindings: ringBindings,
+  expect: RINGS,
+  signal: REGRESSION(
+    'break no longer runs alike on every tier, so the ring loop of the k-NN keeps its done flag',
+  ),
+};
+entryTest(K3);
+
+const K3b = {
+  id: 'K3b',
+  row: 'none: the ring loop in cloud-knn.shade.ts',
+  shape: 'a labelled break of the outer loop',
+  source: 'k3b',
+  verdict: refused('TS8099'),
+  also: 'the remedy names a flag, or a function that returns',
+  signal:
+    'a labelled break compiles now, which surface §52 refuses; the k-NN could leave its ring loop from the bucket loop',
+  more({ result }, say) {
+    assert.match(
+      result.diagnostics[0].message,
+      /with a flag, or hoist the inner loop into a function/,
+      say(`the remedy names neither a flag nor a function: ${result.diagnostics[0].message}`),
+    );
+  },
+};
+probeTest(K3b);
+
+const K4 = {
+  id: 'K4',
+  row: 'none: the insertion in cloud-knn.shade.ts',
+  shape: 'a while loop with a data-dependent trip count',
+  source: 'k4',
+  fn: 'insertWhile',
+  held: 'compiles; WGSL and GLSL spell it as a for over the counter _w, and both CPU tiers write the sums',
+  wgsl: [/for \(var _w\w*: i32 = 0; \(\(s > 0u\) && \(best\[\(s - 1u\)\] > d2\)\);/],
+  glsl: [/for \(int _w\w* = 0; \(\(s > 0u\) && \(\w*best\[\(s - 1u\)\] > d2\)\);/],
+  bindings: sumBindings,
+  expect: SUMS,
+  signal: REGRESSION(
+    'a while with a data-dependent exit no longer runs alike on every tier (Rule 7.5), so the insertion of the k-NN keeps its 31 steps',
+  ),
+};
+entryTest(K4);
+
+const K5 = {
+  id: 'K5',
+  row: 'none: the ring loop in cloud-knn.shade.ts',
+  shape: 'a return from inside the nested loops of an entry with no barrier',
+  source: 'k5',
+  fn: 'ringReturn',
+  held: 'compiles with no diagnostic; it has a WebGL2 pass program, and both CPU tiers write the first ring',
+  wgsl: [/\breturn;/],
+  glsl: [],
+  bindings: ringBindings,
+  expect: RINGS,
+  signal: REGRESSION(
+    "a return inside the loops of an entry no longer runs alike on every tier; TypeCV's own A1 rule allows it only for a condition of the item's data",
+  ),
+};
+entryTest(K5);
+
+const K6 = {
+  id: 'K6',
+  row: 'phase 10: k-NN stays an entry',
+  shape: 'a kernel function writes sums[visitOrder[lane]]',
+  source: 'k6',
+  fn: 'knnPermuted',
+  verdict: cpuWarned('R3'),
+  also: 'the warning names "sums[i]" and the counter "lane"; the CPU tier writes the sums',
+  signal:
+    'a permuted write lowers now, so knnMeanDistance could become a kernel function with its visit order, a step that section 5 does not schedule (its phase 10 row: C6 does not cover a permutation)',
+  async more({ result, face }, say) {
+    const { message } = result.diagnostics[0];
+    assert.match(message, /"sums\[i\]"/, say(`the warning no longer names "sums[i]": ${message}`));
+    assert.match(message, /"lane"/, say(`the remedy no longer names "lane": ${message}`));
+    assert.deepEqual(
+      await onCpuTier(face, 'knnPermuted'),
+      SUMS,
+      say('the CPU tier writes other sums'),
+    );
+  },
+};
+probeTest(K6);
+
+const K6b = {
+  id: 'K6b',
+  row: 'phase 10: k-NN stays an entry',
+  shape: 'the same function writes sums[lane], and the host applies the visit order',
+  source: 'k6b',
+  fn: 'knnByLane',
+  verdict: gpu('webgpu', 'webgl2'),
+  also: 'the CPU tier writes the sums in lane order',
+  signal: REGRESSION('the lane-indexed form of the k-NN no longer lowers'),
+  async more({ face }, say) {
+    assert.deepEqual(
+      await onCpuTier(face, 'knnByLane'),
+      VISIT.map((i) => SUMS[i]),
+      say('the CPU tier writes other sums'),
+    );
+  },
+};
+probeTest(K6b);
