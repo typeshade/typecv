@@ -149,6 +149,34 @@ test('the flavor of the emulated double is an option of open(), float on the CPU
   await assert.rejects(ShadeDevice.open({ backend: 'cpu', fp64Flavor: 'fast' }), RangeError);
 });
 
+test('the TypeShade device chooses the flavor, with no adapter request of its own', async () => {
+  // TypeShade change 0085: `'auto'` is resolved from the device the owner opens. TypeCV requests no
+  // adapter to choose it, so a WebGPU open requests one adapter, the one the device would be made
+  // from. With no adapter, WebGPU alone cannot open, and the open fails after that one request.
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let requests = 0;
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      userAgent: 'test',
+      gpu: {
+        async requestAdapter() {
+          requests++;
+          return null;
+        },
+      },
+    },
+  });
+  try {
+    await assert.rejects(ShadeDevice.open({ backend: 'webgpu' }));
+    await assert.rejects(ShadeDevice.open({ backend: 'webgpu', fp64Flavor: 'auto' }));
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'navigator', descriptor);
+    else delete globalThis.navigator;
+  }
+  assert.equal(requests, 2);
+});
+
 test('the per-kernel table sums groups, dispatches and GPU time by fused call list, up to 160 keys', async () => {
   const device = await ShadeDevice.open({ backend: 'cpu' });
   const fuse = device.shade.fuse;
