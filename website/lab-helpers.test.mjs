@@ -15,7 +15,15 @@ import {
   workingBytesFromAdapter,
 } from './src/lib/working-budget.ts';
 import { denseWorkingBytes } from './src/lib/dense-run.ts';
-import { MAX_FEATURE_CAP, featureCap } from './src/lib/lab-features.ts';
+import {
+  KEYPOINT_COLOR_FRAMES,
+  MAX_FEATURE_CAP,
+  UNCOLORED_CHANNEL,
+  featureCap,
+  keypointColorBytes,
+  keypointColorFloats,
+  landmarkColor,
+} from './src/lib/lab-features.ts';
 import { LAB_OPTIONS } from './src/lib/lab-options.ts';
 import { medianMotionPx } from './src/lib/keyframe-gate.ts';
 import { trimStages } from './src/lib/lab-ledger.ts';
@@ -343,5 +351,168 @@ test('the match lines: 160 entries at most, the earlier points scaled to this fr
   assert.deepEqual(
     matchLines(earlier, size(256, 192), later, size(128, 96), pairs(3)).slice(4, 8),
     [0.5, 1, 1.5, 3],
+  );
+});
+
+test('the keypoint colours: the pixel under each keypoint, floats in the worker and bytes in the job (sampleColors)', () => {
+  assert.equal(KEYPOINT_COLOR_FRAMES, 64);
+  // sfm.worker.ts `sampleColors`, as it stood, without the window of 64 frames that it fed.
+  const inlineFloats = (frame, points) => {
+    const colors = new Float32Array((points.length / 2) * 3);
+    for (let i = 0; i < points.length / 2; i++) {
+      const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
+      const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
+      const offset = (y * frame.width + x) * 4;
+      for (let channel = 0; channel < 3; channel++)
+        colors[i * 3 + channel] = frame.pixels[offset + channel] / 255;
+    }
+    return colors;
+  };
+  // multi-video-job.ts `sampleColors`, as it stood.
+  const inlineBytes = (frame, points) => {
+    const colors = new Uint8Array((points.length / 2) * 3);
+    for (let i = 0; i < points.length / 2; i++) {
+      const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
+      const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
+      const offset = (y * frame.width + x) * 4;
+      for (let c = 0; c < 3; c++) colors[i * 3 + c] = frame.pixels[offset + c];
+    }
+    return colors;
+  };
+  // A 3 x 2 frame: the pixel (x, y) has the channels 10 (3 y + x) + 1, + 2 and + 3.
+  const pixels = new Uint8ClampedArray(3 * 2 * 4);
+  for (let p = 0; p < 6; p++) pixels.set([10 * p + 1, 10 * p + 2, 10 * p + 3, 255], p * 4);
+  const frame = { width: 3, height: 2, pixels };
+  const rgb = (x, y) => [10 * (3 * y + x) + 1, 10 * (3 * y + x) + 2, 10 * (3 * y + x) + 3];
+  for (const [what, points, under] of [
+    ['no keypoint', [], []],
+    ['the corners', [0, 0, 2, 1], [rgb(0, 0), rgb(2, 1)]],
+    ['rounded to the nearest pixel', [1.4, 0.6, 0.5, 0.49], [rgb(1, 1), rgb(1, 0)]],
+    ['clamped to the frame', [-5, 10, 7, -1], [rgb(0, 1), rgb(2, 0)]],
+    ['halves round up', [1.5, 0.5], [rgb(2, 1)]],
+  ]) {
+    const keypoints = Float64Array.from(points);
+    const floats = keypointColorFloats(frame, keypoints);
+    const bytes = keypointColorBytes(frame, keypoints);
+    assert.deepEqual(bytes, Uint8Array.from(under.flat()), what + ', bytes');
+    assert.deepEqual(bytes, inlineBytes(frame, keypoints), what + ', bytes, inline');
+    assert.deepEqual(
+      floats,
+      Float32Array.from(under.flat(), (v) => v / 255),
+      what + ', floats',
+    );
+    assert.deepEqual(floats, inlineFloats(frame, keypoints), what + ', floats, inline');
+  }
+  // A keypoint that is not a number reads no pixel: NaN as a float, 0 as a byte, as before.
+  const lost = Float64Array.from([NaN, 0]);
+  assert.deepEqual(Array.from(keypointColorFloats(frame, lost)), [NaN, NaN, NaN]);
+  assert.deepEqual(Array.from(inlineFloats(frame, lost)), [NaN, NaN, NaN]);
+  assert.deepEqual(keypointColorBytes(frame, lost), Uint8Array.from([0, 0, 0]));
+  assert.deepEqual(inlineBytes(frame, lost), Uint8Array.from([0, 0, 0]));
+});
+
+test('the landmark colours: the persistent cache of the worker, none in the job (scene, MultiVideoJob.scene)', () => {
+  assert.equal(UNCOLORED_CHANNEL, 0.7);
+  // sfm.worker.ts `scene`, as it stood: the colour of one landmark.
+  const inlineWorker = (active, point) => {
+    let color = active.pointColors.get(point.trackId);
+    if (!color)
+      for (const observation of point.observations) {
+        const colors = active.colors.get(observation.viewId);
+        if (colors && observation.featureId * 3 + 2 < colors.length) {
+          color = Array.from(
+            colors.subarray(observation.featureId * 3, observation.featureId * 3 + 3),
+          );
+          active.pointColors.set(point.trackId, color);
+          break;
+        }
+      }
+    return { ...point, color: color ?? [0.7, 0.7, 0.7] };
+  };
+  // multi-video-job.ts `scene`, as it stood: the colour of one landmark, and the map of each call.
+  const inlineJob = (info, point, colorOf = new Map()) => {
+    let color = colorOf.get(point.trackId);
+    if (!color)
+      for (const o of point.observations) {
+        const k = info.get(o.viewId);
+        if (k && o.featureId * 3 + 2 < k.colors.length) {
+          color = [
+            k.colors[o.featureId * 3] / 255,
+            k.colors[o.featureId * 3 + 1] / 255,
+            k.colors[o.featureId * 3 + 2] / 255,
+          ];
+          break;
+        }
+      }
+    return { ...point, color: color ?? [0.7, 0.7, 0.7] };
+  };
+  const grey = [0.7, 0.7, 0.7];
+  const point = (trackId, ...observations) => ({
+    trackId,
+    observations: observations.map(([viewId, featureId]) => ({ viewId, featureId })),
+  });
+  // View 1 holds two features, view 3 none; view 2 has no colours.
+  const bytes = new Map([
+    [1, Uint8Array.from([10, 20, 30, 40, 50, 60])],
+    [3, new Uint8Array(0)],
+  ]);
+  const floats = new Map([...bytes].map(([id, b]) => [id, Float32Array.from(b, (v) => v / 255)]));
+  const info = new Map([...bytes].map(([id, colors]) => [id, { colors }]));
+  const asFloats = (b) => Array.from(Float32Array.from(b, (v) => v / 255));
+  for (const [what, landmark, fromBytes] of [
+    ['the first observation with colours', point(7, [2, 0], [1, 1]), [40, 50, 60]],
+    ['the first of two that have colours', point(8, [1, 0], [1, 1]), [10, 20, 30]],
+    ['a feature beyond the colours', point(9, [1, 2], [3, 0]), undefined],
+    ['no observation', point(10), undefined],
+  ]) {
+    // The job: bytes divided by 255, no cache.
+    const job = fromBytes ? fromBytes.map((v) => v / 255) : grey;
+    assert.deepEqual(
+      landmarkColor(landmark, (id) => info.get(id)?.colors, 'byte'),
+      job,
+      what,
+    );
+    assert.deepEqual(inlineJob(info, landmark).color, job, what + ', job, inline');
+    // The worker: floats as they are, kept in the cache.
+    const worker = fromBytes ? asFloats(fromBytes) : grey;
+    const cache = new Map(),
+      active = { pointColors: new Map(), colors: floats };
+    assert.deepEqual(
+      landmarkColor(landmark, (id) => floats.get(id), 'float', cache),
+      worker,
+      what,
+    );
+    assert.deepEqual(inlineWorker(active, landmark).color, worker, what + ', worker, inline');
+    assert.deepEqual([...cache], [...active.pointColors], what + ', the cache');
+  }
+  // The worker keeps a track's colour after the colours of its frames are gone; the job does not.
+  const track = point(11, [1, 0]);
+  const cache = new Map(),
+    active = { pointColors: new Map(), colors: new Map(floats) };
+  const first = landmarkColor(track, (id) => active.colors.get(id), 'float', cache);
+  assert.deepEqual(inlineWorker(active, track).color, first);
+  active.colors.clear();
+  assert.equal(
+    landmarkColor(track, (id) => active.colors.get(id), 'float', cache),
+    first,
+  );
+  assert.equal(inlineWorker(active, track).color, active.pointColors.get(11));
+  assert.deepEqual(active.pointColors.get(11), first);
+  const released = new Map([[1, { colors: new Uint8Array(0) }]]);
+  assert.deepEqual(
+    landmarkColor(track, (id) => released.get(id)?.colors, 'byte'),
+    grey,
+  );
+  assert.deepEqual(inlineJob(released, track).color, grey);
+  // A cached colour wins over the colours of the views, in the worker.
+  const seeded = new Map([[7, [1, 0, 0]]]);
+  assert.deepEqual(
+    landmarkColor(point(7, [1, 1]), (id) => floats.get(id), 'float', seeded),
+    [1, 0, 0],
+  );
+  assert.deepEqual(
+    inlineWorker({ pointColors: new Map([[7, [1, 0, 0]]]), colors: floats }, point(7, [1, 1]))
+      .color,
+    [1, 0, 0],
   );
 });

@@ -19,7 +19,13 @@ import {
   trackerVerdicts,
   type TrackerPair,
 } from '../lib/klt-join.ts';
-import { featureCap, tooFewFeatures } from '../lib/lab-features.ts';
+import {
+  KEYPOINT_COLOR_FRAMES,
+  featureCap,
+  keypointColorFloats,
+  landmarkColor,
+  tooFewFeatures,
+} from '../lib/lab-features.ts';
 import {
   admitsPair,
   admitsPrecomputedPair,
@@ -291,20 +297,15 @@ function scene(model: any) {
   const active = job!;
   const result = {
     views: model.views.map((view: any) => sceneViewWithFrame(view, active.frames.get(view.id))),
+    // The colour of a track is kept for the whole run (`pointColors`).
     landmarks: model.landmarks.map((point: any) => {
-      let color = active.pointColors.get(point.trackId);
-      if (!color)
-        for (const observation of point.observations) {
-          const colors = active.colors.get(observation.viewId);
-          if (colors && observation.featureId * 3 + 2 < colors.length) {
-            color = Array.from(
-              colors.subarray(observation.featureId * 3, observation.featureId * 3 + 3),
-            ) as [number, number, number];
-            active.pointColors.set(point.trackId, color);
-            break;
-          }
-        }
-      return { ...point, color: color ?? [0.7, 0.7, 0.7] };
+      const color = landmarkColor(
+        point,
+        (viewId) => active.colors.get(viewId),
+        'float',
+        active.pointColors,
+      );
+      return { ...point, color };
     }),
   };
   active.latest = result;
@@ -1050,16 +1051,10 @@ function keepPixels(frame: Frame) {
 /** The colour under each keypoint, for the point cloud. */
 function sampleColors(frame: Frame, points: Float64Array) {
   const active = job!;
-  const colors = new Float32Array((points.length / 2) * 3);
-  for (let i = 0; i < points.length / 2; i++) {
-    const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
-    const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
-    const offset = (y * frame.width + x) * 4;
-    for (let channel = 0; channel < 3; channel++)
-      colors[i * 3 + channel] = frame.pixels[offset + channel] / 255;
-  }
+  const colors = keypointColorFloats(frame, points);
   active.colors.set(frame.id, colors);
-  if (active.colors.size > 64) active.colors.delete(active.colors.keys().next().value!);
+  if (active.colors.size > KEYPOINT_COLOR_FRAMES)
+    active.colors.delete(active.colors.keys().next().value!);
   return colors;
 }
 
