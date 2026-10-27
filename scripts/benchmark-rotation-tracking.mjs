@@ -15,6 +15,7 @@ import {
   executeReconstructionJob,
 } from '../src/reconstruction/mapper.ts';
 import { buildTracks } from '../src/reconstruction/tracks.ts';
+import { LAB_MAPPER } from '../src/sfm/config/lab-preset.ts';
 import { generalVideoFixture, GENERAL_VIDEO_CASES } from '../tests/fixtures/general-video.ts';
 
 const option = (name, fallback) =>
@@ -291,13 +292,7 @@ for (const rotationTracking of [undefined, false, true]) {
     const r = reconstructIncremental(focalImages, focalPairs, {
       rotationTracking,
       focalSearch: true,
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      minInitialAngleDeg: 1,
-      minTriangulationAngleDeg: 0.5,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal: true,
+      ...LAB_MAPPER,
     });
     report.focalSearchCompatibility.push({
       rotationTracking: rotationTracking ?? 'default',

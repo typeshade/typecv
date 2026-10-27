@@ -5,6 +5,7 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
+import { LAB_MAPPER } from '../src/sfm/config/lab-preset.ts';
 
 const arg = (name, fallback) => {
   const prefix = `--${name}=`;
@@ -30,7 +31,7 @@ const encoded = await Promise.all(
 );
 
 const { result, errors } = await inBrowser(
-  async ({ encoded, edge, windowSize, repeats }) => {
+  async ({ encoded, edge, windowSize, repeats, labMapper }) => {
     const api = await import('/dist/gpu.js');
     const adapter = await navigator.gpu.requestAdapter();
     const gpu = await adapter.requestDevice();
@@ -119,15 +120,7 @@ const { result, errors } = await inBrowser(
         }
         let mapping;
         if (pairs.length)
-          mapping = await api.reconstructIncrementalGpu(device, images, pairs, {
-            ransacIterations: 500,
-            maxErrorPx: 3,
-            minInitialAngleDeg: 1,
-            minTriangulationAngleDeg: 0.5,
-            bundleIterations: 4,
-            finalBundleIterations: 8,
-            refineSharedFocal: true,
-          });
+          mapping = await api.reconstructIncrementalGpu(device, images, pairs, { ...labMapper });
         const mean = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0);
         return {
           clahe,
@@ -159,7 +152,7 @@ const { result, errors } = await inBrowser(
       rows,
     };
   },
-  { encoded, edge, windowSize, repeats },
+  { encoded, edge, windowSize, repeats, labMapper: LAB_MAPPER },
   { timeoutMs: 3600000 },
 );
 if (errors.length) console.error(errors);

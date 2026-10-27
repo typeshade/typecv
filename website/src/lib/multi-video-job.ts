@@ -33,6 +33,7 @@ import {
   type MultiVideoSummary,
   type VideoPairEdges,
 } from './multi-video.ts';
+import { LAB_OPTIONS } from './lab-options.ts';
 
 /** A decoded or sampled analysis frame, as the page posts it. */
 export interface JobFrame {
@@ -194,7 +195,7 @@ function sampleColors(frame: JobFrame, points: Float64Array): Uint8Array {
 }
 
 /** Map snapshots go to the page at most this often (the single-video worker's interval). */
-export const SNAPSHOT_INTERVAL_MS = 500;
+export const SNAPSHOT_INTERVAL_MS = LAB_OPTIONS.snapshotIntervalMs;
 
 interface Snapshot {
   component: number;

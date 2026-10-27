@@ -192,6 +192,13 @@ import {
   type PartialScene,
   type Scene,
 } from '../lib/sfm-scene';
+import {
+  DENSE_LAB_FUSION,
+  LAB_OPTIONS,
+  LAB_PAGE_ANALYSIS_EDGE,
+  MULTI_VIDEO_RECORD_OPTIONS,
+  denseCleanDefault,
+} from '../lib/lab-options';
 const { Title } = Typography;
 type Frame = {
   id: number;
@@ -679,22 +686,23 @@ function buildMultiRunRecord(input: {
       },
     ],
     summary: result?.stages ?? {},
-    // The numbers of `LAB_OPTIONS` in the worker that a multi-video map uses.
+    // The numbers of `LAB_OPTIONS` (`lib/lab-options.ts`) that a multi-video map uses, and the
+    // literals of a multi-video record (`MULTI_VIDEO_RECORD_OPTIONS`).
     options: {
       frontEnd: 'sift',
       focalRatio: input.rows[0]?.focal ?? 0,
-      windowSize: 0,
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal: true,
+      windowSize: MULTI_VIDEO_RECORD_OPTIONS.windowSize,
+      ransacIterations: LAB_OPTIONS.ransacIterations,
+      maxErrorPx: LAB_OPTIONS.maxErrorPx,
+      bundleIterations: LAB_OPTIONS.bundleIterations,
+      finalBundleIterations: LAB_OPTIONS.finalBundleIterations,
+      refineSharedFocal: LAB_OPTIONS.refineSharedFocal,
       maxFeatures: input.maxFeatures,
-      matchRatio: 0.8,
-      maxDistance: 1e19,
+      matchRatio: LAB_OPTIONS.matchRatio,
+      maxDistance: LAB_OPTIONS.maxDistance,
       siftFirstOctave: input.firstOctave,
-      clahe: false,
-      keyframeGate: 'phase',
+      clahe: MULTI_VIDEO_RECORD_OPTIONS.clahe,
+      keyframeGate: MULTI_VIDEO_RECORD_OPTIONS.keyframeGate,
     },
     keyframes,
     latest: { views: registered, landmarks, observations },
@@ -1153,8 +1161,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [sample, setSample] = useState<LoadedSample>();
   const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry | VideoSetEntry)[]>([]);
   /** The long side decoded from an uploaded or sample video. The standard benchmark stays at 640. */
-  const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(1280);
-  const analysisEdgeRef = useRef<AnalysisEdge>(1280);
+  const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(LAB_PAGE_ANALYSIS_EDGE);
+  const analysisEdgeRef = useRef<AnalysisEdge>(LAB_PAGE_ANALYSIS_EDGE);
   analysisEdgeRef.current = analysisEdge;
   const [alignment, setAlignment] = useState<PoseAlignment>();
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
@@ -1205,8 +1213,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [densePreset, setDensePreset] = useState<(typeof DENSE_PRESETS)[number]>(DENSE_PRESETS[0]);
   useEffect(() => {
     // Old links initialize the visible controls once; edits in the page govern the next run.
-    const fusion = denseFusionOverride() ?? 'tsdf';
-    const clean = denseCleanOverride() ?? fusion === 'pixel';
+    const fusion = denseFusionOverride() ?? DENSE_LAB_FUSION;
+    const clean = denseCleanOverride() ?? denseCleanDefault(fusion);
     setDensePreset(
       DENSE_PRESETS.find((preset) => preset.fusion === fusion && preset.clean === clean)!,
     );

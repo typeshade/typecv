@@ -14,6 +14,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { pathScene } from '../tests/view-graph-scene.ts';
 import { quantizeDescriptors } from '../src/reconstruction/view-graph.ts';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
+import { LAB_MAPPER } from '../src/sfm/config/lab-preset.ts';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -69,7 +70,7 @@ console.error(
 );
 
 const { result, errors } = await inBrowser(
-  async ({ input, ratio }) => {
+  async ({ input, ratio, labMapper }) => {
     const api = await import('/dist/internal/gpu.js');
     const dec = (s, T) => {
       const bin = atob(s),
@@ -87,17 +88,11 @@ const { result, errors } = await inBrowser(
     if (!adapter) throw new Error('WebGPU adapter unavailable');
     const gpu = await adapter.requestDevice();
     const device = await api.ShadeDevice.open({ gpuDevice: gpu, solverCheckpoints: true });
-    // The options of the lab's worker (`website/src/workers/multi-video.ts`).
+    // The options of the lab's worker (`website/src/workers/multi-video.ts`): the lab preset.
     const MAPPER = {
       ...(ratio ? { globalBundleViewRatio: ratio, globalBundlePointRatio: ratio } : {}),
       seed: 7,
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      minInitialAngleDeg: 1,
-      minTriangulationAngleDeg: 0.5,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal: true,
+      ...labMapper,
     };
     let lastReads = 0;
     // Round trips: `plan` calls are submissions, `read` calls are readbacks.
@@ -185,7 +180,7 @@ const { result, errors } = await inBrowser(
       await device.dispose();
     }
   },
-  { input, ratio: ratio ? Number(ratio) : 0 },
+  { input, ratio: ratio ? Number(ratio) : 0, labMapper: LAB_MAPPER },
   { timeoutMs: 3600000, serve: bundle ? { '/dist/internal/gpu.js': bundle } : {} },
 );
 if (errors.length) console.error(errors);

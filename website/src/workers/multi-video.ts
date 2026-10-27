@@ -22,6 +22,7 @@ import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
 import { workingBytesFromAdapter } from '../lib/working-budget';
 import type { GpuPreparationPhase } from '../lib/gpu-preparation';
+import { LAB_MAPPER } from '../../../src/sfm/config/lab-preset.ts';
 
 export type MultiRequest =
   | {
@@ -52,19 +53,11 @@ export const isMultiRequest = (message: { type: string }): message is MultiReque
   message.type.startsWith('multi');
 
 /**
- * The mapper's controls: the numbers of `LAB_OPTIONS` in `sfm.worker.ts` that matter to a map.
- * The WebGPU bundle adjustment has no per-group focal kernel (Amendment 4 of the record), so the
- * run shares one focal.
+ * The mapper's controls: the lab preset (`LAB_MAPPER` of `src/sfm/config/lab-preset.ts`), the
+ * numbers of `LAB_OPTIONS` that matter to a map. The WebGPU bundle adjustment has no per-group
+ * focal kernel (Amendment 4 of the record), so the run shares one focal.
  */
-const MAPPER = {
-  ransacIterations: 500,
-  maxErrorPx: 3,
-  minInitialAngleDeg: 1,
-  minTriangulationAngleDeg: 0.5,
-  bundleIterations: 4,
-  finalBundleIterations: 8,
-  refineSharedFocal: true,
-};
+const MAPPER = { ...LAB_MAPPER };
 const VOCABULARY = '/runtime/vocabulary/rootsift-32-v1.bin';
 const VOCABULARY_WORDS = 32;
 
