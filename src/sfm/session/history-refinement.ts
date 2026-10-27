@@ -1,4 +1,5 @@
-import { cameraCenter, projectPoint } from '../../geometry/pose.ts';
+import { cameraCenter, clonePose, projectPoint } from '../../geometry/pose.ts';
+import { refineTrackPoint, triangulateLinear } from '../../geometry/multiview.ts';
 import { cameraAtRatio } from '../focal/focal-search.ts';
 import { copyReconstruction } from '../model/copy.ts';
 import { mergeBundleRefinements, planConnectedBundles } from '../bundle/local-bundle.ts';
@@ -7,7 +8,7 @@ import {
   type BundleAdjustmentResult,
 } from '../bundle/bundle-adjustment.ts';
 import { validateReconstruction } from '../../geometry/validation.ts';
-import type { SparseReconstruction } from '../../contracts/scene.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { observationKey } from '../../contracts/keys.ts';
 
 /** Whole-output metrics: unlike mapper inlier diagnostics, every exported observation counts. */
@@ -28,13 +29,106 @@ export function measureHistory(model: SparseReconstruction, huberPx = 1.5) {
   return { observations, cost, meanErrorPx: observations ? error / observations : Infinity };
 }
 
+/**
+ * @internal The mapper input that the archive's tracks give: one keypoint for each observation
+ * (in landmark order) and one match in each pair of a landmark's views, for the pairs with at
+ * least `minMatches` matches. The cameras are the archive's. The rebuild of a restart focal
+ * (`refineHistory`, `rebuildAtRatio`) maps these tracks again.
+ */
+export function historyTracks(
+  model: SparseReconstruction,
+  minMatches = 16,
+): { images: ImageFeatures[]; pairs: PairMatches[] } {
+  const rank = new Map(model.views.map((v, i) => [v.id, i])),
+    keypoints = model.views.map((): number[] => []),
+    matches = new Map<string, number[]>();
+  for (const point of model.landmarks) {
+    const track = point.observations
+      .map((o) => {
+        const view = rank.get(o.viewId)!,
+          list = keypoints[view]!;
+        list.push(o.pixel[0], o.pixel[1]);
+        return { view, index: list.length / 2 - 1 };
+      })
+      .sort((a, b) => a.view - b.view);
+    for (let a = 0; a < track.length; a++)
+      for (let b = a + 1; b < track.length; b++) {
+        const key = `${track[a]!.view}:${track[b]!.view}`;
+        let list = matches.get(key);
+        if (!list) matches.set(key, (list = []));
+        list.push(track[a]!.index, track[b]!.index);
+      }
+  }
+  const pairs: PairMatches[] = [];
+  for (const [key, list] of matches) {
+    if (list.length / 2 < minMatches) continue;
+    const [first, second] = key.split(':').map(Number) as [number, number];
+    pairs.push({
+      first: model.views[first]!.id,
+      second: model.views[second]!.id,
+      matches: Uint32Array.from(list),
+    });
+  }
+  pairs.sort(
+    (a, b) => rank.get(a.second)! - rank.get(b.second)! || rank.get(a.first)! - rank.get(b.first)!,
+  );
+  return {
+    images: model.views.map((v, i) => ({
+      id: v.id,
+      camera: { ...v.camera },
+      keypoints: Float64Array.from(keypoints[i]!),
+    })),
+    pairs,
+  };
+}
+
+/**
+ * The archive with the poses of `rebuilt` and the camera at `ratio`, and each landmark
+ * triangulated again from its own observations with those poses. Undefined when the rebuild
+ * did not register every view of the archive or a landmark does not triangulate: the restart
+ * then has no map at its focal.
+ */
+function reseeded(
+  original: SparseReconstruction,
+  rebuilt: SparseReconstruction,
+  ratio: number,
+): SparseReconstruction | undefined {
+  const posed = new Map(rebuilt.views.map((v) => [v.id, v]));
+  if (!original.views.every((v) => posed.has(v.id))) return undefined;
+  const views = original.views.map((v) => ({
+      ...v,
+      camera: cameraAtRatio(v.camera, ratio),
+      pose: clonePose(posed.get(v.id)!.pose),
+    })),
+    byId = new Map(views.map((v) => [v.id, v])),
+    landmarks = [];
+  for (const point of original.landmarks) {
+    const observations = point.observations.map((o) => ({
+        camera: byId.get(o.viewId)!.camera,
+        pose: byId.get(o.viewId)!.pose,
+        pixel: o.pixel,
+      })),
+      initial = triangulateLinear(observations);
+    if (!initial) return undefined;
+    landmarks.push({ ...point, xyz: refineTrackPoint(initial, observations) });
+  }
+  return { views, landmarks };
+}
+
 /** Finish an archive against its complete observation set, not just the last local window.
  * A shared physical focal is an optional *solver initialization*, never a post-hoc overwrite.
  * A candidate must improve the same complete robust objective before it can be published.
+ * With `rebuildAtRatio`, every restart focal after the first (the current calibration) starts
+ * from a map rebuilt at that focal, not from the archive's poses and points: a map built at a
+ * wrong focal is a different local minimum (docs/auto-focal.md 2.3, item 3; section 10).
  */
 export async function refineHistory(
   model: SparseReconstruction,
-  options: BundleAdjustmentOptions & { readonly commonFocalRatios?: readonly number[] },
+  options: BundleAdjustmentOptions & {
+    readonly commonFocalRatios?: readonly number[];
+    /** @internal A map of the archive's views built at `ratio`; undefined when none builds. */
+    readonly rebuildAtRatio?: (ratio: number) => Promise<SparseReconstruction | undefined>;
+  },
   solve: (
     model: SparseReconstruction,
     options: BundleAdjustmentOptions,
@@ -70,7 +164,8 @@ export async function refineHistory(
     }
     if (scaleViewId === undefined) deferred = true;
     else {
-      const fullOptions = { ...options, anchorViewId, scaleViewId },
+      const { rebuildAtRatio, ...solveOptions } = options,
+        fullOptions = { ...solveOptions, anchorViewId, scaleViewId },
         partition = planConnectedBundles(original, fullOptions).partition,
         ratios: readonly (number | undefined)[] =
           partition || !options.commonFocalRatios?.length ? [undefined] : options.commonFocalRatios;
@@ -78,20 +173,26 @@ export async function refineHistory(
       // keep their carried intrinsics and use fixed-boundary solves only.
       deferred ||= partition?.sharedFocalDeferred ?? false;
       let bestCost = before.cost;
-      for (const ratio of ratios) {
+      for (const [index, ratio] of ratios.entries()) {
         if (ratio !== undefined && !(Number.isFinite(ratio) && ratio > 0))
           throw new RangeError('History focal seeds must be finite and positive');
-        const initial =
-            ratio === undefined
-              ? original
-              : {
-                  ...original,
-                  views: original.views.map((v) => ({
-                    ...v,
-                    camera: cameraAtRatio(v.camera, ratio),
-                  })),
-                },
-          plan = planConnectedBundles(initial, fullOptions),
+        let initial: SparseReconstruction | undefined =
+          ratio === undefined
+            ? original
+            : {
+                ...original,
+                views: original.views.map((v) => ({
+                  ...v,
+                  camera: cameraAtRatio(v.camera, ratio),
+                })),
+              };
+        if (ratio !== undefined && index > 0 && rebuildAtRatio) {
+          const rebuilt = await rebuildAtRatio(ratio);
+          initial = rebuilt && reseeded(original, rebuilt, ratio);
+          // No map at this focal: the restart has nothing to start from.
+          if (!initial) continue;
+        }
+        const plan = planConnectedBundles(initial, fullOptions),
           refined: SparseReconstruction[] = [];
         for (const problem of plan.problems) {
           try {
