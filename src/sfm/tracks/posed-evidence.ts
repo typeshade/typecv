@@ -9,6 +9,7 @@ import type {
   RegisteredView,
 } from '../../contracts/scene.ts';
 import { observationKey } from '../../contracts/keys.ts';
+import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
 
 export const POSED_EVIDENCE_VERSION = 'typecv-posed-pair-evidence-v1' as const;
 const representation = 'f64-le-hex-v1' as const;
@@ -297,7 +298,15 @@ export function buildPosedEvidenceGraph(
     )
       throw new RangeError('Invalid posed pair proof binding/shape');
     statuses = Array.from({ length: evidence.rows.length }, (_, index) => proof.statuses[index]!);
-    if (!statuses.every((status) => status === 0 || status === 1 || status === 3 || status === 4))
+    if (
+      !statuses.every(
+        (status) =>
+          status === TriangulationStatus.accepted ||
+          status === TriangulationStatus.insufficientObservations ||
+          status === TriangulationStatus.noConsensus ||
+          status === TriangulationStatus.lowParallax,
+      )
+    )
       throw new RangeError('Invalid posed pair proof status');
   }
   const pairRows = evidence.source.pairs.map(() => ({
@@ -313,7 +322,9 @@ export function buildPosedEvidenceGraph(
       rejected: keys.some((key) => exclusions.rejected.has(key)),
     };
     const status = statuses[index] ?? null,
-      candidate = !Object.values(excluded).some(Boolean) && (status === 0 || status === 4);
+      candidate =
+        !Object.values(excluded).some(Boolean) &&
+        (status === TriangulationStatus.accepted || status === TriangulationStatus.lowParallax);
     if (candidate) {
       pairRows[source.pairIndex]!.matches.push(source.first.featureId, source.second.featureId);
       pairRows[source.pairIndex]!.distances.push(source.distance ?? 0);

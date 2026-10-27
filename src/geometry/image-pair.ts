@@ -10,6 +10,7 @@ import {
   type TwoViewResult,
 } from './two-view.ts';
 import { imagePairHomographyIterations } from './operator-defaults.ts';
+import { CHEIRALITY_FAILURE_PREFIX, TwoViewFailure } from '../contracts/two-view-failures.ts';
 
 export interface ImagePairOptions extends TwoViewOptions {
   /** Symmetric transfer threshold in ideal pixels. Default: maxReprojectionErrorPx (4). */
@@ -117,7 +118,7 @@ function verifyImagePairInternal(
       invertibleCount,
       homographyInlierCount: cachedHomographyInlierCount ?? 0,
       inlierRows: new Uint32Array(0),
-      reason: 'Insufficient invertible correspondences',
+      reason: TwoViewFailure.fewInvertible,
     };
   const homographyInlierCount =
     cachedHomographyInlierCount ??
@@ -169,4 +170,4 @@ export const CHEIRALITY_RETRIES = 2;
 export const CHEIRALITY_RETRY_SEED_STEP = 7919;
 /** @internal */
 export const isCheiralityFailure = (reason: string | undefined) =>
-  typeof reason === 'string' && reason.startsWith('Cheirality failed');
+  typeof reason === 'string' && reason.startsWith(CHEIRALITY_FAILURE_PREFIX);

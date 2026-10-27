@@ -12,6 +12,7 @@ import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { estimatePairGpu, estimatePairsGpu } from './pair-estimation.ts';
 import { recoveryFailure, recoverySummary, type GpuConsensusExecution } from './two-view.ts';
 import type { ShadeDevice } from '../../device/gpu/device.ts';
+import { TwoViewFailure } from '../../contracts/two-view-failures.ts';
 
 export interface GpuImagePairOptions extends ImagePairOptions {
   readonly batchSize?: number;
@@ -96,7 +97,7 @@ type Estimate = Awaited<ReturnType<typeof estimatePairGpu>>;
 
 const failureOf = (result: Estimate) =>
   result.verification!.invertibleCount < 8
-    ? 'Insufficient invertible correspondences'
+    ? TwoViewFailure.fewInvertible
     : recoveryFailure(result.recovery!.info[56]!);
 
 function finishRequest(result: Estimate): GpuImagePairVerification {
@@ -126,7 +127,7 @@ const emptyVerification = (device: ShadeDevice): GpuImagePairVerification => ({
   invertibleCount: 0,
   homographyInlierCount: 0,
   inlierRows: new Uint32Array(0),
-  reason: 'Insufficient invertible correspondences',
+  reason: TwoViewFailure.fewInvertible,
   execution: {
     backend: device.backend,
     report: { tier: device.backend, dispatches: 0, submissions: 0, groups: [] },

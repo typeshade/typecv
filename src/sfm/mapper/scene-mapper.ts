@@ -50,6 +50,10 @@ import type {
 } from '../../contracts/scene.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx, maxErrorOfHuberPx } from '../config/defaults.ts';
 import { observationKey } from '../../contracts/keys.ts';
+import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
+
+/** A triangulation result in the point channel that defers a depth: the status, negated. */
+const DEPTH_DEFERRED_POINT = -TriangulationStatus.depthSensitivity;
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
 export interface TriangulationGroup {
@@ -303,7 +307,7 @@ export function* sceneSteps(
     groups.forEach((g, i) => {
       const point = points[i]!;
       if (point < 0) {
-        if (point === -5) depthDeferred.add(g.trackId);
+        if (point === DEPTH_DEFERRED_POINT) depthDeferred.add(g.trackId);
         triedAt.set(g.trackId, cameraIds.length);
         return;
       }
@@ -596,7 +600,8 @@ export class HostSceneDriver {
             ...job.depth,
           });
           const result = detailed.track;
-          if (detailed.status === 5) points[g] = -5;
+          if (detailed.status === TriangulationStatus.depthSensitivity)
+            points[g] = DEPTH_DEFERRED_POINT;
           if (!result) return;
           const point = scene.addPoint(group.trackId, result.xyz);
           for (let k = 0; k < observations.length; k++)

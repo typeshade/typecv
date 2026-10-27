@@ -9,6 +9,7 @@ import {
 } from './pose.ts';
 import { inverse3, nullspace, solveSystem } from './numerics.ts';
 import { TRIANGULATION_DEFAULTS } from './operator-defaults.ts';
+import { TriangulationStatus } from '../contracts/triangulation-status.ts';
 
 export interface DepthSensitivityOptions {
   /** Optional bound on linearized depth stddev / positive camera Z, conditional on fixed poses/K. */
@@ -195,7 +196,7 @@ export function triangulateTrack(
   options: TrackTriangulationOptions = {},
 ): TrackTriangulation | undefined {
   const result = triangulateTrackDetailed(observations, options);
-  return result.status === 0 ? result.track : undefined;
+  return result.status === TriangulationStatus.accepted ? result.track : undefined;
 }
 
 /**
@@ -227,7 +228,7 @@ export function triangulateTrackDetailed(
     validatePose(o.pose);
     if (!o.pixel.every(Number.isFinite)) throw new RangeError('Invalid triangulation pixel');
   }
-  if (observations.length < 2) return { status: 1 };
+  if (observations.length < 2) return { status: TriangulationStatus.insufficientObservations };
   const pairs: { i: number; j: number; baseline: number }[] = [];
   for (let i = 0; i < observations.length; i++)
     for (let j = i + 1; j < observations.length; j++) {
@@ -266,7 +267,7 @@ export function triangulateTrackDetailed(
       bestMask = mask;
     }
   }
-  if (!best || bestCount < 2) return { status: 3 };
+  if (!best || bestCount < 2) return { status: TriangulationStatus.noConsensus };
   // Fixed consensus refinement cannot lower the objective by dropping observations.
   const selected = observations.filter((_, i) => bestMask[i]);
   const linear = triangulateLinear(selected);
@@ -276,20 +277,20 @@ export function triangulateTrackDetailed(
   if (cost(refined) < cost(best)) best = refined;
   const inliers = Uint8Array.from(observations, (o) => (error(o, best!) <= maxError ? 1 : 0)),
     accepted = observations.filter((_, i) => inliers[i]);
-  if (accepted.length < 2) return { status: 3 };
+  if (accepted.length < 2) return { status: TriangulationStatus.noConsensus };
   let maxAngle = 0;
   for (let i = 0; i < accepted.length; i++)
     for (let j = i + 1; j < accepted.length; j++)
       maxAngle = Math.max(maxAngle, angleAt(best, accepted[i]!.pose, accepted[j]!.pose));
-  if (!Number.isFinite(maxAngle)) return { status: 3 };
-  if (maxAngle < minAngle) return { status: 4 };
+  if (!Number.isFinite(maxAngle)) return { status: TriangulationStatus.noConsensus };
+  if (maxAngle < minAngle) return { status: TriangulationStatus.lowParallax };
   if (depth.maxRelativeDepthStdDev) {
     const sensitivity = assessTrackDepth(best, accepted, depth.pixelNoiseStdDevPx);
     if (!sensitivity || sensitivity.maxRelativeDepthStdDev > depth.maxRelativeDepthStdDev)
-      return { status: 5 };
+      return { status: TriangulationStatus.depthSensitivity };
   }
   return {
-    status: 0,
+    status: TriangulationStatus.accepted,
     track: {
       xyz: best,
       inliers,

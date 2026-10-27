@@ -76,6 +76,7 @@ import { copyReconstruction } from '../model/copy.ts';
 import { imagePairHomographyIterations } from '../../geometry/operator-defaults.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
 import { observationKey, pairKey } from '../../contracts/keys.ts';
+import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
 
 /** @internal */
 export { judgePair } from '../pairs/pair-verdict.ts';
@@ -853,7 +854,7 @@ export function* incrementalSteps(
     groups.forEach((g, i) => {
       const detailed = results[i]!,
         result = detailed.track;
-      if (detailed.status === 5) depthDeferred.add(g.trackId);
+      if (detailed.status === TriangulationStatus.depthSensitivity) depthDeferred.add(g.trackId);
       if (result) {
         depthDeferred.delete(g.trackId);
         landmarks.set(g.trackId, {
