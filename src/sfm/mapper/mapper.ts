@@ -75,6 +75,7 @@ import {
 import { copyReconstruction } from '../model/copy.ts';
 import { imagePairHomographyIterations } from '../../geometry/operator-defaults.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
+import { observationKey, pairKey } from '../../contracts/keys.ts';
 
 /** @internal */
 export { judgePair } from '../pairs/pair-verdict.ts';
@@ -483,9 +484,7 @@ export function globalBundleDue(
     (controls.globalFrequency > 0 && views % controls.globalFrequency === 0)
   );
 }
-function pairKey(first: number, second: number): string {
-  return `${Math.min(first, second)}:${Math.max(first, second)}`;
-}
+
 /**
  * @internal Index the pre-verified pairs by pair key. Throws RangeError when an entry names no
  * input pair, repeats a pair, disagrees with its own diagnostic or lacks the geometry of a seed.
@@ -773,7 +772,7 @@ export function* incrementalSteps(
   for (const track of graph.tracks)
     for (const o of track.observations) {
       viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(`${o.viewId}:${o.featureId}`, track.id);
+      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
     }
   const pixelOf = (viewId: number, featureId: number): [number, number] => {
     const k = byId.get(viewId)!.keypoints;
@@ -803,13 +802,13 @@ export function* incrementalSteps(
     for (const point of resume.landmarks) {
       // Track ids are rebuilt from the current edges; adopt a landmark through its observations.
       const trackId = point.observations
-        .map((o) => trackOfObservation.get(`${o.viewId}:${o.featureId}`))
+        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
         .find((id) => id !== undefined);
       if (trackId === undefined) continue;
       const observations = point.observations.filter(
         (o) =>
           registered.has(o.viewId) &&
-          trackOfObservation.get(`${o.viewId}:${o.featureId}`) === trackId,
+          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
       );
       const existing = landmarks.get(trackId);
       if (

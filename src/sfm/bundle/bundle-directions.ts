@@ -2,6 +2,7 @@ import { observationJacobian, projectPoint } from '../../geometry/pose.ts';
 import type { Pose, Camera } from '../../contracts/camera.ts';
 import type { LandmarkObservation, SparseReconstruction } from '../../contracts/scene.ts';
 import type { BundleAdjustmentOptions, BundleAdjustmentResult } from './bundle-adjustment.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 /**
  * A world-frame bearing hypothesis with unresolved depth. The optimizer uses q = R d;
@@ -26,7 +27,9 @@ export function appendBundleDirections(
   const ids = new Set(input.landmarks.map((p) => p.trackId)),
     views = new Set(input.views.map((v) => v.id)),
     features = new Set(
-      input.landmarks.flatMap((p) => p.observations.map((o) => `${o.viewId}:${o.featureId}`)),
+      input.landmarks.flatMap((p) =>
+        p.observations.map((o) => observationKey(o.viewId, o.featureId)),
+      ),
     );
   const extra = constraints.map((p) => {
     const norm = p.direction instanceof Float64Array ? Math.hypot(...p.direction) : NaN;
@@ -45,7 +48,7 @@ export function appendBundleDirections(
     ids.add(p.trackId);
     const seen = new Set<number>();
     for (const o of p.observations) {
-      const key = `${o.viewId}:${o.featureId}`;
+      const key = observationKey(o.viewId, o.featureId);
       if (
         !views.has(o.viewId) ||
         seen.has(o.viewId) ||

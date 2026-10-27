@@ -21,6 +21,7 @@ import {
   kltAffineRecords,
   type KltOptions,
 } from '../../../motion/gpu/klt.ts';
+import { observationKey } from '../../../contracts/keys.ts';
 
 /** Frames in playback order, in the same pixel coordinates as their keypoints and camera. */
 export interface ObservationExpansionFrame extends ImageFeatures {
@@ -313,7 +314,7 @@ export async function expandObservationsGpu(
     validateCamera(view.camera);
   }
   const points = new Map<string, Float64Array>(),
-    key = (v: number, f: number) => `${v}:${f}`;
+    key = observationKey;
   const modelEdges: PairMatches[] = [];
   for (const point of options.initialModel?.landmarks ?? []) {
     const first = point.observations[0];

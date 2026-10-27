@@ -19,6 +19,7 @@ import {
   maxErrorOfHuberPx,
 } from '../src/sfm/config/defaults.ts';
 import { bundleStalled } from '../src/sfm/bundle/bundle-shared.ts';
+import { observationKey, pairKey } from '../src/contracts/keys.ts';
 
 // Phase 2 of docs/library-structure.md (section 5) writes each default, code and message once.
 // Section 4, rule 1: no number, default or message text changes. Each value below is the literal
@@ -73,4 +74,9 @@ test('the mapper, session and solver defaults are the literals on 4022861', () =
     [bundleStalled(0.5e-4, 1, 1e-4), bundleStalled(2e-4, 1, 1e-4), bundleStalled(5e-4, 10, 1e-4)],
     [true, false, true],
   );
+});
+
+test('the keys keep their spellings', () => {
+  assert.equal(observationKey(3, 41), '3:41');
+  assert.deepEqual([pairKey(7, 2), pairKey(2, 7), pairKey(0, 0)], ['2:7', '2:7', '0:0']);
 });

@@ -8,6 +8,7 @@ import {
   DEFAULT_GLOBAL_BUNDLE_RATIO,
   MAPPER_DEFAULTS,
 } from './defaults.ts';
+import { pairKey } from '../../contracts/keys.ts';
 
 /** @internal Validate the inputs and options; throws RangeError on an invalid one. */
 export function incrementalControls(
@@ -91,7 +92,7 @@ export function incrementalControls(
     throw new RangeError('Invalid initial pair');
   const pairKeys = new Set<string>();
   for (const p of inputPairs) {
-    const key = [p.first, p.second].sort((a, b) => a - b).join(':');
+    const key = pairKey(p.first, p.second);
     if (pairKeys.has(key)) throw new RangeError('Duplicate image pair');
     pairKeys.add(key);
   }

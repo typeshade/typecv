@@ -24,6 +24,7 @@ import type {
 } from '../../contracts/scene.ts';
 import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import { snapshotCameraMasks } from '../tracks/observation-selection.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 export interface InverseDepthTrackingOptions extends InverseDepthBundleOptions {
   readonly maxRelativeStddev?: number;
@@ -226,7 +227,7 @@ export class InverseDepthTracker implements InverseDepthTracking {
       this.masks.set(mask.viewId, mask);
     for (const mask of this.masks.values())
       mask.values.forEach((v, featureId) => {
-        if (!v) excluded.add(`${mask.viewId}:${featureId}`);
+        if (!v) excluded.add(observationKey(mask.viewId, featureId));
       });
     const availableImages = new Map(this.images);
     for (const image of input.images) availableImages.set(image.id, image);
@@ -265,12 +266,14 @@ export class InverseDepthTracker implements InverseDepthTracking {
     const byTrackId = new Map(tracks.map((t) => [t.id, t]));
     const owner = new Map(
         tracks.flatMap((t) =>
-          t.observations.map((o) => [`${o.viewId}:${o.featureId}`, t.id] as const),
+          t.observations.map((o) => [observationKey(o.viewId, o.featureId), t.id] as const),
         ),
       ),
       finite =
         input.reconstruction?.landmarks.flatMap((p) => {
-          const id = owner.get(`${p.observations[0]!.viewId}:${p.observations[0]!.featureId}`);
+          const id = owner.get(
+            observationKey(p.observations[0]!.viewId, p.observations[0]!.featureId),
+          );
           const observations =
             byTrackId.get(id!)?.observations.filter((o) => active.has(o.viewId)) ?? [];
           return id !== undefined && observations.length >= 2

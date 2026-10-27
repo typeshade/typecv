@@ -8,6 +8,7 @@ import {
 } from '../bundle/bundle-adjustment.ts';
 import { validateReconstruction } from '../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../contracts/scene.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 /** Whole-output metrics: unlike mapper inlier diagnostics, every exported observation counts. */
 export function measureHistory(model: SparseReconstruction, huberPx = 1.5) {
@@ -140,14 +141,14 @@ export function refinedHistoryWindow(local: SparseReconstruction, full: SparseRe
   const views = new Map(full.views.map((v) => [v.id, v])),
     points = new Map(
       full.landmarks.flatMap((p) =>
-        p.observations.map((o) => [o.viewId + ':' + o.featureId, p] as const),
+        p.observations.map((o) => [observationKey(o.viewId, o.featureId), p] as const),
       ),
     );
   return copyReconstruction({
     views: local.views.map((v) => views.get(v.id) ?? v),
     landmarks: local.landmarks.map((p) => {
       const solved = p.observations
-        .map((o) => points.get(o.viewId + ':' + o.featureId))
+        .map((o) => points.get(observationKey(o.viewId, o.featureId)))
         .find(Boolean);
       return solved ? { ...p, xyz: solved.xyz } : p;
     }),

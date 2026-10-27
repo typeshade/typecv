@@ -16,6 +16,7 @@ import {
 } from '../mapper/mapper.ts';
 import { incrementalControls } from '../config/incremental-controls.ts';
 import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
+import { pairKey } from '../../contracts/keys.ts';
 
 /** The RootSIFT dimension. */
 export const DESCRIPTOR_DIMENSIONS = 128;
@@ -437,8 +438,6 @@ function dot(a: Float32Array, b: Float32Array): number {
   for (let i = 0; i < a.length; i++) s += a[i]! * b[i]!;
   return s;
 }
-
-const pairKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
 export interface CandidateSet {
   /** Sorted by (first, second). `first < second`. */

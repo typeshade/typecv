@@ -65,6 +65,7 @@ import {
   type GpuFloatMatches,
 } from '../../features/gpu/float-matching.ts';
 import { MAPPER_DEFAULTS, SESSION_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
+import { pairKey } from '../../contracts/keys.ts';
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
@@ -220,7 +221,7 @@ export async function reconstructIncrementalFloatGpu(
   for (const pair of edges) {
     if (!byId.has(pair.first) || !byId.has(pair.second) || pair.first === pair.second)
       throw new RangeError('Invalid float-feature image pair');
-    const key = [pair.first, pair.second].sort((a, b) => a - b).join(':');
+    const key = pairKey(pair.first, pair.second);
     if (seen.has(key)) throw new RangeError('Duplicate float-feature image pair');
     seen.add(key);
     const first = features.get(pair.first)!,
@@ -643,11 +644,11 @@ export class IncrementalSfmSession {
           const ids = point.observations.map((o) => o.viewId).sort((a, b) => a - b);
           for (let i = 0; i < ids.length; i++)
             for (let j = i + 1; j < ids.length; j++) {
-              const key = `${ids[i]}:${ids[j]}`;
+              const key = pairKey(ids[i]!, ids[j]!);
               shared.set(key, (shared.get(key) ?? 0) + 1);
             }
         }
-        const common = (a: number, b: number) => shared.get(a < b ? `${a}:${b}` : `${b}:${a}`) ?? 0;
+        const common = (a: number, b: number) => shared.get(pairKey(a, b)) ?? 0;
         // Move the local gauge to existing registered cameras; their world poses are preserved.
         const candidates = this.state.model.views.filter((view) => recentIds.has(view.id));
         let best = 0;
@@ -668,14 +669,12 @@ export class IncrementalSfmSession {
       images = images.filter((view) => keep.has(view.id));
       edges = edges.filter((pair) => keep.has(pair.first) && keep.has(pair.second));
       if (this.state.model && anchors) {
-        const existing = new Set(
-          edges.map((pair) => [pair.first, pair.second].sort((a, b) => a - b).join(':')),
-        );
+        const existing = new Set(edges.map((pair) => pairKey(pair.first, pair.second)));
         // Carry real shared observations across an evicted chain; verify these edges normally.
         for (const anchor of anchors)
           for (const view of images) {
             if (view.id === anchor) continue;
-            const key = [anchor, view.id].sort((a, b) => a - b).join(':');
+            const key = pairKey(anchor, view.id);
             if (existing.has(key)) continue;
             const matches: number[] = [];
             for (const point of this.state.model.landmarks) {

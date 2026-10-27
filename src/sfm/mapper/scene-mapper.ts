@@ -49,6 +49,7 @@ import type {
   SparseReconstruction,
 } from '../../contracts/scene.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx, maxErrorOfHuberPx } from '../config/defaults.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
 export interface TriangulationGroup {
@@ -201,7 +202,7 @@ export function* sceneSteps(
   for (const track of graph.tracks)
     for (const o of track.observations) {
       viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(`${o.viewId}:${o.featureId}`, track.id);
+      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
     }
   const pixelOf = (viewId: number, featureId: number): [number, number] => {
     const k = byId.get(viewId)!.keypoints;
@@ -241,13 +242,13 @@ export function* sceneSteps(
       adopted = new Map<number, Landmark>();
     for (const point of resume.landmarks) {
       const trackId = point.observations
-        .map((o) => trackOfObservation.get(`${o.viewId}:${o.featureId}`))
+        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
         .find((id) => id !== undefined);
       if (trackId === undefined) continue;
       const observations = point.observations.filter(
         (o) =>
           registered.has(o.viewId) &&
-          trackOfObservation.get(`${o.viewId}:${o.featureId}`) === trackId,
+          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
       );
       const existing = adopted.get(trackId);
       if (

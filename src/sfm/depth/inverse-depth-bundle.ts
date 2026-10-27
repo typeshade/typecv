@@ -16,6 +16,7 @@ import {
   type AnchoredInverseDepth,
   type InverseDepthLinearization,
 } from '../../geometry/inverse-depth.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 export interface InverseDepthConstraint {
   readonly trackId: number;
@@ -258,7 +259,9 @@ export function* inverseDepthBundleSteps(
     viewMap = new Map(input.views.map((v) => [v.id, v])),
     ids = new Set(input.landmarks.map((p) => p.trackId)),
     owned = new Set(
-      input.landmarks.flatMap((p) => p.observations.map((o) => `${o.viewId}:${o.featureId}`)),
+      input.landmarks.flatMap((p) =>
+        p.observations.map((o) => observationKey(o.viewId, o.featureId)),
+      ),
     );
   const points: InverseDepthConstraint[] = input.landmarks.map((p) => ({
     trackId: p.trackId,
@@ -285,7 +288,7 @@ export function* inverseDepthBundleSteps(
     const seen = new Set<number>();
     ids.add(p.trackId);
     for (const o of p.observations) {
-      const key = `${o.viewId}:${o.featureId}`;
+      const key = observationKey(o.viewId, o.featureId);
       if (
         !Number.isSafeInteger(o.featureId) ||
         o.featureId < 0 ||

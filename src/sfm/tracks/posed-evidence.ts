@@ -8,6 +8,7 @@ import type {
   PairMatches,
   RegisteredView,
 } from '../../contracts/scene.ts';
+import { observationKey } from '../../contracts/keys.ts';
 
 export const POSED_EVIDENCE_VERSION = 'typecv-posed-pair-evidence-v1' as const;
 const representation = 'f64-le-hex-v1' as const;
@@ -305,7 +306,7 @@ export function buildPosedEvidenceGraph(
   }));
   const decisions = evidence.rows.map((row, index) => {
     const source = evidence.source.rows[row.sourceRow]!,
-      keys = row.observations.map((o) => `${o.viewId}:${o.featureId}`);
+      keys = row.observations.map((o) => observationKey(o.viewId, o.featureId));
     const excluded = {
       currentOwned: keys.some((key) => exclusions.currentOwned.has(key)),
       archiveOwned: keys.some((key) => exclusions.archiveOwned.has(key)),
