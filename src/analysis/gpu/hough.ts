@@ -21,6 +21,9 @@ import {
   houghSuppress,
   houghToGray,
   houghVote,
+  MAX_SEGMENTS,
+  SEGMENT_STRIDE,
+  TIE,
 } from './hough.shade.ts';
 
 /** Options of `canny` and `cannyGpu`, with the defaults of scikit-image's `feature.canny`. */
@@ -105,9 +108,6 @@ export interface HoughLinesResult extends CannyResult {
 const LANES = 64;
 // WebGPU runs at most 65535 workgroups in one dispatch.
 const MAX_LANES_PER_DISPATCH = 65535 * LANES;
-const MAX_SEGMENTS = 16;
-const SEGMENT_STRIDE = 1 + 4 * MAX_SEGMENTS;
-const TIE = 1e-5;
 const TAN_22_5 = 0.41421356237309503;
 const HYSTERESIS_ROUND = 8;
 /** Pixels with a gradient magnitude at or below this (a quarter of a gray level) count as flat. */
