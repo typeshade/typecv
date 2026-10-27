@@ -11,6 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROBE_RECORD_FORMAT } from '../website/src/lib/probe-record.ts';
+import { failedCases, HARDWARE_CHECK_FORMAT } from '../website/src/lib/hardware-check/record.ts';
 
 export const NAMESPACE_TITLES = ['typecv-site-typecv-records', 'typecv-records'];
 export const RECORD_PREFIX = 'record/';
@@ -54,10 +55,32 @@ function probeLine(key) {
     .filter(Boolean)
     .join(' | ');
 }
+/** One line for a hardware-check record of `/lab/check/` (metadata `kind: 'check'`). */
+function checkLine(key) {
+  const m = key.metadata ?? {};
+  return [
+    key.name.slice(RECORD_PREFIX.length),
+    m.gpu || '?',
+    'check',
+    m.fp64Flavor ? `fp64 ${m.fp64Flavor}` : '',
+    m.sameFlavor === true
+      ? 'flavor as before 0085'
+      : m.sameFlavor === false
+        ? 'FLAVOR CHANGED'
+        : '',
+    `${m.cases ?? '?'} cases`,
+    m.failed ? `FAILED ${m.failed}: ${(m.failedCases ?? []).join(', ')}` : 'failed none',
+    m.aborted ? 'ABORTED' : '',
+    m.site ? `site ${m.site}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
 /** One line per record for the job log. */
 export function summaryLine(key) {
   const m = key.metadata ?? {};
   if (m.kind === 'probe') return probeLine(key);
+  if (m.kind === 'check') return checkLine(key);
   return [
     key.name.slice(RECORD_PREFIX.length),
     m.gpu ?? '?',
@@ -79,12 +102,19 @@ export function summaryLine(key) {
     .join(' | ');
 }
 /** Whether a record is printed in full under `--print`: under `failures`, a failed run, a run
- *  whose dense MVS failed (v5), and a probe record that found a hanging track or aborted. */
+ *  whose dense MVS failed (v5), a probe record that found a hanging track or aborted, and a
+ *  hardware-check record with a failed case, a changed flavor or an early stop. */
 export function printed(record, mode) {
   if (mode === 'all') return true;
   if (mode !== 'failures') return false;
   if (record.format === PROBE_RECORD_FORMAT)
     return (record.bisection?.hangingTracks?.length ?? 0) > 0 || record.aborted != null;
+  if (record.format === HARDWARE_CHECK_FORMAT)
+    return (
+      failedCases({ cases: record.cases ?? [] }).length > 0 ||
+      record.flavor?.same === false ||
+      record.aborted != null
+    );
   return record.failure != null || record.dense?.status === 'failed';
 }
 

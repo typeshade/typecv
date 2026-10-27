@@ -216,6 +216,10 @@ chunk measurements, and the bisection's hanging tracks with their two pixels. It
 at most 64 steps, and the number of page reloads it took (`reloads`). It holds no image,
 file name or IP address.
 
+The collector also stores hardware-check records of the check page (Hardware check, below).
+`website/src/lib/hardware-check/record.ts` defines the record (`typecv-hardware-check-v1`) and its
+validator.
+
 ## Video-only examples (2026-10-23)
 
 The lab now lists original video examples and saved results. The earlier `pyramid` eight-JPEG
@@ -843,6 +847,65 @@ the device. To go on from that set:
 3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=1360-1671`.
 4. Do steps 3 to 7 again.
 
+## Hardware check
+
+The page `/lab/check/` runs a fixed set of checks on the visitor's GPU, and sends one
+hardware-check record (`typecv-hardware-check-v1`) to the collector. Each check runs on the
+device and on the CPU tier of the same browser, the oracle of Rule 1.2 (`docs/design-rules.md`).
+`website/src/lib/hardware-check/record.ts` defines the record and its validator, and the
+collector uses the same validator. Nothing is sent without the consent checkbox. A record holds:
+
+| Field     | Content                                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `site`    | The site commit (`/version.json`), the page address and the TypeShade pin of the runtime (`/runtime/version.json`)         |
+| `client`  | Browser user agent, platform, language, core count and device memory class                                                 |
+| `adapter` | The WebGPU adapter's vendor, architecture, device, description, fallback flag, limits and features (`lib/adapter-info.ts`) |
+| `flavor`  | The flavor of the emulated double that the TypeShade device selected, and the flavor of TypeCV's rule before change 0085   |
+| `device`  | The time budget of the device, whether the adapter offers `timestamp-query`, and the TypeShade version the device reports  |
+| `cases`   | One entry for each case of the check (below), at most 32                                                                   |
+| `aborted` | Why the check stopped before its last case; null when every case ran                                                       |
+| `resume`  | After a device loss, the query `?cases=…` that runs the cases that did not run; else null                                  |
+| `note`    | Up to 500 characters that the visitor typed: the GPU model and the computer                                                |
+
+The adapter reports a vendor and an architecture, and often no model. So `note` holds the
+visitor's statement of the model, for example "RTX 5060 Ti, Windows 11".
+
+`flavor` compares two selections of the flavor (TypeShade changes 0073 and 0085). `selected` is
+`ShadeDevice.fp64Flavor` of a device opened as the lab opens its device (`adapterLimits: true`),
+and `selectedDefault` that of a device opened with the default options. `previous` and
+`previousRequested` are the flavors that TypeCV's rule before change 0085 gives on the same two
+paths. `signals` holds what the rule reads: the adapter info of a `GPUDevice` of the page's own,
+the info of the adapter that WebGPU offers, and the user agent. `info` is the device's own
+`ShadeDevice.info.webgpu`: its identity strings and where TypeShade read them (`provenance`).
+`same` is true when both selections equal the rule, false when one differs, and null when the
+page forced a flavor (`?fp64=`) or no device opened.
+
+Each case runs one family of kernels on a small fixed input. A case holds:
+
+- `name`, `family` (the kernel entries it runs) and `bound`: `kind` (`exact`, `abs` or `rel`),
+  `value`, and `source`, the test that states the bound;
+- `outcome` (`completed`, `lost`, `timeout`, `error`, `open-failed` or `skipped`) and `skipped`,
+  the reason that a case did not run;
+- `coldMs` and `warmMs`, the wall time of two runs on one device, and `cpuMs`, that of the CPU
+  tier;
+- `digests`: `input`, `device` (the first run), `deviceWarm` (the second run), `cpu`, and the
+  digest of each top-level field of the device's and the CPU tier's answer (`deviceParts`,
+  `cpuParts`, at most 16 each);
+- `repeatable`, whether the two runs on the device gave the same digest;
+- `agreement` (`maxAbs`, `maxRel`, `mismatches`, `compared` and up to 8 `problems`) and `pass`,
+  whether the device's answer is within the bound;
+- `summary`, at most 16 counts of the case's work, such as pixels, points and the active lanes of
+  the last workgroup;
+- `gpu`, the GPU time of each fused call list of the first run, in the form of `timing.gpu`, at
+  most 64 rows; and `chunks`, the chunk rates, in the form of `timing.chunks`;
+- `loss` (`message`, `reason`, `lastKernel` and up to four uncaptured GPU errors) and `error`.
+
+A digest is the SHA-256 of the canonical encoding of `tests/typeshade/digest.mjs`: each number as
+its IEEE 754 binary64 bit pattern, each typed array with its type name. A digest covers the answer
+of a case only, with no tier name, plan report or time. An answer whose order depends on the
+device's scheduling is digested in a form without that order: the voxel partition, not the owner
+of each voxel. A record holds no image, file name or IP address.
+
 ## Collector
 
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
@@ -869,11 +932,16 @@ benchmark name, the GPU time of the run in ms (`gpuMs`, v6, null without timesta
 in-memory KV.
 
 The Worker validates a record with `format: "typecv-triangulation-probe-v1"` as a probe
-record, and every other record as a run record. A probe record is stored under the
+record, a record with `format: "typecv-hardware-check-v1"` as a hardware-check record, and every
+other record as a run record. A probe record and a hardware-check record are stored under the
 same prefix. Its listing metadata names it as a probe: `kind: 'probe'`, the received
 time, the GPU, the fp64 flavor, the submission mode, the outcome of each variant, the
 number of steps, the number of hanging tracks with the first 8 indices, and whether
-the probe aborted.
+the probe aborted. The listing metadata of a hardware-check record says `kind: 'check'`, the
+received time, the GPU, the selected flavor, whether it equals the rule before change 0085
+(`sameFlavor`), the number of cases, the number of failed cases with the first 8 names, whether
+the check stopped early, and the site commit. A case fails when it did not complete, when its
+answer is outside its bound, or when its two runs on the device differ.
 
 ### Result files
 
@@ -981,7 +1049,11 @@ MVS failed. A probe record has a line of its own: the GPU,
 `probe`, the fp64 flavor, `bounded` or `unbounded`, the outcomes of the variants, the
 hanging tracks, the number of steps, and `ABORTED` when the probe aborted. Under
 `print: failures` the export also prints in full each probe record that found a hanging
-track or aborted. The inputs are `limit` (newest
+track or aborted. A hardware-check record has a line of its own too: the GPU, `check`, the
+flavor, `flavor as before 0085` or `FLAVOR CHANGED`, the number of cases, the failed cases,
+`ABORTED` when the check stopped early, and the site commit. Under `print: failures` the export
+prints in full each hardware-check record with a failed case, a changed flavor or an early stop.
+The inputs are `limit` (newest
 records, default 50) and `print` (`failures`, `all` or `none`).
 
 `scripts/fetch-record-files.mjs` fetches and checks the result files of an exported record, and
