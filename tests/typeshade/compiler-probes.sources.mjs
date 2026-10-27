@@ -2,8 +2,10 @@
 //
 // Each P source is the audit harness's source for its shape, cut to the one function under test
 // (docs/audits/2026-10-26-kernel-style.md, section 0.1). Each S source is a shape of this suite.
-// MARK ends the line a refusal is expected on: the loop for TS8070, the helper's parameter for
-// TS8020 and the call for TS8099. A source with no refusal has no mark.
+// Each K source is a shape of the loops of src/mvs/gpu/cloud-knn.shade.ts, cut to one entry or
+// one kernel function. MARK ends the line a refusal is expected on: the loop for TS8070, the
+// helper's parameter for TS8020, and the call (P13) or the labelled statement (K3b) for TS8099. A
+// source with no refusal has no mark.
 
 export const MARK = '// probe';
 
@@ -351,6 +353,206 @@ export function maxReduce(xs: array<f32>): f32 {
     best = max(best, xs[i]);
   }
   return best;
+}
+`,
+
+  // K1 to K5: entries over the points `xs` with the kernel's clamp-and-mask lane. K1, K2 and K4
+  // sum each point's three smallest squared distances to the other points, with the insertion of
+  // cloud-knn.shade.ts (lines 116 to 126). K3, K3b and K5 find the first point within the
+  // smallest ring of 1 to 4.
+  k1: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const out: storage<array<f32>, 'read_write'>;
+function insertSorted(@inout best: array<f32, 32>, k: u32, d2: f32): void {
+  let s: u32 = k - 1;
+  for (let step: u32 = 0; step < 31; step++) {
+    if (s > 0 && best[s - 1] > d2) {
+      best[s] = best[s - 1];
+      s = s - 1;
+    }
+  }
+  best[s] = d2;
+}
+@compute([64])
+export function insertByRef(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  let best: array<f32, 32> = fill<f32, 32>(1e30);
+  for (let j: u32 = 0; j < xs.length; j++) {
+    const d: f32 = xs[j] - xs[i];
+    if (j !== i && d * d < best[2]) insertSorted(best, 3, d * d);
+  }
+  if (gid.x < xs.length) out[gid.x] = best[0] + best[1] + best[2];
+}
+`,
+
+  k2: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const bucketStart: storage<array<u32>>;
+declare const out: storage<array<f32>, 'read_write'>;
+function insertSorted(@inout best: array<f32, 32>, k: u32, d2: f32): void {
+  let s: u32 = k - 1;
+  for (let step: u32 = 0; step < 31; step++) {
+    if (s > 0 && best[s - 1] > d2) {
+      best[s] = best[s - 1];
+      s = s - 1;
+    }
+  }
+  best[s] = d2;
+}
+function scanBucket(@inout best: array<f32, 32>, k: u32, i: u32, bucket: u32): void {
+  const end: u32 = bucketStart[bucket + 1];
+  for (let j: u32 = bucketStart[bucket]; j < end; j++) {
+    const d: f32 = xs[j] - xs[i];
+    if (j !== i && d * d < best[k - 1]) insertSorted(best, k, d * d);
+  }
+}
+@compute([64])
+export function scanByRef(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  let best: array<f32, 32> = fill<f32, 32>(1e30);
+  for (let b: u32 = 0; b < bucketStart.length - 1; b++) scanBucket(best, 3, i, b);
+  if (gid.x < xs.length) out[gid.x] = best[0] + best[1] + best[2];
+}
+`,
+
+  k3: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const out: storage<array<u32>, 'read_write'>;
+@compute([64])
+export function ringBreak(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  let found: bool = false;
+  let ring: u32 = 0;
+  let at: u32 = 0;
+  for (let r: u32 = 1; r <= 4; r++) {
+    for (let j: u32 = 0; j < xs.length; j++) {
+      if (j !== i && abs(xs[j] - xs[i]) <= f32(r)) {
+        found = true;
+        ring = r;
+        at = j;
+        break;
+      }
+    }
+    if (found) break;
+  }
+  if (gid.x < xs.length) out[gid.x] = found ? ring * 100 + at : 0;
+}
+`,
+
+  k3b: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const out: storage<array<u32>, 'read_write'>;
+@compute([64])
+export function ringLabel(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  let ring: u32 = 0;
+  let at: u32 = 0;
+  rings: for (let r: u32 = 1; r <= 4; r++) { // probe
+    for (let j: u32 = 0; j < xs.length; j++) {
+      if (j !== i && abs(xs[j] - xs[i]) <= f32(r)) {
+        ring = r;
+        at = j;
+        break rings;
+      }
+    }
+  }
+  if (gid.x < xs.length) out[gid.x] = ring * 100 + at;
+}
+`,
+
+  k4: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const out: storage<array<f32>, 'read_write'>;
+@compute([64])
+export function insertWhile(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  const k: u32 = 3;
+  let best: array<f32, 32> = fill<f32, 32>(1e30);
+  for (let j: u32 = 0; j < xs.length; j++) {
+    const d: f32 = xs[j] - xs[i];
+    const d2: f32 = d * d;
+    if (j !== i && d2 < best[k - 1]) {
+      let s: u32 = k - 1;
+      while (s > 0 && best[s - 1] > d2) {
+        best[s] = best[s - 1];
+        s = s - 1;
+      }
+      best[s] = d2;
+    }
+  }
+  if (gid.x < xs.length) out[gid.x] = best[0] + best[1] + best[2];
+}
+`,
+
+  k5: `"use typeshade";
+declare const xs: storage<array<f32>>;
+declare const out: storage<array<u32>, 'read_write'>;
+@compute([64])
+export function ringReturn(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = min(gid.x, xs.length - 1);
+  for (let r: u32 = 1; r <= 4; r++) {
+    for (let j: u32 = 0; j < xs.length; j++) {
+      if (j !== i && abs(xs[j] - xs[i]) <= f32(r)) {
+        if (gid.x < xs.length) out[gid.x] = r * 100 + j;
+        return;
+      }
+    }
+  }
+  if (gid.x < xs.length) out[gid.x] = 0;
+}
+`,
+
+  // K6 and K6b: the sum of K1 as a kernel function over the lanes of a visit order, written
+  // through the order (K6) or at the lane (K6b).
+  k6: `"use typeshade";
+export function knnPermuted(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, sums: array<f32>): void {
+  for (let lane: u32 = 0; lane < visitOrder.length; lane++) { // probe
+    const i: u32 = visitOrder[lane];
+    let best: array<f32, 32> = fill<f32, 32>(1e30);
+    for (let j: u32 = 0; j < n; j++) {
+      const d: f32 = xs[j] - xs[i];
+      const d2: f32 = d * d;
+      if (j !== i && d2 < best[k - 1]) {
+        let s: u32 = k - 1;
+        for (let step: u32 = 0; step < 31; step++) {
+          if (s > 0 && best[s - 1] > d2) {
+            best[s] = best[s - 1];
+            s = s - 1;
+          }
+        }
+        best[s] = d2;
+      }
+    }
+    let sum: f32 = 0.;
+    for (let m: u32 = 0; m < k; m++) sum += best[m];
+    sums[i] = sum;
+  }
+}
+`,
+
+  k6b: `"use typeshade";
+export function knnByLane(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, sums: array<f32>): void {
+  for (let lane: u32 = 0; lane < visitOrder.length; lane++) {
+    const i: u32 = visitOrder[lane];
+    let best: array<f32, 32> = fill<f32, 32>(1e30);
+    for (let j: u32 = 0; j < n; j++) {
+      const d: f32 = xs[j] - xs[i];
+      const d2: f32 = d * d;
+      if (j !== i && d2 < best[k - 1]) {
+        let s: u32 = k - 1;
+        for (let step: u32 = 0; step < 31; step++) {
+          if (s > 0 && best[s - 1] > d2) {
+            best[s] = best[s - 1];
+            s = s - 1;
+          }
+        }
+        best[s] = d2;
+      }
+    }
+    let sum: f32 = 0.;
+    for (let m: u32 = 0; m < k; m++) sum += best[m];
+    sums[lane] = sum;
+  }
 }
 `,
 };
