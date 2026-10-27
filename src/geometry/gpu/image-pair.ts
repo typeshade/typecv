@@ -9,7 +9,7 @@ import {
 } from '../image-pair.ts';
 import type { Camera } from '../../contracts/camera.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
-import { estimatePairGpu, estimatePairsGpu } from './pair-estimation.ts';
+import { estimatePairGpu, estimatePairsGpu, RECOVERY_INFO } from './pair-estimation.ts';
 import { recoveryFailure, recoverySummary, type GpuConsensusExecution } from './two-view.ts';
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import { TwoViewFailure } from '../../contracts/two-view-failures.ts';
@@ -98,7 +98,7 @@ type Estimate = Awaited<ReturnType<typeof estimatePairGpu>>;
 const failureOf = (result: Estimate) =>
   result.verification!.invertibleCount < 8
     ? TwoViewFailure.fewInvertible
-    : recoveryFailure(result.recovery!.info[56]!);
+    : recoveryFailure(result.recovery!.info[RECOVERY_INFO.status]!);
 
 function finishRequest(result: Estimate): GpuImagePairVerification {
   const info = result.recovery!.info,

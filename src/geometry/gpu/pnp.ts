@@ -27,6 +27,7 @@ import {
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import type { GpuGeometryExecution } from './execution.ts';
 import { PNP_DEFAULTS, pnpMinInliers } from '../operator-defaults.ts';
+import { PROGRESS_INTERVAL } from './search-schedule.ts';
 
 /** @internal */
 export { finiteGpuArray, validateGpuCamera } from './bounds.ts';
@@ -45,14 +46,6 @@ export interface GpuPnPResult extends PnPResult {
   readonly execution: GpuGeometryExecution;
 }
 
-/**
- * The batches of a PnP search between two reads of the scheduling word. The GPU decides each
- * batch's work through the indirect workgroup counts (TypeShade change 0075), so the host reads
- * nothing between batches. It reads the adaptive budget after every fourth batch to leave the
- * search early: at most three batches past the budget are submitted, and each dispatches zero
- * workgroups but its one-workgroup `planPnPBatch`.
- */
-const PROGRESS_INTERVAL = 4;
 /** The trials a scoring batch holds at least, to fill the device (`docs/gpu-throughput.md`, item 2). */
 const PNP_SCORING_FLOOR = 512;
 /** The offsets, in words, of the workgroup counts of `pnp.shade.ts` (`batchCounts`). */

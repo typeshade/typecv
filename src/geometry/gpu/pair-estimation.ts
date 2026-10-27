@@ -50,6 +50,7 @@ import {
   preserveHomography,
   scatterPairConsensus,
 } from './pair-preparation.shade.ts';
+import { PROGRESS_INTERVAL } from './search-schedule.ts';
 
 /** @internal */
 export interface PairEstimationOptions {
@@ -88,13 +89,10 @@ export interface PairEstimationResult {
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
 /**
- * The batches of a pair search between two reads of the scheduling word. The GPU decides each
- * batch's work through the indirect workgroup counts (TypeShade change 0075), so the host reads
- * nothing between batches. It reads the adaptive budget after every fourth batch to leave the
- * search early: at most three batches past the budget are submitted, and each dispatches zero
- * workgroups but its three one-workgroup control kernels.
+ * The words of the recovery kernel's `info` (`recovery.shade.ts`) that more than one host module
+ * reads: the status of the recovery (`recoveryFailure`), the inlier count and the word count.
  */
-const PROGRESS_INTERVAL = 4;
+export const RECOVERY_INFO = { status: 56, inlierCount: 69, length: 72 } as const;
 /**
  * A refit streams all n matched points into one factor, in input order. The short window takes
  * ceil(n / 128) append dispatches; the float GPU path below takes ceil(n / 512). Each homography
@@ -831,7 +829,7 @@ function checkPairEstimation(
           // These independent reads share the same completed compute prefix. Keep this
           // job's buffers until every snapshot settles, even when an earlier one fails.
           const [info, output, status] = await Promise.allSettled([
-            device.read(recovery!.info, 72),
+            device.read(recovery!.info, RECOVERY_INFO.length),
             device.read(verification.outputMask, n),
             device.read(state, 12),
           ]);
@@ -850,7 +848,7 @@ function checkPairEstimation(
           // The reads share one round trip: the plan is complete before the first returns.
           const [bestRead, info, points, valid, maskRead, stateRead] = await Promise.all([
             recovery ? undefined : device.read(best, 21),
-            recovery ? device.read(recovery.info, 72) : undefined,
+            recovery ? device.read(recovery.info, RECOVERY_INFO.length) : undefined,
             recovery ? device.read(recovery.points, 3 * n) : undefined,
             recovery ? device.read(recovery.flags, n) : undefined,
             device.read(mask, n),
@@ -879,7 +877,7 @@ function checkPairEstimation(
             : undefined,
           model: recoveryResult ? recoveryResult.info.slice(57, 66) : values!.slice(0, 9),
           mask: Uint8Array.from(flags),
-          count: recoveryResult ? recoveryResult.info[69]! : metadata[3]!,
+          count: recoveryResult ? recoveryResult.info[RECOVERY_INFO.inlierCount]! : metadata[3]!,
           msac: values?.[20] ?? NaN,
           trials: metadata[1]!,
           batches: metadata[5]!,

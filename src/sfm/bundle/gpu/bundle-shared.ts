@@ -27,6 +27,32 @@ export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly execution: GpuGeometryExecution;
 }
 
+/**
+ * The words of the BA `state` that the hosts read, the same in both BA shaders (`bundle.shade.ts`
+ * and `joint-focal.shade.ts`): the LM part `[lambda, active, baseline, origin.xyz, current
+ * cost/SSE, initial cost/SSE, accepted, rejected, commit, gauge scale, input error, trial valid,
+ * CG steps, failed solves]`, then the PCG part. `packBundleResult` copies the state after the
+ * scene, with the initial and final RMSE in words 24 and 25; the joint focal shader adds the log
+ * scale of the shared focal after the state.
+ */
+export const BUNDLE_STATE = {
+  baseline: 2,
+  cost: 6,
+  initialCost: 8,
+  accepted: 10,
+  rejected: 11,
+  commit: 12,
+  inputError: 14,
+  cgSteps: 16,
+  failedSolves: 17,
+  initialRmsePx: 24,
+  finalRmsePx: 25,
+  /** The words of the state. */
+  size: 26,
+  /** The joint focal result's log scale of the shared focal: the word after the state. */
+  focalScale: 26,
+} as const;
+
 /** The convergence rule of `acceptBundleCandidate` in both BA shaders: the solvers' default. */
 const SHADER_STALL_TOLERANCE = BUNDLE_SOLVER_STALL_TOLERANCE;
 
@@ -50,7 +76,7 @@ export function cooperativeBundleSchur(
 
 /**
  * @internal The host side of a `stallTolerance` above the shaders' own rule: after an LM
- * iteration, read the cost (`state[6]`) and the accepted flag (`state[12]`), and report a stall
+ * iteration, read the cost and the commit flag (`BUNDLE_STATE`), and report a stall
  * when the accepted step lowered the cost by less than the tolerance. `cost` holds the cost after
  * the previous iteration. Below the shaders' rule this reads nothing and reports no stall.
  */
@@ -73,15 +99,15 @@ export function bundleStallMonitor(
   const monitor = {
     async fetch() {
       if (tolerance <= SHADER_STALL_TOLERANCE) return undefined;
-      return device.read(state, 13);
+      return device.read(state, BUNDLE_STATE.commit + 1);
     },
     begin(values: Float64Array | undefined) {
-      if (values) cost = values[6]!;
+      if (values) cost = values[BUNDLE_STATE.cost]!;
     },
     decide(values: Float64Array | undefined) {
       if (!values) return false;
-      const next = values[6]!,
-        accepted = values[12] === 1,
+      const next = values[BUNDLE_STATE.cost]!,
+        accepted = values[BUNDLE_STATE.commit] === 1,
         change = cost - next;
       cost = next;
       return accepted && bundleStalled(change, next, tolerance);

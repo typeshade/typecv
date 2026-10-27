@@ -3,7 +3,7 @@ import type { Camera } from '../../contracts/camera.ts';
 import type { ImagePairGeometry } from '../image-pair.ts';
 import { resolveTwoViewInput, type TwoViewOptions, type TwoViewResult } from '../two-view.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
-import { estimatePairGpu } from './pair-estimation.ts';
+import { estimatePairGpu, RECOVERY_INFO } from './pair-estimation.ts';
 import { RECOVERY_FAILURES, TwoViewFailure } from '../../contracts/two-view-failures.ts';
 
 export interface GpuTwoViewOptions extends TwoViewOptions {
@@ -107,7 +107,7 @@ export async function reconstructTwoViewGpu(
   });
   const recovered = result.recovery!,
     info = recovered.info;
-  const reason = recoveryFailure(info[56]!);
+  const reason = recoveryFailure(info[RECOVERY_INFO.status]!);
   if (reason) throw new GeometryEstimationError(reason);
   for (let i = 0; i < recovered.valid.length; i++)
     if (!recovered.valid[i]) recovered.points.fill(NaN, i * 3, i * 3 + 3);
@@ -137,7 +137,7 @@ export function recoverySummary(info: Float64Array, trials: number): ImagePairGe
   return {
     R: info.slice(0, 9),
     t: info.slice(9, 12),
-    inlierCount: info[69]!,
+    inlierCount: info[RECOVERY_INFO.inlierCount]!,
     positiveDepthCount: info[54]!,
     meanReprojectionErrorPx: info[55]!,
     diagnostics: {
