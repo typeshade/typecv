@@ -15,7 +15,7 @@ import {
   scoreCandidates,
   type FocalCandidate,
 } from '../src/reconstruction/focal-search.ts';
-import { executeReconstructionJob } from '../src/reconstruction/mapper.ts';
+import { executeReconstructionJob, incrementalSteps } from '../src/reconstruction/mapper.ts';
 import { focalComponentsFixture } from './fixtures/focal-components.ts';
 import { generalVideoFixture } from './fixtures/general-video.ts';
 
@@ -163,7 +163,15 @@ function search(
   controls = focalSearchControls(true)!,
   minimumViews = 2,
 ) {
-  const machine = focalSearchSteps(images, pairs, options, controls, exhaustive, minimumViews);
+  const machine = focalSearchSteps(
+    images,
+    pairs,
+    options,
+    controls,
+    exhaustive,
+    minimumViews,
+    incrementalSteps,
+  );
   let next = machine.next();
   while (!next.done) {
     let value: unknown;
@@ -215,6 +223,9 @@ test('an invalid interpolated refinement falls back to a grid candidate that bui
     pairs,
     { ...lab, ransacIterations: 64 },
     focalSearchControls({ refineIterations: 12 })!,
+    undefined,
+    undefined,
+    incrementalSteps,
   );
   let next = machine.next();
   let rejected = false;

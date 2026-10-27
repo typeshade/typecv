@@ -11,10 +11,10 @@ import {
 } from '../scripts/import-graph.mjs';
 
 // The baseline of docs/library-structure.md, section 3.1 ("The layers today") and section 5,
-// phase 0: today's runtime import cycles and the imports that break the layering rule, none since
-// phase 1c. A phase that removes a cycle or a break changes this test, and its pull request names
-// the change (section 4, rule 2). `node scripts/import-graph.mjs` prints the same report with
-// line numbers.
+// phase 0: the runtime import cycles, none since phase 4, and the imports that break the layering
+// rule, none since phase 1c. A phase that removes a cycle or a break changes this test, and its
+// pull request names the change (section 4, rule 2). `node scripts/import-graph.mjs` prints the
+// same report with line numbers.
 
 const graph = importGraph();
 
@@ -22,10 +22,8 @@ test('every relative import names a file', () => {
   assert.deepEqual(graph.unresolved, []);
 });
 
-test('the mapper-focal cycle is the only runtime import cycle (section 5, phase 1b)', () => {
-  assert.deepEqual(runtimeCycles(graph), [
-    ['src/sfm/focal/focal-search.ts', 'src/sfm/mapper/mapper.ts'],
-  ]);
+test('no runtime import cycle (section 5, phase 4)', () => {
+  assert.deepEqual(runtimeCycles(graph), []);
 });
 
 test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
@@ -53,14 +51,22 @@ test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
           'src/sfm/config/incremental-controls.ts',
           'src/sfm/depth/depth-publication.ts',
           'src/sfm/focal/focal-search.ts',
+          'src/sfm/mapper/initialization.ts',
           'src/sfm/mapper/mapper.ts',
+          'src/sfm/mapper/result.ts',
           'src/sfm/pairs/pair-verdict.ts',
+          'src/sfm/protocol/depth-step.ts',
+          'src/sfm/protocol/drive.ts',
           'src/sfm/protocol/errors.ts',
         ],
         typeOnly: [
           'src/sfm/config/incremental-controls.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/depth/depth-publication.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/focal/focal-search.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/mapper/initialization.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/mapper/result.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/pairs/pair-verdict.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/protocol/depth-step.ts -> src/sfm/mapper/mapper.ts',
           'src/sfm/protocol/errors.ts -> src/sfm/focal/focal-search.ts',
           'src/sfm/protocol/errors.ts -> src/sfm/mapper/mapper.ts',
         ],

@@ -4,9 +4,11 @@ import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../../../geometry/validation.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
 import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
-import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../../device/gpu/device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../../../device/gpu/device.ts';
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/bounds.ts';
+import { geometryExecution, mergedReport } from '../../../geometry/gpu/execution.ts';
+import { cameraRecord, poseRecord } from '../../../contracts/camera-record.ts';
 import {
   initializeBundle,
   linearizeBundle,
@@ -191,11 +193,8 @@ export function bundleAdjustJointFocalGpu(
   for (let c = 0; c < C; c++) {
     const v = model.views[c]!,
       k = validateGpuCamera(v.camera);
-    source.set([...v.pose.R, ...v.pose.t], c * POSE_STRIDE);
-    source.set(
-      [k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!],
-      POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE,
-    );
+    source.set(poseRecord(v.pose), c * POSE_STRIDE);
+    source.set(cameraRecord(k), POSE_STRIDE * C + POINT_STRIDE * P + c * MODEL_STRIDE);
     indices[3 * M + P + C + 2 + c] = Number(active[c]);
   }
   let obs = 0;
@@ -1016,19 +1015,8 @@ export function bundleAdjustJointFocalGpu(
             : p.xyz,
         })),
       };
-      // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
       const after = device.statistics,
-        chunks: Record<string, ChunkRate> = Object.assign(
-          {},
-          ...reports.map((r) => r.chunks ?? {}),
-        ),
-        report: ShadePlanReport = {
-          tier: device.backend,
-          dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
-          submissions: reports.reduce((n, r) => n + r.submissions, 0),
-          groups: reports.flatMap((r) => r.groups),
-          ...(Object.keys(chunks).length ? { chunks } : {}),
-        };
+        report = mergedReport(device.backend, reports);
       successful = true;
       return separateBundleDirections(
         {
@@ -1045,14 +1033,7 @@ export function bundleAdjustJointFocalGpu(
           },
           cgIterations: values[base + BUNDLE_STATE.cgSteps]!,
           linearSolverFailures: values[base + BUNDLE_STATE.failedSolves]!,
-          execution: {
-            backend: device.backend,
-            report,
-            applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-            applicationReadbackBytes:
-              after.applicationReadbackBytes - before.applicationReadbackBytes,
-            cpuStages: [],
-          },
+          execution: geometryExecution(device, report, before, after),
         },
         finitePoints,
       );

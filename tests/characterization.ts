@@ -314,7 +314,11 @@ export function componentCase(
   };
 }
 
-/** The focal search itself: `focalSearchSteps` on the CPU executor, errors passed back. */
+/**
+ * The focal search itself: `focalSearchSteps` on the CPU executor, errors passed back. The mapper
+ * goes last, after the two internal parameters at their defaults: a library that takes six
+ * parameters (the merge base of the compare job) ignores it and runs the same search.
+ */
 export function focalSearchCase(
   name: string,
   images: readonly ImageFeatures[],
@@ -327,7 +331,15 @@ export function focalSearchCase(
     run: () =>
       traced((trace) =>
         drive(
-          focalSearchSteps(images, pairs, options, focalSearchControls(search)!),
+          focalSearchSteps(
+            images,
+            pairs,
+            options,
+            focalSearchControls(search)!,
+            undefined,
+            undefined,
+            incrementalSteps,
+          ),
           jobs,
           describeJob,
           trace,

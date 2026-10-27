@@ -8,7 +8,7 @@ import {
   focalSearchControls,
   focalSearchSteps,
 } from '../src/reconstruction/focal-search.ts';
-import { executeReconstructionJob } from '../src/reconstruction/mapper.ts';
+import { executeReconstructionJob, incrementalSteps } from '../src/reconstruction/mapper.ts';
 import { LAB, camerasAt, loadPyramid, loadSample, pyramidRelief } from './measure-focal.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -23,7 +23,15 @@ for (const name of names) {
   for (const exhaustive of [true, false]) {
     const start = performance.now(),
       jobs = {},
-      machine = focalSearchSteps(images, pairs, options, focalSearchControls(true), exhaustive);
+      machine = focalSearchSteps(
+        images,
+        pairs,
+        options,
+        focalSearchControls(true),
+        exhaustive,
+        undefined,
+        incrementalSteps,
+      );
     let step = machine.next();
     while (!step.done) {
       jobs[step.value.kind] = (jobs[step.value.kind] ?? 0) + 1;

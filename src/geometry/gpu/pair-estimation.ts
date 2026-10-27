@@ -12,7 +12,7 @@ import {
 } from './pair-models.shade.ts';
 import { ShadeDevice, type GpuStep, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
-import { type GpuGeometryExecution } from './execution.ts';
+import { geometryExecution, type GpuGeometryExecution } from './execution.ts';
 import {
   preparePair,
   undistortPair,
@@ -883,14 +883,7 @@ function checkPairEstimation(
           batches: metadata[5]!,
           hypotheses: metadata[2]!,
           recovery: recoveryResult,
-          execution: {
-            backend: device.backend,
-            report,
-            applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-            applicationReadbackBytes:
-              after.applicationReadbackBytes - before.applicationReadbackBytes,
-            cpuStages: [],
-          },
+          execution: geometryExecution(device, report, before, after),
         };
       };
       return { steps, finish, release };
@@ -1047,14 +1040,7 @@ export function undistortCorrespondencesGpu(
       return {
         pixels: Float64Array.from(packed),
         indices: Uint32Array.from(indices),
-        execution: {
-          backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
-          cpuStages: [],
-        },
+        execution: geometryExecution(device, report, before, after),
       };
     } finally {
       for (const buffer of owned) successful ? device.recycle(buffer) : device.drop(buffer);

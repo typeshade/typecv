@@ -1,10 +1,9 @@
-import {
-  incrementalSteps,
-  type IncrementalOptions,
-  type IncrementalResult,
-  type PreVerifiedPair,
-  type PairVerification,
-  type ReconstructionJob,
+import type {
+  IncrementalOptions,
+  IncrementalResult,
+  PreVerifiedPair,
+  PairVerification,
+  ReconstructionJob,
 } from '../mapper/mapper.ts';
 import { incrementalControls } from '../config/incremental-controls.ts';
 import { judgePair } from '../pairs/pair-verdict.ts';
@@ -374,6 +373,17 @@ function rescaled(images: readonly ImageFeatures[], ratio: number): ImageFeature
 }
 
 /**
+ * @internal The mapper that the search runs at each grid point: `incrementalSteps`, which passes
+ * itself (docs/library-structure.md, section 5, phase 4). So this module imports the mapper's
+ * types only, and no import cycle joins it to the mapper at run time.
+ */
+export type FocalSearchMapper = (
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  options: IncrementalOptions,
+) => Generator<ReconstructionJob, IncrementalResult, unknown>;
+
+/**
  * @internal Search the shared focal on a subset of the views, through the mapper's own numerical
  * requests, so that the CPU reference and the device driver run the same search.
  */
@@ -386,6 +396,12 @@ export function* focalSearchSteps(
   exhaustive = false,
   /** @internal Streaming progress waits for this many registered calibration views; finish allows short input. */
   minimumViews = 2,
+  /**
+   * The mapper of each run. It comes last, after the two internal parameters, so that a caller
+   * written for this signature runs the same search on a library that takes six parameters (the
+   * merge base in the compare job of CI).
+   */
+  mapperSteps: FocalSearchMapper,
 ): Generator<ReconstructionJob, FocalSearchResult, unknown> {
   const grid = focalGrid(controls);
   const mapper: IncrementalOptions = {
@@ -493,7 +509,7 @@ export function* focalSearchSteps(
         ? options.initialPair
         : undefined;
     try {
-      return yield* incrementalSteps(rescaled(subset, ratio), subsetPairs, {
+      return yield* mapperSteps(rescaled(subset, ratio), subsetPairs, {
         ...mapper,
         preVerified: verifications?.(ratio),
         initialPair,

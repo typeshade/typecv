@@ -25,7 +25,8 @@ import {
   summarizePnP,
 } from './pnp.shade.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
-import type { GpuGeometryExecution } from './execution.ts';
+import { geometryExecution, type GpuGeometryExecution } from './execution.ts';
+import { cameraStruct } from '../../contracts/camera-record.ts';
 import { PNP_DEFAULTS, pnpMinInliers } from '../operator-defaults.ts';
 import { PROGRESS_INTERVAL } from './search-schedule.ts';
 
@@ -160,7 +161,7 @@ export function estimatePosePnPGpu(
         progress = integer(1),
         batchCounts = integer(12);
       const baseControl = {
-        camera: { fx: k.fx, fy: k.fy, cx: k.cx, cy: k.cy, k1: k.k1!, k2: k.k2! },
+        camera: cameraStruct(k),
         threshold,
         seed: seed >>> 0,
         start: 0,
@@ -412,14 +413,7 @@ export function estimatePosePnPGpu(
         hypothesisBatches: metadata[8]!,
         refinementAcceptedSteps: metadata[5]!,
         refinementRejectedSteps: metadata[6]!,
-        execution: {
-          backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
-          cpuStages: [],
-        },
+        execution: geometryExecution(device, report, before, after),
       };
     } finally {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
