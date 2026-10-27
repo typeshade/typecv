@@ -13,8 +13,8 @@ import {
 
 // The rule that chose the flavor of the emulated double before TypeShade change 0085, as the
 // hardware check computes it (docs/lab-run-records.md, "Hardware check"). The table holds the
-// copy to the answers of `recommendedFlavor` at 87724f9 (src/device/gpu/device.ts, lines 152 to
-// 176) with TypeShade's selector at the pin 725b2969. The second test holds the pin's selector to
+// copy to the answers of `recommendedFlavor` at 87724f9 (src/device/gpu/device.ts, lines 151 to
+// 175) with TypeShade's selector at the pin 725b2969. The second test holds the pin's selector to
 // the same table: a pin whose selector gives another answer fails it, and the inference of
 // docs/library-structure.md, "0085's product work" (the same flavor as before), must then be read
 // again. The third test runs the code of 87724f9 itself where the git history holds it.

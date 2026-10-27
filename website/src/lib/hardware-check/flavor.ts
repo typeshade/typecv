@@ -1,7 +1,7 @@
 /**
  * The rule that chose the flavor of the emulated double in TypeCV before TypeShade change 0085, as
  * one pure function of the signals that a page can read. It is `recommendedFlavor` of
- * `src/device/gpu/device.ts` at `87724f9` (lines 152 to 176) with the selector that it called,
+ * `src/device/gpu/device.ts` at `87724f9` (lines 151 to 175) with the selector that it called,
  * `isAppleGpu` and `recommendFp64Flavor` of TypeShade at the pin `725b2969`
  * (`src/core/fp64/flavor-select.ts`). Since change 0085 the TypeShade device selects the flavor
  * itself. The hardware check (`docs/lab-run-records.md`, "Hardware check") computes this rule
