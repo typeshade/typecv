@@ -763,7 +763,10 @@ export class MultiVideoJob {
     }
   }
 
-  /** The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in `run-record.ts`). */
+  /**
+   * The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in
+   * `run-record/assemble.ts`).
+   */
   gpuFields(device: any = this.device): { gpuKernels: unknown[]; gpuDropped: number } {
     try {
       const { rows, dropped } = device.kernelStatistics;

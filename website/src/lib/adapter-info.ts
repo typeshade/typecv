@@ -1,7 +1,8 @@
 /**
  * What a worker sends the page of the WebGPU adapter, for the run record (`gpu` in
- * `run-record.ts`): the identity strings, the two buffer limits, the compute limits that bound a
- * kernel's workgroup, and the feature names. The multi-video job and the SfM worker both use it.
+ * `run-record/schema.ts`): the identity strings, the two buffer limits, the compute limits that
+ * bound a kernel's workgroup, and the feature names. The multi-video job and the SfM worker both
+ * use it.
  */
 export interface AdapterFacts {
   vendor: string;
