@@ -77,10 +77,24 @@ jobs:
       - run: npm run build:website
       - run: npm run example
       - run: npm run example:incremental
-  webgpu:
+  webgpu-shard:
+    # The browser-side gate, in shards: `test:webgpu` on three runners and `test:website` on two,
+    # the files of each shard chosen by scripts/ci-shard.mjs (tests/ci-shard.test.ts holds that
+    # every file runs once). One runner took 60 to 110 minutes for the whole set; a shard takes
+    # about a third. `audit:typeshade` runs once, with the first website shard.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    name: webgpu shard (${{ matrix.script }} ${{ matrix.shard }}/${{ matrix.of }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { script: 'test:webgpu', shard: 1, of: 3 }
+          - { script: 'test:webgpu', shard: 2, of: 3 }
+          - { script: 'test:webgpu', shard: 3, of: 3 }
+          - { script: 'test:website', shard: 1, of: 2 }
+          - { script: 'test:website', shard: 2, of: 2 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -92,10 +106,23 @@ jobs:
       - run: npx playwright install --with-deps --only-shell chromium
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm run build
-      - run: npm run test:webgpu
-      - run: npm run audit:typeshade
-      - run: npm run build:website
-      - run: npm run test:website
+      - if: matrix.script == 'test:webgpu'
+        run: node --test --test-concurrency=1 $(node scripts/ci-shard.mjs test:webgpu ${{ matrix.shard }} ${{ matrix.of }})
+      - if: matrix.script == 'test:website' && matrix.shard == 1
+        run: npm run audit:typeshade
+      - if: matrix.script == 'test:website'
+        run: npm run build:website
+      - if: matrix.script == 'test:website'
+        run: node --test $(node scripts/ci-shard.mjs test:website ${{ matrix.shard }} ${{ matrix.of }})
+  webgpu:
+    # The check that the ruleset names. It is green when every shard is green, red when one is
+    # not, and skipped with the shards for a documentation-only change (a skipped job counts as
+    # passed).
+    needs: [changes, webgpu-shard]
+    if: always() && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.webgpu-shard.result }}" = "success"
   digests:
     # The compare job of docs/library-structure.md, section 5, phase 0, which section 4, rule 2
     # makes the gate of every structure phase on the GPU tiers: the characterization digests of
