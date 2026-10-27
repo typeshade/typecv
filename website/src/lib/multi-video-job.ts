@@ -9,6 +9,7 @@
 import { packLandmarks, type PackedScene } from './sfm-scene.ts';
 import { PhaseGate } from './keyframe-gate.ts';
 import { tooFewFeatures } from './lab-features.ts';
+import { frameCamera } from './lab-matching.ts';
 import {
   createDenseJob,
   denseFailure,
@@ -166,22 +167,6 @@ interface VideoState {
   skipped: number;
   dropped: number;
   ended: boolean;
-}
-
-function cameraOf(frame: JobFrame, focalRatio: number) {
-  const sourceWidth = frame.sourceWidth ?? frame.width;
-  const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * focalRatio;
-  return (
-    frame.camera ?? {
-      fx: (sourceFocal * frame.width) / sourceWidth,
-      fy: (sourceFocal * frame.height) / sourceHeight,
-      cx: (frame.width - 1) / 2,
-      cy: (frame.height - 1) / 2,
-      k1: 0,
-      k2: 0,
-    }
-  );
 }
 
 function sampleColors(frame: JobFrame, points: Float64Array): Uint8Array {
@@ -377,7 +362,7 @@ export class MultiVideoJob {
         frameKey,
         time: frame.time,
         frameId: frame.id,
-        camera: cameraOf(frame, video.info.focalRatio),
+        camera: frameCamera(frame, video.info.focalRatio),
         keypoints,
         descriptors: described.descriptors,
         global: described.global,

@@ -23,6 +23,8 @@ import { featureCap, tooFewFeatures } from '../lib/lab-features.ts';
 import {
   admitsPair,
   admitsPrecomputedPair,
+  frameCamera,
+  matchLines,
   retainedFeatureIds,
   retainedReferences,
   tracksCoverPair,
@@ -1069,38 +1071,16 @@ function postMatchLines(
   frame: Frame,
   matches: ArrayLike<number>,
 ) {
-  const lines: number[] = [];
-  for (let i = 0; i < Math.min(matches.length, 160); i += 2) {
-    const a = matches[i] * 2,
-      b = matches[i + 1] * 2;
-    lines.push(
-      (otherPoints[a] * frame.width) / otherFrame.width,
-      (otherPoints[a + 1] * frame.height) / otherFrame.height,
-      points[b],
-      points[b + 1],
-    );
-  }
+  const lines = matchLines(otherPoints, otherFrame, points, frame, matches);
   post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
 }
 
 /**
- * The camera of a frame in analysis pixels: the sample's calibration, else the focal search's
- * estimate once it ran, else the assumed focal.
+ * The focal ratio of a frame without its own calibration (`frameCamera` of
+ * `lib/lab-matching.ts`): the focal search's estimate once it ran, else the assumed focal.
  */
-function frameCamera(frame: Frame) {
-  const sourceWidth = frame.sourceWidth ?? frame.width;
-  const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * (job!.session.focalSearch?.ratio ?? job!.focal);
-  return (
-    frame.camera ?? {
-      fx: (sourceFocal * frame.width) / sourceWidth,
-      fy: (sourceFocal * frame.height) / sourceHeight,
-      cx: (frame.width - 1) / 2,
-      cy: (frame.height - 1) / 2,
-      k1: 0,
-      k2: 0,
-    }
-  );
+function cameraFocalRatio() {
+  return job!.session.focalSearch?.ratio ?? job!.focal;
 }
 
 /** Lines of a guided match lie within this many pixels of a candidate, as COLMAP's 4 px default. */
@@ -1122,8 +1102,8 @@ async function guidedMatches(
   plain: { matches: Uint32Array; distances: Float64Array },
 ) {
   const active = job!;
-  const a = frameCamera(other.frame),
-    b = frameCamera(frame),
+  const a = frameCamera(other.frame, cameraFocalRatio()),
+    b = frameCamera(frame, cameraFocalRatio()),
     n = plain.matches.length / 2,
     pixels = new Float64Array(n * 4);
   for (let i = 0; i < n; i++) {
@@ -1189,7 +1169,7 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   const result = await active.session.add(
     {
       id: frame.id,
-      camera: frameCamera(frame),
+      camera: frameCamera(frame, cameraFocalRatio()),
       keypoints: points,
     },
     pairs,

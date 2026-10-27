@@ -19,6 +19,7 @@ import { MAX_FEATURE_CAP, featureCap } from './src/lib/lab-features.ts';
 import { LAB_OPTIONS } from './src/lib/lab-options.ts';
 import { medianMotionPx } from './src/lib/keyframe-gate.ts';
 import { trimStages } from './src/lib/lab-ledger.ts';
+import { MATCH_LINE_ENTRIES, frameCamera, matchLines } from './src/lib/lab-matching.ts';
 
 const MiB = 1024 ** 2;
 
@@ -201,4 +202,146 @@ test('the detailed stage list: 400 entries, keyframe entries dropped last (recor
     assert.deepEqual(ids(copy), kept, what + ', inline');
     assert.deepEqual(helper, copy, what + ', the entries');
   }
+});
+
+test('the frame camera: the calibration, else the focal ratio of the source width (guidedMatches, registerFrame, MultiVideoJob.frame)', () => {
+  // sfm.worker.ts `frameCamera`, as it stood, with the worker's job as an argument.
+  const inlineWorker = (frame, job) => {
+    const sourceWidth = frame.sourceWidth ?? frame.width;
+    const sourceHeight = frame.sourceHeight ?? frame.height;
+    const sourceFocal = sourceWidth * (job.session.focalSearch?.ratio ?? job.focal);
+    return (
+      frame.camera ?? {
+        fx: (sourceFocal * frame.width) / sourceWidth,
+        fy: (sourceFocal * frame.height) / sourceHeight,
+        cx: (frame.width - 1) / 2,
+        cy: (frame.height - 1) / 2,
+        k1: 0,
+        k2: 0,
+      }
+    );
+  };
+  // multi-video-job.ts `cameraOf`, as it stood.
+  const inlineJob = (frame, focalRatio) => {
+    const sourceWidth = frame.sourceWidth ?? frame.width;
+    const sourceHeight = frame.sourceHeight ?? frame.height;
+    const sourceFocal = sourceWidth * focalRatio;
+    return (
+      frame.camera ?? {
+        fx: (sourceFocal * frame.width) / sourceWidth,
+        fy: (sourceFocal * frame.height) / sourceHeight,
+        cx: (frame.width - 1) / 2,
+        cy: (frame.height - 1) / 2,
+        k1: 0,
+        k2: 0,
+      }
+    );
+  };
+  const calibration = { fx: 500, fy: 501, cx: 60, cy: 50, k1: -0.1, k2: 0.01 };
+  const pinhole = (fx, fy, cx, cy) => ({ fx, fy, cx, cy, k1: 0, k2: 0 });
+  for (const [what, frame, ratio, camera] of [
+    ['a calibrated frame', { width: 128, height: 96, camera: calibration }, 0.8, calibration],
+    // 128 x 0.8 x 96 / 96 rounds to 102.40000000000002, as the inline code did.
+    [
+      'no source size',
+      { width: 128, height: 96 },
+      0.8,
+      pinhole(102.4, 102.40000000000002, 63.5, 47.5),
+    ],
+    [
+      'a sampled frame',
+      { width: 128, height: 96, sourceWidth: 1280, sourceHeight: 960 },
+      0.8,
+      pinhole(102.4, 102.4, 63.5, 47.5),
+    ],
+    [
+      'a 1080p source at 640 x 360',
+      { width: 640, height: 360, sourceWidth: 1920, sourceHeight: 1080 },
+      1.2,
+      pinhole(768, 768, 319.5, 179.5),
+    ],
+    [
+      'another aspect ratio',
+      { width: 640, height: 480, sourceWidth: 1920, sourceHeight: 1080 },
+      1.2,
+      pinhole(768, 1024, 319.5, 239.5),
+    ],
+    [
+      'a source width without a source height',
+      { width: 128, height: 96, sourceWidth: 256 },
+      1,
+      pinhole(128, 256, 63.5, 47.5),
+    ],
+  ]) {
+    assert.deepEqual(frameCamera(frame, ratio), camera, what);
+    assert.deepEqual(inlineJob(frame, ratio), camera, what + ', job, inline');
+    // The worker's focal: the focal search's estimate once it ran, else the assumed focal.
+    for (const job of [
+      { session: { focalSearch: undefined }, focal: ratio },
+      { session: { focalSearch: { ratio } }, focal: 0.5 },
+    ]) {
+      const workerRatio = job.session.focalSearch?.ratio ?? job.focal;
+      assert.deepEqual(frameCamera(frame, workerRatio), camera, what + ', worker');
+      assert.deepEqual(inlineWorker(frame, job), camera, what + ', worker, inline');
+    }
+    if (frame.camera)
+      assert.equal(frameCamera(frame, ratio), frame.camera, what + ', the same object');
+  }
+});
+
+test('the match lines: 160 entries at most, the earlier points scaled to this frame (postMatchLines)', () => {
+  assert.equal(MATCH_LINE_ENTRIES, 160);
+  // sfm.worker.ts `postMatchLines`, as it stood: the lines it posted.
+  const inline = (otherPoints, otherFrame, points, frame, matches) => {
+    const lines = [];
+    for (let i = 0; i < Math.min(matches.length, 160); i += 2) {
+      const a = matches[i] * 2,
+        b = matches[i + 1] * 2;
+      lines.push(
+        (otherPoints[a] * frame.width) / otherFrame.width,
+        (otherPoints[a + 1] * frame.height) / otherFrame.height,
+        points[b],
+        points[b + 1],
+      );
+    }
+    return lines;
+  };
+  // 200 points: point i of the earlier frame is (i, 2 i), of this frame (i + 0.5, 2 i + 1).
+  const earlier = Float64Array.from({ length: 400 }, (_, k) => (k % 2 ? k - 1 : k / 2));
+  const later = Float64Array.from({ length: 400 }, (_, k) => (k % 2 ? k : k / 2 + 0.5));
+  const pairs = (n) => Uint32Array.from({ length: 2 * n }, (_, k) => k >> 1);
+  const size = (width, height) => ({ width, height });
+  for (const [what, otherFrame, frame, matches, count, first] of [
+    ['no match', size(128, 96), size(128, 96), pairs(0), 0, undefined],
+    ['five matches', size(128, 96), size(128, 96), pairs(5), 5, [0, 0, 0.5, 1]],
+    ['80 matches', size(128, 96), size(128, 96), pairs(80), 80, [0, 0, 0.5, 1]],
+    ['81 matches: 80 drawn', size(128, 96), size(128, 96), pairs(81), 80, [0, 0, 0.5, 1]],
+    ['200 matches: 80 drawn', size(128, 96), size(128, 96), pairs(200), 80, [0, 0, 0.5, 1]],
+    [
+      'the earlier frame twice as large',
+      size(256, 192),
+      size(128, 96),
+      pairs(3),
+      3,
+      [0, 0, 0.5, 1],
+    ],
+    [
+      'an odd count of entries',
+      size(128, 96),
+      size(128, 96),
+      Uint32Array.from([1, 1, 2]),
+      2,
+      [1, 2, 1.5, 3],
+    ],
+  ]) {
+    const lines = matchLines(earlier, otherFrame, later, frame, matches);
+    assert.deepEqual(lines, inline(earlier, otherFrame, later, frame, matches), what + ', inline');
+    assert.equal(lines.length, 4 * count, what);
+    if (first) assert.deepEqual(lines.slice(0, 4), first, what + ', the first line');
+  }
+  // The second line of a scaled pair: point 1 of the earlier frame, (1, 2), is (0.5, 1) here.
+  assert.deepEqual(
+    matchLines(earlier, size(256, 192), later, size(128, 96), pairs(3)).slice(4, 8),
+    [0.5, 1, 1.5, 3],
+  );
 });
