@@ -904,6 +904,34 @@ Each case runs one family of kernels on a small fixed input. A case holds:
   most 64 rows; and `chunks`, the chunk rates, in the form of `timing.chunks`;
 - `loss` (`message`, `reason`, `lastKernel` and up to four uncaptured GPU errors) and `error`.
 
+The cases are in `website/src/lib/hardware-check/cases.ts`, and `run.ts` beside it runs them. A
+case runs once on the CPU tier, then twice on one new WebGPU device, cold and warm. Its bound is
+the bound of its family's WebGPU test:
+
+| Case               | Kernel entries                                               | Input                                                                    | Bound                                                                                                        |
+| ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `clahe`            | `claheHistogram`, `claheMapTiles`, `claheApply`              | 131 x 97 pixels of the check's own, two option sets                      | 2.5e-4 against `equalizeGrayCpu` (`tests/typeshade/clahe-webgpu.test.mjs`)                                   |
+| `planar-depth`     | `planarFit`, `planarPropose`, `planarVerify`, `planarFinish` | the nine modes of `planarDepthCase` at 16 x 16, and one plane at 18 x 13 | the counts of `tests/typeshade/planar-depth-webgpu.test.mjs`; each depth within 1e-4 of the CPU tier's       |
+| `cloud-clean`      | `knnMeanDistance`, `voxelClaim`                              | the cloud of `cleanCloud` (3072 points), and its first 3000 points       | relative 1e-6 against the CPU tier; equal voxels and counts (`tests/typeshade/cloud-clean-webgpu.test.mjs`)  |
+| `a1-triangulation` | `prepareTriangulation`, `triangulateTracks`                  | the probe's tracks 1664 to 1671 in two variants, and tracks 1656 to 1671 | statuses equal to the fixture's `expectedStatus` and to the CPU tier's (`docs/hardware-observations.md`, A1) |
+| `kernel-functions` | the eight kernel functions of `EpipolarSession`              | 513 matches and five models of `fixture` in `tests/typeshade/cases.mjs`  | the best model, the mask and the counts equal; each cost within 0.002 (`tests/typeshade/webgpu.test.mjs`)    |
+
+Each case dispatches one input whose last workgroup of 64 lanes is partial, the shape of A1
+(`docs/hardware-observations.md`): `summary.lastWorkgroupLanes` gives its active lanes. The tracks
+1664 to 1671 are the workgroup with 8 idle lanes that lost the A1 device at `cd97b62`. The kernel
+functions of `EpipolarSession` come from the compiler's map lowering. At the pin `725b2969` their
+WGSL starts each invocation with a return for a lane past the trip count, before a loop
+(`blockStats`): the shape that A1 forbids. A pin that carries TypeShade change 0096 lowers them
+with its iteration scaffold, so the same case on the A1 device is the run that 0096's decision D5
+asks for.
+
+The CLAHE test's input uses `Math.sin` and `Math.cos`, whose last bit can differ between
+JavaScript engines, so the check builds its own input from integer and rational arithmetic. The
+other inputs are those of the family tests. `tests/typeshade/hardware-check-cpu.test.mjs` records
+the digests of each case's input and of its answer on the CPU tier of Node 22 in
+`tests/digests/hardware-check.json` (`npm run test:digests`). The page computes the same two
+digests in the browser.
+
 A digest is the SHA-256 of the canonical encoding of `tests/typeshade/digest.mjs`: each number as
 its IEEE 754 binary64 bit pattern, each typed array with its type name. A digest covers the answer
 of a case only, with no tier name, plan report or time. An answer whose order depends on the
