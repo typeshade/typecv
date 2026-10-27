@@ -70,3 +70,21 @@ then the pull request that did the work.
   The lab's separate preflight adapter query remains for buffer-budget sizing; it is not the
   owner's device information. The existing explicit sending consent and workload records are
   unchanged. The pin is `d36ac502`, after typeshade/typeshade#736.
+- 0085, pull request #260: no source migration is required. TypeCV takes the defaults that give
+  it the same device, flavor and plans. The registration-only `import 'typeshade/fuse'` of
+  `src/device/gpu/device.ts` is removed: `device.fuse()` holds its recorder and loads the planner
+  from its own chunk. `ShadeDevice.open()` passes `fp64Flavor` through, `'auto'` by default. The
+  TypeShade device then selects the flavor from the device it opens or its creation adapter, and
+  TypeCV requests no adapter of its own for it. The build and `scripts/kernel-faces.mjs` drop
+  `fuse: true`, now the compiler's default; `dist/` is byte-identical without it. The site ships
+  the planner and shared chunks of `dist/gpu` and `dist/internal` (`website/scripts/prepare.mjs`).
+  Four things stay explicit. The one-tier `prefer` keeps WebGPU required and the CPU tier on
+  request; the default order falls back to WebGL2 and the CPU tier. TypeCV's own `GPUDevice`
+  serves `adapterLimits` and `gpuTimestamps: false`: 0085's `limits` and `features` options cannot
+  express adapter-dependent limits or `gpuTimestamps: false`. `limits` are fixed numbers that the
+  adapter is checked against, and a device TypeShade requests always adds `timestamp-query`
+  (TypeShade `src/core/host-entry.ts:933-982` at `725b2969`). Every kernel call stays in a device
+  plan: the reports, the kernel statistics and the chunk timing read the plan's report. The lab
+  and the tests keep their explicit flavors. `tshc init` is not used: the build writes and
+  removes the host views itself. No kernel calls `console`. The pin stays `725b2969`; the console
+  variants and the Apple/Metal validation of 0085 remain open upstream.

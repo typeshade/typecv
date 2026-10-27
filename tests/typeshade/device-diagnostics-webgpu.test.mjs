@@ -79,6 +79,53 @@ test('device information uses the supplied device without probing another adapte
   assert.equal(unknown.fallback, null);
 });
 
+test('a device TypeShade opens takes its flavor from its own adapter, with one request', async () => {
+  // TypeShade change 0085: `'auto'` is resolved from the opened device or the adapter it was made
+  // from. TypeCV requests no adapter of its own, so the open requests exactly one.
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice } = await import('/dist/gpu.js');
+    const gpu = navigator.gpu;
+    const descriptor = Object.getOwnPropertyDescriptor(gpu, 'requestAdapter');
+    const original = gpu.requestAdapter.bind(gpu);
+    let requests = 0;
+    Object.defineProperty(gpu, 'requestAdapter', {
+      configurable: true,
+      value: (...args) => {
+        requests++;
+        return original(...args);
+      },
+    });
+    try {
+      const device = await ShadeDevice.open({ backend: 'webgpu' });
+      try {
+        const { provenance, vendor, architecture } = device.info.webgpu;
+        return {
+          requests,
+          flavor: device.fp64Flavor,
+          provenance,
+          vendor,
+          architecture,
+          userAgent: navigator.userAgent,
+        };
+      } finally {
+        await device.dispose();
+      }
+    } finally {
+      if (descriptor) Object.defineProperty(gpu, 'requestAdapter', descriptor);
+      else delete gpu.requestAdapter;
+    }
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(result.requests, 1);
+  assert.notEqual(result.provenance, 'unavailable');
+  // The selector's rule (TypeShade surface section 65): any Apple or Metal signal is 'integer'.
+  const apple =
+    /apple/i.test(result.vendor ?? '') ||
+    /^apple|metal/i.test(result.architecture ?? '') ||
+    (/\b(iPhone|iPad|Macintosh)\b/.test(result.userAgent) && /AppleWebKit/.test(result.userAgent));
+  assert.equal(result.flavor, apple ? 'integer' : 'float');
+});
+
 test('native errors and unexpected external destruction are captured before cleanup', async () => {
   const { result, errors } = await inBrowser(async () => {
     const { ShadeDevice } = await import('/dist/gpu.js');

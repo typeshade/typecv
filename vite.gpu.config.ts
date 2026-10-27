@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { typeshade } from 'typeshade/vite';
 export default defineConfig({
   plugins: [
-    typeshade({ fuse: true }),
+    typeshade(),
     {
       name: 'typecv-runtime-boundary',
       generateBundle(_options, output) {

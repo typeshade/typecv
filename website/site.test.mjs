@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access, mkdir } from 'node:fs/promises';
+import { readFile, readdir, access, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -100,6 +100,15 @@ test('all generated pages link to real pages, anchors, local runtimes and record
   const runtime = await readFile(path.join(directory, 'runtime/core.js'), 'utf8');
   assert.ok(runtime.includes('verifyImagePair'));
   assert.equal(version.project, 'TypeCV');
+  // `gpu.js` and the internal entry import chunks of their own, and `device.fuse()` loads its
+  // planner from one (TypeShade change 0085): the site holds every file of both, byte for byte.
+  for (const tree of ['gpu', 'internal']) {
+    const built = path.resolve(import.meta.dirname, '../dist', tree);
+    for (const name of await readdir(built)) {
+      const shipped = await readFile(path.join(directory, 'runtime', tree, name));
+      assert.ok(shipped.equals(await readFile(path.join(built, name))), `runtime/${tree}/${name}`);
+    }
+  }
 });
 
 test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits mobile', async () => {

@@ -18,6 +18,12 @@ TypeNN `61259c3733148a8665466163ae1c5c2b920b129c`. TypeCV's starting revision is
 that pull request validated the bump; its description lists each check, the
 commit it ran on and its result. This review was not repeated at that pin.
 
+2026-10-27: pull request #260 adopts TypeShade change 0085 at the same pin:
+`device.fuse()` without the registration import, the TypeShade device's
+automatic fp64 flavor and the compiler's default fusion facts.
+`compiler-changes.md` records what TypeCV adopted and what it keeps explicit.
+This review was not repeated.
+
 Primary sources below identify delivered behavior. The probe results establish
 only the small cases executed here; they do not establish completed GPU SfM.
 

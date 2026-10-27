@@ -1,14 +1,12 @@
 import {
   createDevice,
-  recommendFp64Flavor,
   type ChunkRate,
   type Device,
   type DeviceInfo,
   type Resident,
 } from 'typeshade/runtime';
-// The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
-// Amendment 1): the runtime ships none of the planner, so the application imports it once.
-import 'typeshade/fuse';
+// Types only: `device.fuse()` holds its recorder and loads the planner itself (TypeShade change
+// 0085), so no registration import of `typeshade/fuse` is needed.
 import type { FuseReport, FuseScope } from 'typeshade/fuse';
 import { DeviceDiagnosticTracker, type DeviceDiagnostics } from './device-diagnostics.ts';
 
@@ -56,9 +54,10 @@ export interface ShadeDeviceOptions {
    * The flavor of TypeShade's emulated double the kernels run (TypeShade change 0073). `'float'`
    * binds the `_fp64` guard; `'integer'` does the error-free transforms through integer
    * primitives, which a fast-math shader compiler cannot reassociate, and is what an Apple GPU
-   * needs (Metal collapses the float flavor). `'auto'`, the default, asks
-   * `recommendFp64Flavor` with the adapter's info and the user agent: `'integer'` on an Apple
-   * GPU, `'float'` elsewhere and on the CPU tier.
+   * needs (Metal collapses the float flavor). `'auto'`, the default, is the TypeShade device's
+   * selection (change 0085): the identity of the device it opens, or of the adapter that device
+   * was created from, and the user agent; `'integer'` on an Apple GPU, `'float'` elsewhere and on
+   * the CPU tier. No other adapter is requested.
    */
   readonly fp64Flavor?: 'float' | 'integer' | 'auto';
   /**
@@ -148,31 +147,6 @@ export interface GpuChunk {
  *  key run untimed), the longest of them and the last timed chunk's units. */
 export type { ChunkRate };
 
-/**
- * The flavor of the emulated double a device needs, from the signals this context has (TypeShade
- * change 0073): the adapter info of a `GPUDevice` the application hands in, else the info of the
- * adapter WebGPU offers, and the user agent. The CPU tier computes doubles as doubles, so it takes
- * `'float'`, the default lowering.
- */
-async function recommendedFlavor(
-  backend: 'webgpu' | 'cpu',
-  gpuDevice: object | undefined,
-): Promise<'float' | 'integer'> {
-  if (backend !== 'webgpu') return 'float';
-  const nav = (globalThis as { navigator?: { gpu?: any; userAgent?: string } }).navigator;
-  let adapterInfo = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null;
-  if (gpuDevice === undefined && adapterInfo === null && nav?.gpu) {
-    try {
-      adapterInfo = (await nav.gpu.requestAdapter())?.info ?? null;
-    } catch {
-      adapterInfo = null;
-    }
-  }
-  return recommendFp64Flavor({
-    adapterInfo: adapterInfo as { vendor?: string; architecture?: string } | null,
-    userAgent: nav?.userAgent ?? null,
-  });
-}
 /**
  * Whether the adapter behind the device is software: a fallback adapter, or one whose description
  * names SwiftShader, llvmpipe or a software rasterizer. Unknown counts as hardware.
@@ -437,12 +411,10 @@ export class ShadeDevice {
     const gpuDevice = options.gpuDevice ?? owned;
     let shade: Device | undefined;
     try {
-      const fp64Flavor =
-        options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
-          ? await recommendedFlavor(backend, gpuDevice)
-          : options.fp64Flavor;
-      // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
-      // plan and learns the rate of its key.
+      // The TypeShade device resolves `'auto'` from the device it opens, and requests no other
+      // adapter for it (change 0085). The time budget is the TypeShade device's too (change 0074):
+      // it fences and times each chunked plan and learns the rate of its key.
+      const fp64Flavor = options.fp64Flavor ?? 'auto';
       shade = await createDevice(
         gpuDevice !== undefined
           ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }

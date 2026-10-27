@@ -52,7 +52,7 @@ async function buildLockedProbe(name) {
       configFile: false,
       logLevel: 'error',
       plugins: [
-        typeshade({ fuse: true }),
+        typeshade(),
         {
           name: `${name}-runtime-boundary`,
           generateBundle(_options, output) {
