@@ -1114,7 +1114,40 @@ flavor, `flavor as before 0085` or `FLAVOR CHANGED`, the number of cases, the fa
 `ABORTED` when the check stopped early, and the site commit. Under `print: failures` the export
 prints in full each hardware-check record with a failed case, a changed flavor or an early stop.
 The inputs are `limit` (newest
-records, default 50) and `print` (`failures`, `all` or `none`).
+records, default 50) and `print` (`failures`, `all` or `none`). The input `record` exports the
+records of the ids it names, separated by commas, instead of the newest (`--record` of the
+script). For each hardware-check record of the export, the workflow runs
+`scripts/compare-hardware-check.mjs` and writes its table to the job summary. A failing row does
+not fail the export.
+
+`scripts/compare-hardware-check.mjs` compares one hardware-check record with its baselines and
+prints one Markdown table:
+
+```sh
+node scripts/compare-hardware-check.mjs --record lab-records/<id>.json \
+  --against lab-records/<earlier id>.json \
+  --benchmark lab-records/<cold id>.json --benchmark lab-records/<warm id>.json
+```
+
+- It computes the rule before change 0085 again from the recorded signals. A selected flavor
+  that differs from the rule fails.
+- A case fails when it did not complete, when its answer is outside its bound, or when its two
+  runs on the device differ.
+- With `--against`, an earlier record of the same adapter and browser, each case's answer on the
+  device must have the same digest. This is the gate of a change that must not change a result.
+  A record of another device is reported and not compared.
+- The input and the CPU tier's answer are compared with Node's digests
+  (`tests/digests/hardware-check.json`, or `--baseline`). A difference warns: it comes from the
+  browser's JavaScript engine or from another commit, not from the device.
+- `--benchmark` adds the run records of the standard benchmark. A failed run fails, and on the
+  same device its flavor is compared with the check's.
+
+The exit code is 0 when no row fails, 1 when one fails, and 2 when an input cannot be read or is
+not the record it should be. `--json <file>` also writes the rows. A pull request or an amendment
+cites a check by its record id, the site commit, the device (the adapter's strings and the
+visitor's note), the browser, the commit of the comparison and its result. For example: hardware
+check `<id>` (site `<commit>`, NVIDIA `blackwell`, "RTX 5060 Ti", Chrome 155 on Windows; compared
+at `<commit>` against `<earlier id>`): 40 rows, 0 FAIL. The table goes into the pull request.
 
 `scripts/fetch-record-files.mjs` fetches and checks the result files of an exported record, and
 `scripts/analyze-record.py` analyses them offline (`docs/chimney-rock-58532c69.md`).

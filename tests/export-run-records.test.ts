@@ -5,6 +5,7 @@ import {
   accountId,
   namespaceId,
   printed,
+  recordIds,
   selectKeys,
   summaryLine,
 } from '../scripts/export-run-records.mjs';
@@ -170,4 +171,12 @@ test('the export finds the account and the namespace, orders the keys and summar
   assert.equal(printed({ ...check, flavor: { same: false } }, 'failures'), true);
   assert.equal(printed({ ...check, aborted: 'Device lost in clahe' }, 'failures'), true);
   assert.equal(printed(check, 'all'), true);
+  // --record exports the records that a person names by their ids.
+  assert.deepEqual(recordIds(''), []);
+  assert.deepEqual(recordIds(undefined), []);
+  assert.deepEqual(recordIds(' 20261028010000000-0a1b2c3d, 20261028010100000-ffffffff '), [
+    '20261028010000000-0a1b2c3d',
+    '20261028010100000-ffffffff',
+  ]);
+  assert.throws(() => recordIds('20261028-abcd'), /Not a record id: 20261028-abcd/);
 });

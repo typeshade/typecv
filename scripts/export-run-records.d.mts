@@ -7,6 +7,7 @@ export interface RecordKey {
   readonly name: string;
   readonly metadata?: Record<string, unknown> | null;
 }
+export declare function recordIds(text: string | undefined): string[];
 export declare function selectKeys(keys: readonly RecordKey[], limit: number): RecordKey[];
 export declare function summaryLine(key: RecordKey): string;
 /** A run record (`failure`, `dense`), a probe record (`format`, `aborted`, `bisection`) or a

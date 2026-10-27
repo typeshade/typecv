@@ -4,10 +4,12 @@
 // CLOUDFLARE_API_TOKEN set; the account id comes from wrangler.jsonc.
 //
 //   node scripts/export-run-records.mjs [--out lab-records] [--limit 100] [--print failures|all|none]
+//   node scripts/export-run-records.mjs --record <id>[,<id>...]
 //
 // Writes <out>/index.json (the listing with metadata, newest first) and <out>/<id>.json for
 // each record, prints one summary line per record, and prints the JSON of the records
-// selected by --print (default: the failed runs).
+// selected by --print (default: the failed runs). --record exports the records of those ids
+// instead of the newest --limit, for example the hardware-check record that a person sent.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROBE_RECORD_FORMAT } from '../website/src/lib/probe-record.ts';
@@ -27,6 +29,16 @@ export function namespaceId(listing) {
     (e) => NAMESPACE_TITLES.includes(e.title) && /^[0-9a-f]{32}$/.test(e.id ?? ''),
   );
   return entry?.id;
+}
+/** The ids of `--record`: a comma-separated list of the collector's ids (`RECORD_ID` of website/worker.mjs). */
+export function recordIds(text) {
+  const ids = String(text ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  for (const id of ids)
+    if (!/^[0-9]{17}-[0-9a-f]{8}$/.test(id)) throw new Error('Not a record id: ' + id);
+  return ids;
 }
 /** The newest `limit` record keys: ids start with the receipt time, so the name orders them. */
 export function selectKeys(keys, limit) {
@@ -127,12 +139,12 @@ async function api(path, token, raw = false) {
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${await response.text()}`);
   return raw ? response.text() : response.json();
 }
-async function listKeys(account, namespace, token) {
+async function listKeys(account, namespace, token, prefix = RECORD_PREFIX) {
   const keys = [];
   let cursor = '';
   do {
     const page = await api(
-      `/accounts/${account}/storage/kv/namespaces/${namespace}/keys?prefix=${encodeURIComponent(RECORD_PREFIX)}&limit=1000${cursor ? `&cursor=${cursor}` : ''}`,
+      `/accounts/${account}/storage/kv/namespaces/${namespace}/keys?prefix=${encodeURIComponent(prefix)}&limit=1000${cursor ? `&cursor=${cursor}` : ''}`,
       token,
     );
     keys.push(...page.result);
@@ -150,7 +162,15 @@ async function main() {
     mode = option('--print', 'failures');
   const namespace = namespaceId(await api(`/accounts/${account}/storage/kv/namespaces`, token));
   if (!namespace) throw new Error('No run-record namespace in this account');
-  const keys = selectKeys(await listKeys(account, namespace, token), limit);
+  const ids = recordIds(option('--record', ''));
+  const keys = ids.length
+    ? (
+        await Promise.all(ids.map((id) => listKeys(account, namespace, token, RECORD_PREFIX + id)))
+      ).flat()
+    : selectKeys(await listKeys(account, namespace, token), limit);
+  for (const id of ids)
+    if (!keys.some((key) => key.name === RECORD_PREFIX + id))
+      console.log(`::warning::No record ${id} in the collector`);
   mkdirSync(out, { recursive: true });
   const index = [];
   for (const key of keys) {
