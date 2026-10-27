@@ -15,6 +15,7 @@ identified separately throughout these documents.
 - [Computer vision roadmap and evidence gates](roadmap.md)
 - [Reconstruction status and remaining work: dated PR and verification snapshot](reconstruction-status.md)
 - [Library structure by capability area and the refactoring programme (accepted)](library-structure.md), with its audits of the [sparse pipeline](audits/2026-10-26-sparse-structure.md), the [lab's orchestration](audits/2026-10-26-lab-structure.md) and the [kernel style](audits/2026-10-26-kernel-style.md)
+- [Where TypeCV's GPU code had to leave TypeScript: the inventory by construct that TypeShade proposals cite (audit of 2026-10-27)](audits/2026-10-27-typescript-surface-gaps.md)
 
 ## Geometry and 3D vision: current SfM implementation
 
