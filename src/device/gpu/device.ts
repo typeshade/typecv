@@ -120,7 +120,7 @@ export type GpuStep = readonly [
   after?: () => Promise<void>,
   chunk?: GpuChunk,
 ];
-/** @internal What a chunk step tells the scheduler. */
+/** What a chunk step tells the scheduler: the chunk of a `GpuStep`, and the `chunk` of `plan()`. */
 export interface GpuChunk {
   readonly key: string;
   readonly units: number;

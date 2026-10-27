@@ -231,6 +231,7 @@ export function prepareKltGpuPair(
     scratchBytes,
   };
 }
+/** @internal The inputs of one pair, as `prepareKltGpuPair` snapshots them. */
 export type KltGpuPreparedPair = ReturnType<typeof prepareKltGpuPair>;
 
 /** @internal Zero-fill unused pyramid levels while uploading only retained source pixels. */

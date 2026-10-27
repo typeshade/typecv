@@ -225,7 +225,7 @@ export interface IncrementalResult {
   readonly verifiedPairs?: readonly PairMatches[];
 }
 
-/** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
+/** Numerical requests shared by the synchronous reference and asynchronous device driver. */
 export type ReconstructionJob =
   | { kind: 'verifyPair'; args: Parameters<typeof verifyImagePair> }
   | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
@@ -463,7 +463,7 @@ export interface IncrementalControls {
   readonly stallTolerance: number;
 }
 
-/** @internal The model size at the last global BA, which the schedule compares the model to. */
+/** The model size at the last global BA, which the schedule compares the model to. */
 export interface BundleSchedule {
   views: number;
   points: number;
