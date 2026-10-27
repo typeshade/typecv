@@ -143,7 +143,10 @@ jobs:
     # the head's tests/ and the base's build. So the job also works when the base has no digest
     # tests. A test file that the base cannot load (a module that the base does not have) or a case
     # that it cannot run is reported, not failed; scripts/compare-digests.mjs fails on a case whose
-    # digests differ and on a file that only the base wrote. The job runs for pull requests.
+    # digests differ and on a file that only the base wrote. A pull request that changes behaviour
+    # declares the cases whose digests it changes in tests/digests/expected-changes.json, bound to
+    # its number: the compare step reports a declared difference and fails an undeclared one
+    # (docs/library-structure.md, section 4, rule 2, amendment 6). The job runs for pull requests.
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -155,6 +158,7 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
       DIGEST_NODE_FLAGS: ${{ matrix.node == 24 && '--single-threaded' || '' }}
       DIGEST_TESTS: >-
         tests/digests/cpu-scenes.test.ts tests/digests/scenes.test.ts
@@ -198,7 +202,9 @@ jobs:
           TYPECV_DIGEST_OUT="$RUNNER_TEMP/digests/base" node $DIGEST_NODE_FLAGS --test $DIGEST_TESTS ||
             echo "::warning::A digest test failed on the merge base; its cases are reported as not run."
       - name: Compare the digests of the merge base and the head
-        run: node scripts/compare-digests.mjs "$RUNNER_TEMP/digests/base" "$RUNNER_TEMP/digests/head"
+        run: >-
+          node scripts/compare-digests.mjs "$RUNNER_TEMP/digests/base" "$RUNNER_TEMP/digests/head"
+          --declared tests/digests/expected-changes.json --pull-request "$PR_NUMBER"
   docs:
     # The site renders `docs/*.md` and copies `docs/**/*.json`, so a documentation change still
     # builds the site and checks that every generated page links to real pages and anchors.
