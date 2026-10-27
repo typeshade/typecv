@@ -141,73 +141,9 @@ function checkPairEstimation(
   options: PairEstimationOptions,
   share: number,
 ): () => PairEstimationTask {
-  const a = validateGpuCamera({ ...first }),
-    b = validateGpuCamera({ ...second }),
-    n = input.length / 4,
-    minimum = options.verification ? 1 : options.kind === 0 ? 8 : 4,
-    maximum = options.iterations,
-    requestedBatch = options.batchSize ?? 512;
-  if (
-    !Number.isInteger(n) ||
-    n < minimum ||
-    !finiteGpuArray(input) ||
-    !Number.isSafeInteger(maximum) ||
-    maximum < 1 ||
-    maximum > 100000 ||
-    !Number.isSafeInteger(options.minIterations) ||
-    options.minIterations < 1 ||
-    options.minIterations > maximum ||
-    !Number.isFinite(options.threshold) ||
-    options.threshold < 1e-12 ||
-    options.threshold > 1e6 ||
-    !(options.confidence > 0 && options.confidence < 1) ||
-    !Number.isSafeInteger(options.seed) ||
-    !Number.isSafeInteger(requestedBatch) ||
-    requestedBatch < 1 ||
-    (options.verification &&
-      (!options.recovery ||
-        options.kind !== 0 ||
-        !Number.isSafeInteger(options.verification.homographyIterations) ||
-        options.verification.homographyIterations < 1 ||
-        options.verification.homographyIterations > 100000 ||
-        !Number.isFinite(options.verification.homographyThreshold) ||
-        options.verification.homographyThreshold < 1e-12 ||
-        options.verification.homographyThreshold > 1e6))
-  )
-    throw new RangeError('Invalid GPU pair estimation inputs/options');
-  const pixels = input.slice(),
-    controls = { ...options },
-    blocks = Math.ceil(n / 64),
-    normalCount = Math.ceil(n / 32),
-    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
-    verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    // The scheduling word, the twelve words of indirect workgroup counts, and the triangular
-    // factor, null vector and state of each model: the model generation is a state machine on
-    // every device, one dispatch per step.
-    checkpointBytes = 4 + 48,
-    perModelWords = 98,
-    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
-    perModelBytes = 148 + blocks * 16 + 52 + perModelWords * 8,
-    batchSize = Math.min(
-      requestedBatch,
-      device.maxModelsPerBatch,
-      maximum,
-      Math.floor((device.workingBytes / share - fixedBytes) / perModelBytes),
-      Math.floor(device.bindingBytes / (perModelWords * 8)),
-      Math.floor(device.bindingBytes / (blocks * 16)),
-      Math.floor(device.maxKernelElements / (64 * blocks)),
-    );
-  if (
-    n > device.maxKernelElements ||
-    n * 32 > device.bindingBytes ||
-    batchSize < 1 ||
-    (options.recovery &&
-      (128 * n > device.bindingBytes ||
-        240 * n > device.bindingBytes ||
-        normalCount * 352 > device.bindingBytes ||
-        n > device.maxKernelElements / 16))
-  )
-    throw new RangeError('GPU pair estimation exceeds working/storage/dispatch budget');
+  const request = pairEstimationRequest(device, input, first, second, options, share);
+  const { a, b, n, maximum, pixels, controls, blocks, normalCount, batchSize, perModelWords } =
+    request;
   return () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -297,528 +233,28 @@ function checkPairEstimation(
             angles: wide(n),
           }
         : undefined;
-      const scoringFloor = Math.min(batchSize, PAIR_SCORING_FLOOR);
-      const steps = (function* () {
-        function* consensus(settings: typeof base, data: Resident<Float64Array>) {
-          let budget = settings.maximum;
-          yield [
-            'initializePair',
-            () => {
-              initializePair({ control: settings, invertible, state, best }, 1);
-            },
-          ] as const;
-          // The models of a batch are made as a state machine, one short dispatch per step
-          // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time,
-          // and one dispatch solves each model's triangular factor for its null vector, at a
-          // fixed cost (no kernel iterates to convergence). The scoring of the batch is a plan
-          // of its own (key `scorePairModels`) and runs as one dispatch: a batch is at most
-          // `maxModelsPerBatch` trials.
-          //
-          // A search batch decides its work on the GPU (TypeShade change 0075):
-          // `planPairModelBatch` writes the prepare's workgroup count, and
-          // `summarizePairModelWork` those of the row appends, the null solve, the finish and
-          // the scoring, zero for a batch past the adaptive budget or with no active model.
-          // Those entries dispatch with `{ indirect: counts, offset }`, so the host reads
-          // nothing between the kernels of a batch. A refit (`refit: 1`) always prepares and
-          // scores one model, so only its row appends, null solve and finish are indirect.
-          //
-          // `timed` says the host knows the scoring runs: the first batch of a search, a refit,
-          // and the first batch after a read of the budget that showed the search goes on. Only
-          // such a scoring is timed for the rate of a trial. Another one runs alone, untimed:
-          // the GPU may have set its count to zero, and a plan that dispatches nothing would
-          // teach the device a rate far too fast.
-          function* step(control: typeof base, timed: boolean) {
-            const bindings = {
-              control,
-              coords: data,
-              invertible,
-              models,
-              valid,
-              state,
-              mask,
-              modelWork,
-              modelState,
-            };
-            const groups = Math.ceil(batchSize / 8),
-              search = control.refit === 0,
-              modelCount = { indirect: counts, offset: MODEL_COUNT };
-            if (search)
-              yield [
-                'planPairModelBatch',
-                () => {
-                  planPairModelBatch({ control, state, modelState, counts }, 1);
-                },
-              ] as const;
-            yield [
-              'preparePairModels',
-              () => {
-                preparePairModels(
-                  bindings,
-                  search ? { indirect: counts, offset: PREPARE_COUNT } : groups,
-                );
-              },
-            ] as const;
-            yield [
-              'summarizePairModelWork',
-              () => {
-                summarizePairModelWork({ control, state, modelState, counts }, 1);
-              },
-            ] as const;
-            const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
-            // A refit appends every row of the pair to one model, in order, on one invocation. The
-            // dispatches only bound the time of an invocation; changing their point window
-            // preserves the arithmetic and its order.
-            const refitWindow = pairRefitRowChunk(device, n);
-            const rowChunk = control.refit ? refitWindow : 16;
-            for (let rowStart = 0; rowStart < rows; rowStart += rowChunk) {
-              const chunk = { ...bindings, control: { ...control, rowStart, rowCount: rowChunk } };
-              yield [
-                'appendPairModelRows',
-                () => {
-                  const append =
-                    refitWindow > REFIT_ROW_CHUNK && (control.kind === 0 || !search)
-                      ? appendPairModelRowsInPlace
-                      : appendPairModelRows;
-                  append(
-                    selectBindings(chunk, [
-                      'control',
-                      'coords',
-                      'invertible',
-                      'valid',
-                      'mask',
-                      'modelWork',
-                      'modelState',
-                    ]),
-                    modelCount,
-                  );
-                },
-              ] as const;
-            }
-            yield [
-              'solvePairModelNull',
-              () => {
-                solvePairModelNull({ valid, modelWork, modelState }, modelCount);
-              },
-            ] as const;
-            yield [
-              'finishPairModels',
-              () => {
-                finishPairModels({ control, valid, models, modelWork, modelState }, modelCount);
-              },
-            ] as const;
-            const scoring = { control, coords: data, invertible, models, valid, partials },
-              chunk = {
-                key: 'scorePairModels',
-                units: control.trials,
-                ...(timed ? {} : { timed: false }),
-                // The refit scores one model: it is no search batch, and it teaches no floor.
-                ...(control.refit === 0 ? { minUnits: scoringFloor } : {}),
-              };
-            if (device.backend === 'webgpu')
-              yield [
-                'scorePairModels',
-                () => {
-                  scorePairModels(
-                    scoring,
-                    search ? { indirect: counts, offset: SCORE_COUNT } : control.trials * blocks,
-                  );
-                },
-                undefined,
-                {
-                  ...chunk,
-                  // Zero workgroups: the pipeline is made before the first timed scoring.
-                  warm: { id: 'pair', run: () => scorePairModels(scoring, 0) },
-                },
-              ] as const;
-            else
-              yield [
-                'scorePairModelsOracle',
-                () => {
-                  scorePairModelsOracle(
-                    scoring,
-                    search
-                      ? { indirect: counts, offset: SCORE_ORACLE_COUNT }
-                      : Math.ceil((control.trials * blocks) / 8),
-                  );
-                },
-                undefined,
-                chunk,
-              ] as const;
-            yield [
-              'selectPairModel',
-              () => {
-                selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
-              },
-            ] as const;
-          }
-          // The host bounds the search by the requested maximum, as before, and by the budget
-          // it read last. It reads the budget after every `PROGRESS_INTERVAL` batches; a batch
-          // submitted after the GPU met the budget dispatches nothing.
-          let timed = true;
-          for (let start = 0, batch = 1; start < Math.min(settings.maximum, budget); batch++) {
-            // The selection stops where a sequential search would (`selectPairModel`), so the
-            // batch is a performance choice: as many trials as the time budget allows at the
-            // scoring rate the device learned, at least the occupancy floor that fills the device
-            // (`PAIR_SCORING_FLOOR` trials, shared by the streams of a job) and at most
-            // `batchSize`. The CPU tier, which has no watchdog and no idle lanes, scores 64 at a
-            // time.
-            const trials = Math.min(
-              settings.maximum - start,
-              device.backend === 'cpu'
-                ? Math.min(batchSize, 64)
-                : Math.max(
-                    Math.min(batchSize, 32),
-                    Math.floor(
-                      device.chunkSize(
-                        'scorePairModels',
-                        batchSize,
-                        Math.min(batchSize, 32),
-                        scoringFloor,
-                      ) / share,
-                    ),
-                  ),
-            );
-            yield* step({ ...settings, start, trials }, timed);
-            timed = false;
-            start += trials;
-            if (
-              settings.refit === 0 &&
-              batch % (share > 1 ? SHARED_PROGRESS_INTERVAL : PROGRESS_INTERVAL) === 0 &&
-              start < Math.min(settings.maximum, budget)
-            ) {
-              // The adaptive budget shrank with the best model so far: read it, so that a
-              // finished search submits no more batches. The next batch runs when the loop
-              // goes on, so its scoring is timed.
-              yield [
-                'snapshotPairModelBudget',
-                () => snapshotPairModelBudget({ state, modelProgress }, 1),
-                async () => {
-                  budget = (await device.read(modelProgress, 1))[0]!;
-                },
-              ] as const;
-              timed = true;
-            }
-          }
-          for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
-            yield [
-              'classifyPair',
-              () => {
-                classifyPair(
-                  { control: settings, state, coords: data, invertible, best, mask },
-                  blocks,
-                );
-              },
-            ] as const;
-            yield* step({ ...settings, trials: 1, refit: 1 }, true);
-          }
-          yield [
-            'classifyPair',
-            () => {
-              classifyPair(
-                { control: settings, state, coords: data, invertible, best, mask },
-                blocks,
-              );
-            },
-          ] as const;
-        }
-        if (verification) {
-          const v = verification;
-          yield [
-            'prepareImagePair',
-            () => {
-              prepareImagePair(
-                {
-                  control: { first: base.first, second: base.second },
-                  pixels: raw,
-                  prepared: v.prepared,
-                  prefix: v.prefix,
-                },
-                blocks,
-              );
-            },
-          ] as const;
-          const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
-          if (device.backend === 'webgpu')
-            yield [
-              'scanPairRows',
-              () => {
-                scanPairRows(scan, blocks);
-              },
-            ] as const;
-          else
-            yield [
-              'scanPairRowsOracle',
-              () => {
-                scanPairRowsOracle(scan, Math.ceil(blocks / 8));
-              },
-            ] as const;
-          yield [
-            'scanPairBlocks',
-            () => {
-              scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
-            },
-          ] as const;
-          yield [
-            'compactImagePair',
-            () => {
-              compactImagePair(
-                {
-                  prepared: v.prepared,
-                  prefix: v.prefix,
-                  blockOffsets: v.blockOffsets,
-                  coords,
-                  ideal: v.ideal,
-                  sourceRows: v.sourceRows,
-                },
-                blocks,
-              );
-            },
-          ] as const;
-          yield [
-            'finishPairPreparation',
-            () => {
-              finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
-            },
-          ] as const;
-          const h = controls.verification!;
-          yield* consensus(
-            {
-              ...base,
-              kind: 1,
-              maximum: h.homographyIterations,
-              minTrials: Math.min(32, h.homographyIterations),
-              threshold: h.homographyThreshold,
-              logFailure: Math.log1p(-0.999),
-            },
-            v.ideal,
-          );
-          yield [
-            'preserveHomography',
-            () => {
-              preserveHomography({ state }, 1);
-            },
-          ] as const;
-        } else
-          yield [
-            'preparePair',
-            () => {
-              preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
-            },
-          ] as const;
-        yield* consensus(base, coords);
-        if (recovery) {
-          const r = recovery;
-          yield [
-            'decomposeEssential',
-            () => {
-              decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
-            },
-          ] as const;
-          yield [
-            'triangulatePoseCandidates',
-            () => {
-              triangulatePoseCandidates(
-                selectBindings(r, [
-                  'coords',
-                  'mask',
-                  'poses',
-                  'cloud',
-                  'info',
-                  'control',
-                  'pixels',
-                ]),
-                Math.ceil(n / 4),
-              );
-            },
-          ] as const;
-          yield [
-            'chooseTwoViewPose',
-            () => {
-              chooseTwoViewPose(
-                selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']),
-                1,
-              );
-            },
-          ] as const;
-          yield [
-            'seedTwoViewPoints',
-            () => {
-              seedTwoViewPoints(
-                selectBindings(r, [
-                  'mask',
-                  'fixed',
-                  'points',
-                  'metrics',
-                  'info',
-                  'cloud',
-                  'control',
-                  'pixels',
-                  'coords',
-                ]),
-                blocks,
-              );
-            },
-          ] as const;
-          yield [
-            'beginTwoViewRefinement',
-            () => {
-              beginTwoViewRefinement(selectBindings(r, ['info', 'metrics', 'mask', 'control']), 1);
-            },
-          ] as const;
-          let refinementActive = true;
-          const readRecoveryActivity = async () => {
-            refinementActive = (await device.read(r.activity, 1))[0] !== 0;
-          };
-          if (device.solverCheckpoints && r.control.iterations > 0)
-            yield [
-              'snapshotTwoViewActivity',
-              () => {
-                snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
-              },
-              readRecoveryActivity,
-            ] as const;
-          for (
-            let iteration = 0;
-            iteration < r.control.iterations && refinementActive;
-            iteration++
-          ) {
-            const normals = selectBindings(r, [
-              'mask',
-              'info',
-              'fixed',
-              'points',
-              'control',
-              'pixels',
-              'pointBlocks',
-              'normalBlocks',
-            ]);
-            if (device.backend === 'webgpu')
-              yield [
-                'twoViewNormals',
-                () => {
-                  twoViewNormals(normals, normalCount);
-                },
-              ] as const;
-            else
-              yield [
-                'twoViewNormalsOracle',
-                () => {
-                  twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
-                },
-              ] as const;
-            yield [
-              'twoViewStep',
-              () => {
-                twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
-              },
-            ] as const;
-            yield [
-              'twoViewTrial',
-              () => {
-                twoViewTrial(
-                  selectBindings(r, [
-                    'mask',
-                    'metrics',
-                    'info',
-                    'fixed',
-                    'pointBlocks',
-                    'points',
-                    'trialPoints',
-                    'control',
-                    'pixels',
-                  ]),
-                  blocks,
-                );
-              },
-            ] as const;
-            yield [
-              'acceptTwoViewStep',
-              () => {
-                acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-              },
-            ] as const;
-            yield [
-              'commitTwoViewPoints',
-              () => {
-                commitTwoViewPoints(
-                  selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
-                  blocks,
-                );
-              },
-            ] as const;
-            if (
-              device.solverCheckpoints &&
-              (iteration + 1) % 4 === 0 &&
-              iteration + 1 < r.control.iterations
-            )
-              yield [
-                'snapshotTwoViewActivity',
-                () => {
-                  snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
-                },
-                readRecoveryActivity,
-              ] as const;
-          }
-          if (r.control.iterations > 0)
-            yield [
-              'validateTwoViewRefinement',
-              () => {
-                validateTwoViewRefinement(
-                  selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
-                  Math.ceil(n / 16),
-                );
-              },
-            ] as const;
-          yield [
-            'finishTwoViewRefinement',
-            () => {
-              finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-            },
-          ] as const;
-          yield [
-            'finishTwoViewPoints',
-            () => {
-              finishTwoViewPoints(
-                selectBindings(r, [
-                  'mask',
-                  'flags',
-                  'points',
-                  'metrics',
-                  'info',
-                  'invertible',
-                  'control',
-                  'coords',
-                  'pixels',
-                ]),
-                Math.ceil(n / 16),
-              );
-            },
-          ] as const;
-          yield [
-            'summarizeTwoView',
-            () => {
-              summarizeTwoView(
-                selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
-                1,
-              );
-            },
-          ] as const;
-        }
-        if (verification)
-          yield [
-            'scatterPairConsensus',
-            () => {
-              scatterPairConsensus(
-                {
-                  mask,
-                  sourceRows: verification.sourceRows,
-                  outputMask: verification.outputMask,
-                },
-                blocks,
-              );
-            },
-          ] as const;
-      })();
+      const steps = pairEstimationSteps(
+        device,
+        request,
+        {
+          raw,
+          coords,
+          invertible,
+          models,
+          valid,
+          partials,
+          state,
+          best,
+          mask,
+          modelWork,
+          modelState,
+          modelProgress,
+          counts,
+        },
+        base,
+        verification,
+        recovery,
+      );
       const finish = async (report: ShadePlanReport): Promise<PairEstimationResult> => {
         // All public snapshots follow the final dispatch, including convergence decisions.
         let values: Float64Array | undefined,
@@ -862,29 +298,15 @@ function checkPairEstimation(
           metadata = stateRead;
         }
         const after = device.statistics;
-        if (verification && metadata[11])
-          throw new RangeError('Undistorted pixel exceeds the supported GPU geometry bounds');
-        if (verification && metadata[7] !== metadata[10])
-          throw new Error('GPU pair compaction population mismatch');
+        const result = unpackPairEstimation(
+          !!verification,
+          values,
+          recoveryResult,
+          flags,
+          metadata,
+        );
         successful = true;
-        return {
-          verification: verification
-            ? {
-                invertibleCount: metadata[10]!,
-                homographyInlierCount: metadata[8]!,
-                homographyIterations: metadata[9]!,
-              }
-            : undefined,
-          model: recoveryResult ? recoveryResult.info.slice(57, 66) : values!.slice(0, 9),
-          mask: Uint8Array.from(flags),
-          count: recoveryResult ? recoveryResult.info[RECOVERY_INFO.inlierCount]! : metadata[3]!,
-          msac: values?.[20] ?? NaN,
-          trials: metadata[1]!,
-          batches: metadata[5]!,
-          hypotheses: metadata[2]!,
-          recovery: recoveryResult,
-          execution: geometryExecution(device, report, before, after),
-        };
+        return { ...result, execution: geometryExecution(device, report, before, after) };
       };
       return { steps, finish, release };
     } catch (error) {
@@ -895,12 +317,744 @@ function checkPairEstimation(
   };
 }
 
+/**
+ * The request checks of a pair estimation: the cameras, the options, and the batch that fits
+ * the working budget shared by `share` estimations. A bad request throws before any GPU work.
+ */
+function pairEstimationRequest(
+  device: ShadeDevice,
+  input: Float64Array,
+  first: Camera,
+  second: Camera,
+  options: PairEstimationOptions,
+  share: number,
+) {
+  const a = validateGpuCamera({ ...first }),
+    b = validateGpuCamera({ ...second }),
+    n = input.length / 4,
+    minimum = options.verification ? 1 : options.kind === 0 ? 8 : 4,
+    maximum = options.iterations,
+    requestedBatch = options.batchSize ?? 512;
+  if (
+    !Number.isInteger(n) ||
+    n < minimum ||
+    !finiteGpuArray(input) ||
+    !Number.isSafeInteger(maximum) ||
+    maximum < 1 ||
+    maximum > 100000 ||
+    !Number.isSafeInteger(options.minIterations) ||
+    options.minIterations < 1 ||
+    options.minIterations > maximum ||
+    !Number.isFinite(options.threshold) ||
+    options.threshold < 1e-12 ||
+    options.threshold > 1e6 ||
+    !(options.confidence > 0 && options.confidence < 1) ||
+    !Number.isSafeInteger(options.seed) ||
+    !Number.isSafeInteger(requestedBatch) ||
+    requestedBatch < 1 ||
+    (options.verification &&
+      (!options.recovery ||
+        options.kind !== 0 ||
+        !Number.isSafeInteger(options.verification.homographyIterations) ||
+        options.verification.homographyIterations < 1 ||
+        options.verification.homographyIterations > 100000 ||
+        !Number.isFinite(options.verification.homographyThreshold) ||
+        options.verification.homographyThreshold < 1e-12 ||
+        options.verification.homographyThreshold > 1e6))
+  )
+    throw new RangeError('Invalid GPU pair estimation inputs/options');
+  const pixels = input.slice(),
+    controls = { ...options },
+    blocks = Math.ceil(n / 64),
+    normalCount = Math.ceil(n / 32),
+    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
+    verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
+    // The scheduling word, the twelve words of indirect workgroup counts, and the triangular
+    // factor, null vector and state of each model: the model generation is a state machine on
+    // every device, one dispatch per step.
+    checkpointBytes = 4 + 48,
+    perModelWords = 98,
+    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
+    perModelBytes = 148 + blocks * 16 + 52 + perModelWords * 8,
+    batchSize = Math.min(
+      requestedBatch,
+      device.maxModelsPerBatch,
+      maximum,
+      Math.floor((device.workingBytes / share - fixedBytes) / perModelBytes),
+      Math.floor(device.bindingBytes / (perModelWords * 8)),
+      Math.floor(device.bindingBytes / (blocks * 16)),
+      Math.floor(device.maxKernelElements / (64 * blocks)),
+    );
+  if (
+    n > device.maxKernelElements ||
+    n * 32 > device.bindingBytes ||
+    batchSize < 1 ||
+    (options.recovery &&
+      (128 * n > device.bindingBytes ||
+        240 * n > device.bindingBytes ||
+        normalCount * 352 > device.bindingBytes ||
+        n > device.maxKernelElements / 16))
+  )
+    throw new RangeError('GPU pair estimation exceeds working/storage/dispatch budget');
+  return {
+    a,
+    b,
+    n,
+    share,
+    maximum,
+    pixels,
+    controls,
+    blocks,
+    normalCount,
+    perModelWords,
+    batchSize,
+  };
+}
+
 /** A pair estimation that has its buffers: the steps to plan, then the reads that finish it. */
 interface PairEstimationTask {
   readonly steps: Iterable<GpuStep>;
   readonly finish: (report: ShadePlanReport) => Promise<PairEstimationResult>;
   /** Give the buffers back (after a success) or destroy them (otherwise). */
   readonly release: () => void;
+}
+
+/** The buffers of one pair estimation that every search binds. */
+interface PairBuffers {
+  raw: Resident<Float64Array>;
+  coords: Resident<Float64Array>;
+  invertible: Resident<Uint32Array>;
+  models: Resident<Float64Array>;
+  valid: Resident<Uint32Array>;
+  partials: Resident<Float64Array>;
+  state: Resident<Uint32Array>;
+  best: Resident<Float64Array>;
+  mask: Resident<Uint32Array>;
+  modelWork: Resident<Float64Array>;
+  modelState: Resident<Uint32Array>;
+  modelProgress: Resident<Uint32Array>;
+  counts: Resident<Uint32Array>;
+}
+
+/** The buffers of the verification prefix: the prepared rows, their scan and the compaction. */
+interface PairVerificationBuffers {
+  prepared: Resident<Float64Array>;
+  ideal: Resident<Float64Array>;
+  prefix: Resident<Uint32Array>;
+  sourceRows: Resident<Uint32Array>;
+  outputMask: Resident<Uint32Array>;
+  blockOffsets: Resident<Uint32Array>;
+}
+
+/** The control and the buffers of the two-view recovery. */
+interface PairRecoveryBuffers {
+  control: {
+    first: typeof identityCamera;
+    second: typeof identityCamera;
+    threshold: number;
+    iterations: number;
+    huber: number;
+    minAngle: number;
+    maxError: number;
+    separateDirectional: number;
+  };
+  pixels: Resident<Float64Array>;
+  coords: Resident<Float64Array>;
+  invertible: Resident<Uint32Array>;
+  essential: Resident<Float64Array>;
+  mask: Resident<Uint32Array>;
+  poses: Resident<Float64Array>;
+  cloud: Resident<Float64Array>;
+  info: Resident<Float64Array>;
+  points: Resident<Float64Array>;
+  trialPoints: Resident<Float64Array>;
+  activity: Resident<Uint32Array>;
+  fixed: Resident<Uint32Array>;
+  flags: Resident<Uint32Array>;
+  pointBlocks: Resident<Float64Array>;
+  normalBlocks: Resident<Float64Array>;
+  metrics: Resident<Float64Array>;
+  angles: Resident<Float64Array>;
+}
+
+/** The base control of a pair search; a batch sets `start` and `trials`, a refit `refit`. */
+interface PairControl {
+  first: typeof identityCamera;
+  second: typeof identityCamera;
+  kind: 0 | 1;
+  threshold: number;
+  seed: number;
+  start: number;
+  trials: number;
+  maximum: number;
+  minTrials: number;
+  blocks: number;
+  refit: number;
+  logFailure: number;
+  verification: number;
+  rowStart: number;
+  rowCount: number;
+}
+
+/**
+ * The named steps of one pair estimation: the verification prefix and its homography search
+ * (with `verification`), the preparation, the consensus search with its refits, the two-view
+ * recovery (with `recovery`) and the scatter of the verified consensus.
+ */
+function* pairEstimationSteps(
+  device: ShadeDevice,
+  request: ReturnType<typeof pairEstimationRequest>,
+  buffers: PairBuffers,
+  base: PairControl,
+  verification: PairVerificationBuffers | undefined,
+  recovery: PairRecoveryBuffers | undefined,
+) {
+  const { n, share, blocks, normalCount, batchSize, controls } = request;
+  const {
+    raw,
+    coords,
+    invertible,
+    models,
+    valid,
+    partials,
+    state,
+    best,
+    mask,
+    modelWork,
+    modelState,
+    modelProgress,
+    counts,
+  } = buffers;
+  const scoringFloor = Math.min(batchSize, PAIR_SCORING_FLOOR);
+  function* consensus(settings: typeof base, data: Resident<Float64Array>) {
+    let budget = settings.maximum;
+    yield [
+      'initializePair',
+      () => {
+        initializePair({ control: settings, invertible, state, best }, 1);
+      },
+    ] as const;
+    // The models of a batch are made as a state machine, one short dispatch per step
+    // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time,
+    // and one dispatch solves each model's triangular factor for its null vector, at a
+    // fixed cost (no kernel iterates to convergence). The scoring of the batch is a plan
+    // of its own (key `scorePairModels`) and runs as one dispatch: a batch is at most
+    // `maxModelsPerBatch` trials.
+    //
+    // A search batch decides its work on the GPU (TypeShade change 0075):
+    // `planPairModelBatch` writes the prepare's workgroup count, and
+    // `summarizePairModelWork` those of the row appends, the null solve, the finish and
+    // the scoring, zero for a batch past the adaptive budget or with no active model.
+    // Those entries dispatch with `{ indirect: counts, offset }`, so the host reads
+    // nothing between the kernels of a batch. A refit (`refit: 1`) always prepares and
+    // scores one model, so only its row appends, null solve and finish are indirect.
+    //
+    // `timed` says the host knows the scoring runs: the first batch of a search, a refit,
+    // and the first batch after a read of the budget that showed the search goes on. Only
+    // such a scoring is timed for the rate of a trial. Another one runs alone, untimed:
+    // the GPU may have set its count to zero, and a plan that dispatches nothing would
+    // teach the device a rate far too fast.
+    function* step(control: typeof base, timed: boolean) {
+      const bindings = {
+        control,
+        coords: data,
+        invertible,
+        models,
+        valid,
+        state,
+        mask,
+        modelWork,
+        modelState,
+      };
+      const groups = Math.ceil(batchSize / 8),
+        search = control.refit === 0,
+        modelCount = { indirect: counts, offset: MODEL_COUNT };
+      if (search)
+        yield [
+          'planPairModelBatch',
+          () => {
+            planPairModelBatch({ control, state, modelState, counts }, 1);
+          },
+        ] as const;
+      yield [
+        'preparePairModels',
+        () => {
+          preparePairModels(
+            bindings,
+            search ? { indirect: counts, offset: PREPARE_COUNT } : groups,
+          );
+        },
+      ] as const;
+      yield [
+        'summarizePairModelWork',
+        () => {
+          summarizePairModelWork({ control, state, modelState, counts }, 1);
+        },
+      ] as const;
+      const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
+      // A refit appends every row of the pair to one model, in order, on one invocation. The
+      // dispatches only bound the time of an invocation; changing their point window
+      // preserves the arithmetic and its order.
+      const refitWindow = pairRefitRowChunk(device, n);
+      const rowChunk = control.refit ? refitWindow : 16;
+      for (let rowStart = 0; rowStart < rows; rowStart += rowChunk) {
+        const chunk = { ...bindings, control: { ...control, rowStart, rowCount: rowChunk } };
+        yield [
+          'appendPairModelRows',
+          () => {
+            const append =
+              refitWindow > REFIT_ROW_CHUNK && (control.kind === 0 || !search)
+                ? appendPairModelRowsInPlace
+                : appendPairModelRows;
+            append(
+              selectBindings(chunk, [
+                'control',
+                'coords',
+                'invertible',
+                'valid',
+                'mask',
+                'modelWork',
+                'modelState',
+              ]),
+              modelCount,
+            );
+          },
+        ] as const;
+      }
+      yield [
+        'solvePairModelNull',
+        () => {
+          solvePairModelNull({ valid, modelWork, modelState }, modelCount);
+        },
+      ] as const;
+      yield [
+        'finishPairModels',
+        () => {
+          finishPairModels({ control, valid, models, modelWork, modelState }, modelCount);
+        },
+      ] as const;
+      const scoring = { control, coords: data, invertible, models, valid, partials },
+        chunk = {
+          key: 'scorePairModels',
+          units: control.trials,
+          ...(timed ? {} : { timed: false }),
+          // The refit scores one model: it is no search batch, and it teaches no floor.
+          ...(control.refit === 0 ? { minUnits: scoringFloor } : {}),
+        };
+      if (device.backend === 'webgpu')
+        yield [
+          'scorePairModels',
+          () => {
+            scorePairModels(
+              scoring,
+              search ? { indirect: counts, offset: SCORE_COUNT } : control.trials * blocks,
+            );
+          },
+          undefined,
+          {
+            ...chunk,
+            // Zero workgroups: the pipeline is made before the first timed scoring.
+            warm: { id: 'pair', run: () => scorePairModels(scoring, 0) },
+          },
+        ] as const;
+      else
+        yield [
+          'scorePairModelsOracle',
+          () => {
+            scorePairModelsOracle(
+              scoring,
+              search
+                ? { indirect: counts, offset: SCORE_ORACLE_COUNT }
+                : Math.ceil((control.trials * blocks) / 8),
+            );
+          },
+          undefined,
+          chunk,
+        ] as const;
+      yield [
+        'selectPairModel',
+        () => {
+          selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+        },
+      ] as const;
+    }
+    // The host bounds the search by the requested maximum, as before, and by the budget
+    // it read last. It reads the budget after every `PROGRESS_INTERVAL` batches; a batch
+    // submitted after the GPU met the budget dispatches nothing.
+    let timed = true;
+    for (let start = 0, batch = 1; start < Math.min(settings.maximum, budget); batch++) {
+      // The selection stops where a sequential search would (`selectPairModel`), so the
+      // batch is a performance choice: as many trials as the time budget allows at the
+      // scoring rate the device learned, at least the occupancy floor that fills the device
+      // (`PAIR_SCORING_FLOOR` trials, shared by the streams of a job) and at most
+      // `batchSize`. The CPU tier, which has no watchdog and no idle lanes, scores 64 at a
+      // time.
+      const trials = Math.min(
+        settings.maximum - start,
+        device.backend === 'cpu'
+          ? Math.min(batchSize, 64)
+          : Math.max(
+              Math.min(batchSize, 32),
+              Math.floor(
+                device.chunkSize(
+                  'scorePairModels',
+                  batchSize,
+                  Math.min(batchSize, 32),
+                  scoringFloor,
+                ) / share,
+              ),
+            ),
+      );
+      yield* step({ ...settings, start, trials }, timed);
+      timed = false;
+      start += trials;
+      if (
+        settings.refit === 0 &&
+        batch % (share > 1 ? SHARED_PROGRESS_INTERVAL : PROGRESS_INTERVAL) === 0 &&
+        start < Math.min(settings.maximum, budget)
+      ) {
+        // The adaptive budget shrank with the best model so far: read it, so that a
+        // finished search submits no more batches. The next batch runs when the loop
+        // goes on, so its scoring is timed.
+        yield [
+          'snapshotPairModelBudget',
+          () => snapshotPairModelBudget({ state, modelProgress }, 1),
+          async () => {
+            budget = (await device.read(modelProgress, 1))[0]!;
+          },
+        ] as const;
+        timed = true;
+      }
+    }
+    for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
+      yield [
+        'classifyPair',
+        () => {
+          classifyPair({ control: settings, state, coords: data, invertible, best, mask }, blocks);
+        },
+      ] as const;
+      yield* step({ ...settings, trials: 1, refit: 1 }, true);
+    }
+    yield [
+      'classifyPair',
+      () => {
+        classifyPair({ control: settings, state, coords: data, invertible, best, mask }, blocks);
+      },
+    ] as const;
+  }
+  if (verification) {
+    const v = verification;
+    yield [
+      'prepareImagePair',
+      () => {
+        prepareImagePair(
+          {
+            control: { first: base.first, second: base.second },
+            pixels: raw,
+            prepared: v.prepared,
+            prefix: v.prefix,
+          },
+          blocks,
+        );
+      },
+    ] as const;
+    const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
+    if (device.backend === 'webgpu')
+      yield [
+        'scanPairRows',
+        () => {
+          scanPairRows(scan, blocks);
+        },
+      ] as const;
+    else
+      yield [
+        'scanPairRowsOracle',
+        () => {
+          scanPairRowsOracle(scan, Math.ceil(blocks / 8));
+        },
+      ] as const;
+    yield [
+      'scanPairBlocks',
+      () => {
+        scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
+      },
+    ] as const;
+    yield [
+      'compactImagePair',
+      () => {
+        compactImagePair(
+          {
+            prepared: v.prepared,
+            prefix: v.prefix,
+            blockOffsets: v.blockOffsets,
+            coords,
+            ideal: v.ideal,
+            sourceRows: v.sourceRows,
+          },
+          blocks,
+        );
+      },
+    ] as const;
+    yield [
+      'finishPairPreparation',
+      () => {
+        finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
+      },
+    ] as const;
+    const h = controls.verification!;
+    yield* consensus(
+      {
+        ...base,
+        kind: 1,
+        maximum: h.homographyIterations,
+        minTrials: Math.min(32, h.homographyIterations),
+        threshold: h.homographyThreshold,
+        logFailure: Math.log1p(-0.999),
+      },
+      v.ideal,
+    );
+    yield [
+      'preserveHomography',
+      () => {
+        preserveHomography({ state }, 1);
+      },
+    ] as const;
+  } else
+    yield [
+      'preparePair',
+      () => {
+        preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
+      },
+    ] as const;
+  yield* consensus(base, coords);
+  if (recovery) {
+    const r = recovery;
+    yield [
+      'decomposeEssential',
+      () => {
+        decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
+      },
+    ] as const;
+    yield [
+      'triangulatePoseCandidates',
+      () => {
+        triangulatePoseCandidates(
+          selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info', 'control', 'pixels']),
+          Math.ceil(n / 4),
+        );
+      },
+    ] as const;
+    yield [
+      'chooseTwoViewPose',
+      () => {
+        chooseTwoViewPose(selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']), 1);
+      },
+    ] as const;
+    yield [
+      'seedTwoViewPoints',
+      () => {
+        seedTwoViewPoints(
+          selectBindings(r, [
+            'mask',
+            'fixed',
+            'points',
+            'metrics',
+            'info',
+            'cloud',
+            'control',
+            'pixels',
+            'coords',
+          ]),
+          blocks,
+        );
+      },
+    ] as const;
+    yield [
+      'beginTwoViewRefinement',
+      () => {
+        beginTwoViewRefinement(selectBindings(r, ['info', 'metrics', 'mask', 'control']), 1);
+      },
+    ] as const;
+    let refinementActive = true;
+    const readRecoveryActivity = async () => {
+      refinementActive = (await device.read(r.activity, 1))[0] !== 0;
+    };
+    if (device.solverCheckpoints && r.control.iterations > 0)
+      yield [
+        'snapshotTwoViewActivity',
+        () => {
+          snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+        },
+        readRecoveryActivity,
+      ] as const;
+    for (let iteration = 0; iteration < r.control.iterations && refinementActive; iteration++) {
+      const normals = selectBindings(r, [
+        'mask',
+        'info',
+        'fixed',
+        'points',
+        'control',
+        'pixels',
+        'pointBlocks',
+        'normalBlocks',
+      ]);
+      if (device.backend === 'webgpu')
+        yield [
+          'twoViewNormals',
+          () => {
+            twoViewNormals(normals, normalCount);
+          },
+        ] as const;
+      else
+        yield [
+          'twoViewNormalsOracle',
+          () => {
+            twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
+          },
+        ] as const;
+      yield [
+        'twoViewStep',
+        () => {
+          twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
+        },
+      ] as const;
+      yield [
+        'twoViewTrial',
+        () => {
+          twoViewTrial(
+            selectBindings(r, [
+              'mask',
+              'metrics',
+              'info',
+              'fixed',
+              'pointBlocks',
+              'points',
+              'trialPoints',
+              'control',
+              'pixels',
+            ]),
+            blocks,
+          );
+        },
+      ] as const;
+      yield [
+        'acceptTwoViewStep',
+        () => {
+          acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+        },
+      ] as const;
+      yield [
+        'commitTwoViewPoints',
+        () => {
+          commitTwoViewPoints(
+            selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
+            blocks,
+          );
+        },
+      ] as const;
+      if (
+        device.solverCheckpoints &&
+        (iteration + 1) % 4 === 0 &&
+        iteration + 1 < r.control.iterations
+      )
+        yield [
+          'snapshotTwoViewActivity',
+          () => {
+            snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+          },
+          readRecoveryActivity,
+        ] as const;
+    }
+    if (r.control.iterations > 0)
+      yield [
+        'validateTwoViewRefinement',
+        () => {
+          validateTwoViewRefinement(
+            selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
+            Math.ceil(n / 16),
+          );
+        },
+      ] as const;
+    yield [
+      'finishTwoViewRefinement',
+      () => {
+        finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+      },
+    ] as const;
+    yield [
+      'finishTwoViewPoints',
+      () => {
+        finishTwoViewPoints(
+          selectBindings(r, [
+            'mask',
+            'flags',
+            'points',
+            'metrics',
+            'info',
+            'invertible',
+            'control',
+            'coords',
+            'pixels',
+          ]),
+          Math.ceil(n / 16),
+        );
+      },
+    ] as const;
+    yield [
+      'summarizeTwoView',
+      () => {
+        summarizeTwoView(
+          selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
+          1,
+        );
+      },
+    ] as const;
+  }
+  if (verification)
+    yield [
+      'scatterPairConsensus',
+      () => {
+        scatterPairConsensus(
+          {
+            mask,
+            sourceRows: verification.sourceRows,
+            outputMask: verification.outputMask,
+          },
+          blocks,
+        );
+      },
+    ] as const;
+}
+
+/** The result of a pair estimation from its reads; a verification that failed on the device throws. */
+function unpackPairEstimation(
+  verification: boolean,
+  values: Float64Array | undefined,
+  recoveryResult: PairEstimationResult['recovery'],
+  flags: Uint32Array,
+  metadata: Uint32Array,
+): Omit<PairEstimationResult, 'execution'> {
+  if (verification && metadata[11])
+    throw new RangeError('Undistorted pixel exceeds the supported GPU geometry bounds');
+  if (verification && metadata[7] !== metadata[10])
+    throw new Error('GPU pair compaction population mismatch');
+  return {
+    verification: verification
+      ? {
+          invertibleCount: metadata[10]!,
+          homographyInlierCount: metadata[8]!,
+          homographyIterations: metadata[9]!,
+        }
+      : undefined,
+    model: recoveryResult ? recoveryResult.info.slice(57, 66) : values!.slice(0, 9),
+    mask: Uint8Array.from(flags),
+    count: recoveryResult ? recoveryResult.info[RECOVERY_INFO.inlierCount]! : metadata[3]!,
+    msac: values?.[20] ?? NaN,
+    trials: metadata[1]!,
+    batches: metadata[5]!,
+    hypotheses: metadata[2]!,
+    recovery: recoveryResult,
+  };
 }
 
 /** @internal Sampling, proposals, scoring, stopping and all inlier refits stay resident. */

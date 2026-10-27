@@ -281,7 +281,7 @@ These stages throw at a limit and break the rule. This record does not change th
 
 | Site                                                                                       | Limit                                                        | Direction (issue #160)                |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------- |
-| `src/geometry/gpu/pair-estimation.ts` (admission, `checkPairEstimation`)                            | `working/storage/dispatch budget` for the hypothesis batches | split the batches of pairs and models |
+| `src/geometry/gpu/pair-estimation.ts` (admission, `pairEstimationRequest`)                          | `working/storage/dispatch budget` for the hypothesis batches | split the batches of pairs and models |
 | `src/geometry/gpu/pair-estimation.ts` (undistortion, `undistortCorrespondencesGpu`)                 | the same, for the undistorted image                          | tile the image                        |
 | `src/features/gpu/float-matching.ts` (`matchFloatDescriptorsGpu`)                                   | the same, for the descriptor sets                            | match in blocks of the second set     |
 | `src/features/gpu/features.ts`, `tiled-features.ts`, `orb.ts`, `global-descriptor-gpu.ts`, `src/geometry/gpu/p3p.ts` | see the table of issue #160                                  | issue #160, items 4 and 5             |
