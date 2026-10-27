@@ -60,6 +60,21 @@ export async function guideEssential(
   }
 }
 
+/** Guided matching runs on a pair with at least this many plain match entries (8 matches). */
+export const GUIDED_MIN_MATCH_ENTRIES = 16;
+
+/**
+ * The guided trigger: guided matching (`?guided=1`) runs on a pair of the SIFT front end whose
+ * plain matches have at least `GUIDED_MIN_MATCH_ENTRIES` entries.
+ */
+export function guidedMatchingRuns(
+  sift: boolean,
+  guidedMatching: boolean,
+  matchEntries: number,
+): boolean {
+  return sift && guidedMatching && matchEntries >= GUIDED_MIN_MATCH_ENTRIES;
+}
+
 /** The guided matches replace the plain ones only when they are more. */
 export function preferGuided(plainMatches: number, guidedMatches: number | undefined): boolean {
   return guidedMatches !== undefined && guidedMatches > plainMatches;
