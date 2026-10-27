@@ -687,6 +687,7 @@ export function* incrementalSteps(
         search,
         false,
         minimumFocalViews,
+        incrementalSteps,
       );
     } catch (error) {
       if (error instanceof ReconstructionInitializationError && selected.selection)
