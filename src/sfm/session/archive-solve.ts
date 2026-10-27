@@ -29,6 +29,11 @@ export type ArchiveSolvePlan =
       };
       /** The archive's focal refinement is deferred whatever the solve reports. */
       readonly focalDeferred: boolean;
+      /**
+       * Each restart focal after the first rebuilds the archive's map at that focal: a late
+       * calibration of at most 64 views, the cameras of local GPU work.
+       */
+      readonly rebuildArchive: boolean;
     }
   | { readonly kind: 'measure' }
   | { readonly kind: 'none' };
@@ -87,6 +92,7 @@ export function archiveSolvePlan(
         ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
       },
       focalDeferred: !!options.refineSharedFocal && multipleFocalGroups,
+      rebuildArchive: lateCalibration && archive.views.length <= 64,
     };
   }
   if (needsFullSolve) return { kind: 'measure' };

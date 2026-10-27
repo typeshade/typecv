@@ -325,7 +325,10 @@ test('chooseAnchors and carryAnchorEdges: the carried edges hold the shared feat
   );
 });
 
-/** The inline plan of `update`'s final branch on `60b4dd9`, down to the choice of the branch. */
+/**
+ * The inline plan of `update`'s final branch on `60b4dd9`, down to the choice of the branch, with
+ * the rebuild rule of `5017480` (#267): `archive = lateCalibration && views <= 64`.
+ */
 function inlinePlan(
   reconstruction: SparseReconstruction,
   windowModel: SparseReconstruction,
@@ -376,6 +379,8 @@ function inlinePlan(
         ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
       },
       focalDeferred: !!options.refineSharedFocal && multipleFocalGroups,
+      // 5017480 (#267, B1): the archive that the restarts rebuild.
+      rebuildArchive: lateCalibration && reconstruction.views.length <= 64,
     };
   }
   if (needsFullSolve) return { kind: 'measure' };
@@ -585,4 +590,12 @@ test('archiveSolvePlan: the focal seeds of a shared camera are the common focal 
   // The current ratio 100 / (2 * 49.5 + 1) = 1, the grid middle 1 (a duplicate) and the far end 2.
   assert.deepEqual(got.refinement.commonFocalRatios, [1, 2]);
   assert.equal(got.focalDeferred, false);
+  // A late view with several seeds: the restarts rebuild the archive.
+  assert.equal(got.rebuildArchive, true);
+});
+
+test('archiveSolvePlan: an archive past the window without late calibration is not rebuilt', () => {
+  const got = archiveSolvePlan(archive3, window2, undefined, {});
+  assert.equal(got.kind, 'solve');
+  if (got.kind === 'solve') assert.equal(got.rebuildArchive, false);
 });

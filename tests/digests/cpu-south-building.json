@@ -4,19 +4,20 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
-    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+    "commit": "dc46aa2d3bdbaf99d396a30d787477a7c2b0b40e",
+    "src": "ec2f160ccd3a3520c812776765ed58256801ffd5",
+    "execArgv": []
   },
   "cases": {
     "focalSearchSteps/south-building/start-1.2": {
-      "output": "22549d795a5af95641c7bd22b1b1c8712444174db6466531899760499078d170",
+      "output": "ba791ae78adc2af9d48d24c1ec4d17a7d4bbd0ed4696c8cdd299c00450bd03b7",
       "parts": {
-        "candidates": "9be0f09880a640448ad6e14ba856b567c47be3cb7c1f8db042a28081db2bcb72",
-        "gridRatio": "993ba9b6d0277f51c811ac25a8753c5d0cfae11d4663983487996145333921ff",
-        "ratio": "66c2a2e1a5fb33b42807d6a957b80e70e08201b59ba9e73e34da097a632640df",
+        "candidates": "e3eaf0ec24cb57f76c250fd3ff3a5b3296c48a57046ff2521a6ea06e0eb70836",
+        "gridRatio": "934f4941e68c3940a05a3eccdf5415a965d95e8b70ecd3a00f5c975f36aa7a08",
+        "ratio": "93d8e5c803e53d06d0c7efd34d471da5f0c16449347ac5cc2b0235c9c4e58a2c",
         "views": "d1db22c01a65fe980dd64b9b84a2573236f64e737d242e04de003d142f672399"
       },
-      "trace": "4461312c979602b74d7eceaed32990c55b49b7b670ddc8d96d9b2284860d2f90",
+      "trace": "5a63526be1fe96eac5a1993e5377f43319c5f65773df8580cc4fed571dfcb378",
       "requests": {
         "bundle": 60,
         "observations": 108,
