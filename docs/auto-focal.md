@@ -141,7 +141,11 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
 2. For each selected focal of the grid, run the mapper on them (`incrementalSteps`), with the focal held,
    `refineSharedFocal` off and `bundleIterations` final iterations. The grid is `0.3 × 1.15^i`
    up to 3: 17 possible values (`focalGrid`). The adaptive schedule below chooses which to evaluate.
-3. Score the runs (`scoreCandidates`). A run that does not build a map scores nothing.
+3. Score the runs on one common observation set (`commonSetScore`, `scoreCandidates`; section
+   10). The set is the tracks of the subset's input matches (`commonTracks`), fixed before the
+   sweep. Each run's poses triangulate every track, and each observation costs its truncated
+   squared reprojection error. A run that does not build a map scores nothing. The directional
+   (bearing) mode keeps the score of 3.2 with its complexity correction.
 4. Pick the run with the most views, then the smallest score (`bestCandidate`).
 5. Fit a parabola in `log ratio` through the best point and its two neighbours, held between the
    neighbours (`parabolaVertex`). This is `gridRatio`.
@@ -183,7 +187,10 @@ described in section 4.2 below.
   restarts when views beyond that original subset have arrived, even if every view still fits in
   the local window. The current estimate and at most two starts from the original grid are compared
   on the same complete retained observations and Huber objective; the initial feature/matching
-  search is not repeated. The same initial subset without new views adds no restarts. Rolled
+  search is not repeated. Each start after the current estimate begins from a map rebuilt at its
+  focal: the session maps the archive's tracks again (`historyTracks`) and triangulates each
+  archived landmark with the rebuilt poses (section 10). An archive of more than 64 views reuses
+  the archived map. The same initial subset without new views adds no restarts. Rolled
   archives also receive complete-observation refinement when supported. This does not force
   supplied or grouped intrinsics into one shared camera, and pending directional factors or an
   explicit conditional-depth admission policy defer the extra solve. Working-budget refusals
@@ -268,8 +275,8 @@ of `physical-gpu-runs.md` asks for it.
    `chimney-rock-58532c69.md` (section 3.1) measures it on a drone video: the RMS error is flat
    over the whole grid, the observations kept fall as the focal grows, and the truncated score
    therefore rises with the focal. The final restarts of 4.2 reuse the map built at the boundary
-   and stop short of the reference focal. A change of the score, of the subset selection and of the
-   restart is a candidate, not decided.
+   and stop short of the reference focal. Done for the score and the restart (section 10, #267).
+   The subset selection by parallax and rotation stays open (10.6).
 
 ## 5. Measurements with the search
 
@@ -312,6 +319,8 @@ distortion (`graham-hall`, `tests/focal-search.test.ts`), and 2 % on the synthet
 - 2026-10-21: written with the implementation, proposed (#162).
 - 2026-10-21: section 8 added: the pair base of the search (#180).
 - 2026-10-26: open item 5 added from the diagnosis record `chimney-rock-58532c69.md` (#239).
+- 2026-10-27: section 10 added: the common observation set of the score and the rebuilt restarts
+  (#267); 4.1 step 3, 4.2 and open item 5 updated.
 
 ## 8. Step record: the pair base of the search (#180)
 
@@ -474,3 +483,137 @@ The lab preserves bounded evidence as optional `failure.initialization` in v6 an
 `finish()` without a map `initializing 3D map`, rather than attributing it to final BA.
 The diagnostic history is per search invocation. Cross-update caching, host phase timing,
 distortion/zoom models and broader input validation remain separate work.
+
+## 10. Step record: one observation set for the grid, and rebuilt restarts (#267)
+
+Authority: candidates 1 and 2 of `chimney-rock-58532c69.md`, section 5 (bug B1 of the
+coordinator's bug lane, 2026-10-27). Configuration: `main` at `02f4aed` (before) and the branch
+`claude/fix-focal-search-bias` (after), Node.js 22.22.0, a shared container with no GPU. Every
+number below is from the CPU reference.
+
+### 10.1 Cause
+
+Fact (`chimney-rock-58532c69.md` 3.1): on record 58532c69 the search ended at
+`{ ratio: 0.5835, gridRatio: 0.3, views: 5 }`. The reference is about 1,242 px (ratio about
+0.97).
+
+Fact: the search scored each grid point on the observations that its own run kept. A smaller
+focal makes every triangulation angle larger, so more tracks passed the 0.5° gate. The truncated
+score of 3.2 charges each dropped observation τ², so it rewarded the smallest focal. On the
+exported tracks of the five calibration views the grid's scores rose monotonically from 0.0754
+px² at 0.3 to 0.7088 px² at 2.807, with the RMS error flat (0.258 to 0.275 px).
+
+Fact (3.5 of the record): at `finish()` the restarts of `historyFocalSeeds` reused the poses and
+points of the map built at the boundary. That map is a different local minimum (2.3, item 3).
+
+### 10.2 What depends on it
+
+- `focalSearchSteps`, through `scoreCandidates` and the adaptive schedule
+  (`focalCandidateSteps`): the grid winner, `gridRatio` and the joint refinement's start.
+- `IncrementalSfmSession.finish()` (`src/sfm/gpu/mapper.ts`): `historyFocalSeeds` and
+  `refineHistory` (`src/sfm/session/history-refinement.ts`).
+- The digests of the focal-search cases (`tests/digests/cpu-*.json`, `webgpu.json`).
+
+### 10.3 Change
+
+1. Candidate 1, the score. `commonTracks` forms the conflict-free tracks of the subset's input
+   matches (`buildTracks`) once, before the sweep. `commonSetScore` triangulates each track with
+   the poses of a run's map (`triangulateLinear`, then `refineTrackPoint`, no angle gate). Each
+   observation costs `min(e², τ²)`; a track that does not triangulate costs τ² for each
+   observation. `scoreCandidates` takes this score in place of the score on the kept
+   observations. `FocalCandidate` keeps its fields; only the meaning of `score` changes. The
+   directional mode keeps its own score.
+2. Decision: the common set, not the angle gate held in image terms. Fact: the gate held in
+   pixels (the angle gate scaled by `reference / ratio`) reversed the bias on the sample. The
+   observations kept then rose with the focal, and the grid's upper bound 2.807 won at
+   reference ratios 0.6 and 1.0. The common set gave a minimum inside the grid (10.4).
+3. Candidate 2, the restarts. `refineHistory` takes an internal `rebuildAtRatio`. Each restart
+   focal after the first (the current calibration) starts from a map rebuilt at that focal. The
+   session maps the archive's tracks again (`historyTracks`, then `runIncrementalGpu` at that
+   focal) and triangulates each archived landmark with the rebuilt poses. A rebuild that builds
+   no map, or misses an archived view, skips that restart. A landmark that does not land in front of
+   all its cameras is placed on the ray of one of its observations at the median depth of the
+   others; without such a point, or when the solver refuses the start, the restart is skipped.
+   An unsolved part of a rebuilt start keeps the rebuilt geometry. The least-cost rule on the archive's
+   observations is unchanged. An archive of more than 64 views reuses the archived map.
+
+### 10.4 Accuracy
+
+Record 58532c69, the exported tracks (`typecv-reconstruction.json`, 47 views). The search runs
+on the first five views by time (0, 5, 9, 13, 17); the final row is the standalone CPU mapper on
+all 47 views at the search's ratio with `refineSharedFocal`. Scratch script on the public
+internals (`focalSearchSteps`, `reconstructIncremental`), the lab's controls:
+
+| Quantity | Before | After | Reference |
+| --- | --- | --- | --- |
+| Grid winner | 0.3 (lower bound) | interior (0.918 to 1.214) | |
+| `gridRatio` | 0.3 | 1.107 | |
+| Search `ratio` | 0.343 | 1.107 | |
+| Final ratio, 47 views | 0.356 | 1.021 | about 0.97 (COLMAP 0.98) |
+| Final RMS, 47 views | 0.786 px | 0.397 px | 0.348 px (COLMAP) |
+| Registered views / landmarks | 47 / 18,081 | 47 / 16,928 | |
+
+The adaptive schedule evaluated 11 grid points. Their common-set scores fall from 0.0715 px² at
+0.3 to 0.0609 px² at 0.918, 1.055 and 1.214 (equal to four digits), and rise to 0.0660 px² at
+2.807. Caveat: the tracks survived the lab's run at 0.58 (record 3.1).
+
+Candidate 2 alone, on the same export: `refineHistory` on the CPU (`bundleAdjust`, 32
+iterations, τ = 1.5 px) from the export's map (47 views, 90,391 observations, ratio 0.5835), with
+the three seeds that `historyFocalSeeds` gave in the record (0.5835, 0.918, 2.807). Before, the
+restarts reuse the archived map; after, each restart after the first rebuilds it with the CPU
+mapper on `historyTracks` at its focal (a scratch replay; in the session the rebuild runs through
+`runIncrementalGpu`):
+
+| Restarts | Final ratio | Mean error | Robust cost | Rebuilds |
+| --- | --- | --- | --- | --- |
+| Reuse the archived map | 0.640 | 0.678 px | 74,968 | none |
+| Rebuild at each restart | 0.967 | 0.227 px | 9,545 | 0.918: 47 views; 2.807: 41 views (skipped) |
+
+The archive's cost before either solve is 77,353 (mean error 0.696 px). The first replay of the
+rebuild found a landmark behind a rebuilt camera, which the bundle adjustment refuses; 10.3,
+item 3 now places such a landmark in front of its cameras. Each rebuild took about 151 s on the
+CPU reference.
+
+The fixtures, `node scripts/measure-focal.mjs --search=1 --starts=0.8 --distortion=0` (zero
+distortion, the lab's condition for a video), before and after:
+
+| Sample | Truth | Grid before | Grid after | Search before | Search after | Final before | Final after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| pyramid | ? | 0.697 | 0.742 | 0.768 | 0.774 | 0.784 | 0.782 |
+| south-building | 0.833 | 0.867 | 0.848 | 0.842 | 0.848 | 0.842 | 0.843 |
+| gerrard-hall | 0.683 | 0.732 | 0.734 | 0.730 | 0.730 | 0.720 | 0.720 |
+| person-hall | 0.684 | 0.751 | 0.747 | 0.744 | 0.747 | 0.744 | 0.747 |
+| graham-hall | 0.690 | 0.687 | 0.697 | 0.682 | 0.682 | 0.684 | 0.684 |
+
+The pyramid's relief is 0.301 before and 0.302 after. With the distortion known
+(`--distortion=1`), person-hall gives 0.684 before and after, and gerrard-hall 0.685 before and
+after (truth 0.684 and 0.683).
+
+### 10.5 Cost
+
+Fact: on the sample's five views, the search ran 432 mapper requests in 122 to 151 s before and
+288 requests in 84 s after (one run each, a shared container). Before, the lower-bound winner
+sent the adaptive schedule to the full grid; after, the interior winner keeps it adaptive. The
+common set adds one host triangulation of each track per grid point. The fixture runs of 10.4
+took about the same time before and after (pyramid 16 s and 18 s, south-building 69 s and 74 s,
+graham-hall 53 s and 55 s, person-hall 204 s and 229 s).
+
+Fact: on the CPU reference a rebuild of the sample's 47-view archive took about 151 s, and the
+replay with two rebuilds took 461 s against 218 s without them (10.4). Not measured: the cost of
+a rebuild in the session on a GPU or on SwiftShader. A rebuild is one
+mapper run of the archive per restart focal, at most two, and it runs only when the grid winner
+is a boundary point and later views have arrived.
+
+### 10.6 Open items
+
+1. The calibration subset is still the first views of the largest component in input order, not
+   chosen by parallax and rotation (the second part of candidate 1). Fact: on the sample, the
+   five first views turn 0.04° to 0.20° and the common set still finds 1.107. Not measured: a
+   subset chosen by parallax. Next action: its own record.
+2. Person-hall with zero distortion moves from 0.744 to 0.747 (truth 0.684, +8.8 % to +9.3 %).
+   With the distortion known it does not move (0.684). Open for the owner's decision.
+3. The directional (bearing) mode keeps the score on the kept observations, with its complexity
+   correction. Not measured on the common set.
+4. No session run of the sample with its images: the after-numbers come from the exported tracks.
+   `refineHistory` with `rebuildAtRatio` runs in `tests/history-refinement.test.ts` on the CPU;
+   the session's rebuild through `runIncrementalGpu` ran in no test of this change.
