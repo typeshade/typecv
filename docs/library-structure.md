@@ -3,9 +3,9 @@
 Status: accepted, 2026-10-26 (the owner's go-ahead in the session, #241). This document is the
 record that every refactoring pull request cites. Section 7 records the disposition of each
 decision. An open item is decided before the phase that needs it. It changes no code and no
-behaviour. Amendments 1 to 4 (section 9) record what the work of 2026-10-26 established. Labels:
-**Fact** (read in the code, a document or a measurement), **Inference** (reasoned from facts),
-**Proposal** (a choice this document asks the owner to make).
+behaviour. Amendments 1 to 5 (section 9) record what the work of 2026-10-26 and 2026-10-27
+established. Labels: **Fact** (read in the code, a document or a measurement), **Inference**
+(reasoned from facts), **Proposal** (a choice this document asks the owner to make).
 
 Evidence: three audit records of 2026-10-26.
 
@@ -226,6 +226,11 @@ table. Host and kernel code read each layout constant from one place: the kernel
 the host imports it. `src/device/` stays what `engine-v2.md` keeps: the device owner, plans,
 budgets, readback and the shared scan. `chunkedPass` joins it (section 3.1).
 
+**Fact** (amendment 5; #255, merged as `87724f9`). Phase 2 added three modules to
+`src/contracts/`. `keys.ts` holds `observationKey` and `pairKey` with today's strings.
+`triangulation-status.ts` holds the triangulation status with today's codes 0, 1, 3, 4 and 5.
+`two-view-failures.ts` holds the two-view failure table, and each message keeps its text.
+
 **Fact** (audit sparse, L3). The pinned host view exposes the exported constants of a kernel
 (surface §64), and no TypeCV host file imports one. **Inference.** The copied constants are a
 facility not taken, not a compiler limit. Nobody has checked such an import in the esbuild
@@ -243,8 +248,8 @@ kernels after R03.
 
 | Module | Responsibility | Contract |
 | --- | --- | --- |
-| `sfm/model` | copy of the object model, `observationKey`, `pairKey`, content ids (the model's types are in `contracts`, its validation in `geometry`) | pure, no tier |
-| `sfm/config` | every default once; `resolveMapperControls`; session and focal controls; the lab preset, if item 4 places it in the library | pure; frozen controls; throws `RangeError` |
+| `sfm/model` | copy of the object model, `observationKey`, `pairKey`, content ids (the model's types are in `contracts`, its validation in `geometry`). **Fact** (amendment 5; #255, deviation 1). `observationKey` and `pairKey` are in `src/contracts/keys.ts` (section 3.2) | pure, no tier |
+| `sfm/config` | every default once; `resolveMapperControls`; session and focal controls; the lab preset, if item 4 places it in the library. **Fact** (amendment 5; #255). The defaults are in `src/sfm/config/defaults.ts` and the lab preset in `src/sfm/config/lab-preset.ts`. The defaults that a geometric operator and its GPU twin share are in `src/geometry/operator-defaults.ts` (deviation 2) | pure; frozen controls; throws `RangeError` |
 | `sfm/tracks` | track union, rotation evidence, observation masks | pure |
 | `sfm/pairs` | pair verdict, seed score, pair seeds, verification order, pre-verified index | pure policy and `verifyPair` requests |
 | `sfm/mapper` | initialization, ranking, registration gates and retries, weak registration, triangulation and continuation rules, filter rules, bundle schedule and window | a generator over `SceneRequest`; no numerics, no callbacks, no packing beyond small typed arrays |
@@ -286,11 +291,22 @@ The mapping from today's files to these modules is the table in audit sparse, se
 | `lab-device` | open, reuse, loss, swap: one module for every worker. A device stays with the runtime copy that opened it (audit lab, L5) |
 | `lab-protocol` | typed page-to-worker messages |
 | `lab-run` | the page's run controller |
-| `run-record/` | schema, validate, assemble, summary, and the barrel the collector imports |
+| `run-record/` | schema, validate, assemble, summary, and the barrel the collector imports. **Fact** (amendment 5; #258, deviation 1). The page's builders sit beside them in `run-record/page.ts`, outside the barrel |
 
 Where the stage modules live is the owner's decision (section 7, item 4). **Proposal.** The
 modules that a script needs (the gate, the matching policy, the options) go to a library area. A
 module that only the page needs stays in `website/src/lib/`.
+
+**Fact** (amendment 5; #255 and #258). The lab preset is `src/sfm/config/lab-preset.ts`, since six
+scripts need it. The lab's `options` module is `website/src/lib/lab-options.ts`. It holds the
+values that only the page and the workers need, and the dense defaults (section 5, "Phase 2",
+deviation 3). `run-record/` is `website/src/lib/run-record/`, behind the barrel
+`website/src/lib/run-record.ts`. The page, the workers, the collector (`website/worker.mjs`), the
+scripts and the tests import the barrel. The page and its test harness import the builders from
+`run-record/page.ts`. So the collector does not load the page's modules (section 5, "Phase 3",
+deviation 1). Phase 3 named the inline rules of the SfM worker in two new modules,
+`website/src/lib/lab-features.ts` and `website/src/lib/lab-matching.ts`, and in `keyframe-gate.ts`
+and `guided-matching.ts` beside them.
 
 ### 3.5 The dense pipeline (`src/mvs/`)
 
@@ -539,6 +555,24 @@ the function that computes the count. A step without a loop depends on 0094's de
    count. The count is 2 of 32 on 2026-10-26, read at 23:12 UTC. **Inference.** From `4022861` on,
    the `digests (24)` job of each pull request that changes code runs with the flag, and each
    counts. The deviation above stays open.
+
+   **Fact** (amendment 5; the runs of `ci.yml` after `4022861`, read with the GitHub API on
+   2026-10-27 at 04:48 UTC). Six more `digests (24)` jobs ran green. In each log,
+   `DIGEST_NODE_FLAGS` is `--single-threaded`. In each job, both digest steps passed, and the
+   compare step found 0 cases whose digests differ:
+
+   - job 121931825161 of run 40425853337 on `8663dba` (#255);
+   - job 121953350341 of run 40432394275 on `1cc7828` (#255);
+   - job 121978713669 of run 40440263764 on `11eb05b` (#256);
+   - job 121981037876 of run 40440983089 on `f67a31f` (#257);
+   - job 121998062707 of run 40446097074 on `2fcdd63` (#258);
+   - job 122006938680 of run 40448859754 on `3000200` (#260).
+
+   A newer push to the same pull request cancelled the `digests (24)` jobs of ten other runs. Five
+   were of #255, three of #258 and two of #260, and no step of them failed. Runs on `main` and
+   documentation-only runs skip the job. **Inference.** A cancelled job gives no verdict, so it
+   neither counts nor breaks the series. The count is 8 of 32 on 2026-10-27. The deviation above
+   stays open.
 3. **One pull request per step named in section 5**, citing this proposal by section. A phase
    with several steps is several pull requests. The first commit goes up early as a draft (the
    owner's rule), and the pull request is ready when its gate is green.
@@ -614,18 +648,44 @@ the function that computes the count. A step without a loop depends on 0094's de
 It adds the conditions of rule 2 and the document audit of rule 7 (section 4). Day counts are
 estimates (**Inference**).
 
+**The shards** (amendment 5). **Fact** (#256, merged as `94d28c8` on 2026-10-27;
+`.github/workflows/ci.yml` on `f4e2dbf`). The commands of the job `webgpu` run on five runners at
+once, in the matrix job `webgpu-shard`: `test:webgpu` in three shards and `test:website` in two.
+`scripts/ci-shard.mjs` gives each shard the files of the named `package.json` script, round-robin
+in the order of the script. `tests/ci-shard.test.ts` holds that each file runs once. The first
+`test:website` shard also runs `npm run audit:typeshade`. On `f4e2dbf` the shards of `test:webgpu`
+hold 23, 23 and 23 files, and those of `test:website` 27 and 26. The job `webgpu` stays as the
+check that the ruleset names. It needs the shards, it runs on `always()` and a code change, and it
+passes only when `needs.webgpu-shard.result` is `success`. The commands of the common gate are
+unchanged.
+
+**Fact** (#256 and its first run, 40440263764 on `11eb05b`, 2026-10-27). The five shards took 5,
+8, 14, 25 and 26 minutes. The browser-side gate took 26 minutes, from the start of the shards to
+the end of the job `webgpu`. The whole run took 30 minutes. Before, the job `webgpu` took 47 to 113
+minutes. #256 lists #246 at 113 minutes, #247 at 63, #249 at 76 and 79, #250 at 51 and #252 at 47.
+
+**Fact** (runs 40444359675, 40444895768, 40448171152 and 40448448341 on 2026-10-27). When a newer
+push cancels a run in progress, the job `webgpu` still runs. It fails its step
+`test "cancelled" = "success"` on the superseded commit: `25cd7c4` and `07044ba` of #258, and
+`9141a14` and `9a7ed7b` of #260. The one job of before showed "cancelled" in that case, as in run
+40442928332 on `e38c59e`, which started before #256 merged. **Inference.** The red check stays on a
+commit that is no longer the head, and the run of the head decides. A skipped job counts as passed
+for a required check (`ci.yml`, lines 5 to 7). So a job that skipped on a cancel would report a
+passed check for work that did not run. **Decision** (the coordinator's, 2026-10-27). The job
+`webgpu` stays as it is.
+
 | Phase | Days | Change | Own gate |
 | --- | --- | --- | --- |
 | 0 Characterize | 3–5 | Tests and tools only, in five parts. **Digests:** canonical digests (Float64 bit patterns) of the full output of `reconstructIncremental`, `reconstructIncrementalScene`, `refineIncremental`, `reconstructComponent`, the focal search and `IncrementalSfmSession`, on the CPU device and on SwiftShader, on the `tests/scene.ts` scenes and the four samples that `scripts/measure-focal.mjs` reads (`south-building`, `gerrard-hall`, `person-hall`, `graham-hall`); digests of the emitted WGSL and GLSL per kernel module; a per-request trace of each driver. **Baselines** of the later gates: plan reports (kernel names, dispatches, submissions) and step-name sequences of the GPU drivers; golden run records (single, multi, failed, dense) with `createdAt` masked; the output of `scripts/measure-focal.mjs`; the start payloads and record options of about 40 query strings. **Lab transcripts:** a test that bundles the worker with esbuild, drives it through `onmessage` with a deterministic fake runtime and records every message and every `session.add` input for the gate, legacy, feature-minimum, guided, KLT, ORB, precomputed, dense, failure and loss cases; the same for `MultiVideoJob.finish`. **Tools:** `scripts/api-surface.mjs` writes the exported names and declaration text of `typecv` and `typecv/gpu` to `tests/api-surface.txt`; `scripts/import-graph.mjs` prints the runtime import cycles of `src/` and `website/src/` and the imports that break the layering rule of section 3.1. **CI:** a job that builds the base and the head of a pull request on one runner, runs the GPU-tier digest tests on both and compares them (audit sparse, P0). Amendment 1: the job runs on every Node major of the matrix, `digests (22)` and `digests (24)`, and compares the CPU-tier digests too. Amendment 3: on Node 24 the job runs its two `node --test` steps with `--single-threaded`, and each digest file records the flags of its process (section 4, rule 2). | Passes on unchanged code. The CPU-tier digests and the baselines are recorded in `tests/`. Amendment 1: each digest fixture records its configuration and is compared only on the Node major that recorded it (section 4, rule 2, the deviation and its disposition). Amendment 2: the fast CPU-tier digests run in `test:digests` and the `digests` job, not in `npm test` (section 4, rule 2, deviation 2 of #242). The CI job reports equal digests when base and head are one commit. The cycle search prints today's three cycles. |
 | 1 Moves | 3–5, three pull requests | **1a Build selection** (decision (a)): `tsconfig.json`, `tsconfig.build.json`, `tsconfig.gpu.json`, `scripts/build-gpu.mjs` and `.prettierignore` select the `gpu/` subdirectories of section 3.1 besides `src/gpu/**`; no file moves. **1b Moves:** the area directories; pure moves with re-exports (a kernel file may keep one too, section 4, rule 4, amendment 1); the two BA cycles broken (`validateReconstruction`, `cloneBundleReconstruction`, `bundleMetrics` and `bundleStallTolerance` out of `bundle-adjustment.ts`; `bundleStallMonitor` and `cooperativeBundleSchur` out of `gpu/bundle.ts`); `judgePair`, `incrementalControls`, the errors and `copyReconstruction` out of `mapper.ts`; the `pnp.ts` helpers to their own module; `.ts` extensions in the worker's imports; the cleanup of `tests/typeshade/compute-probe-build.mjs:71`, which deletes host views under `src/gpu` only, extended to the `gpu/` subdirectories as `scripts/build-gpu.mjs` does (amendment 3; #247, open item 2). The mapper–focal cycle stays: `incrementalSteps` and `focalSearchSteps` call each other, which no move can break (phase 4). **1c Cross-area imports**, resolved by moving the shared pieces of section 3.1: `chunkedPass`, `packRgba`, `kltLayout`, the object-model, camera, pose and mask types, `validateReconstruction` and `observation-paths.ts`. | 1a: the `dist/` file list and the surface bake identical before and after; `typecheck`, `build` and `format:check` pass. 1b: the surface bake unchanged; the `dist/` file list differs only by the new paths, with every old path kept as an alias; WGSL and GLSL digests unchanged; every deep import resolves; the two BA cycles gone, the mapper–focal cycle the only one left. 1c: `scripts/import-graph.mjs` finds no import that breaks the layering rule; the surface bake unchanged. |
-| 2 One definition | 3–4 | `sfm/config` and the lab's `options` module hold each value once: the mapper defaults with the named per-entry differences kept (25 and 8), seed 17, the stall rules, the operator defaults shared by CPU and GPU operators, `observationKey` and `pairKey` with today's strings, the triangulation status enum, the two-view failure table, the host layout constants once per kernel. The lab preset sits in one module, placed by item 4 (`website/src/lib/` until then). Both workers, the page and the six scripts that copy it read it: `measure-focal.mjs`, `measure-multi-video.mjs`, `benchmark-sfm-pyramid-e2e.mjs`, `benchmark-rotation-tracking.mjs`, `benchmark-sift-clahe.mjs`, `measure-video-sfm-performance.mjs`. | Run record `options` identical; the output of `scripts/measure-focal.mjs` identical to phase 0's baseline; a test holds the preset to today's values. |
-| 3 Record split and named policies | 3–4 | `run-record.ts` split into schema, validate, assemble and summary behind a barrel; `buildRunRecord` and `buildMultiRunRecord` move in with the browser globals as an `environment` argument; the probe record shares the validator helpers. Every inline lab rule becomes a named unit with its current value and unit: pair minimums (16 entries = 8 matches; 32 entries; 16 tracker matches), the feature minimum 8, the retention rule (0.5 s, 3, 3), the legacy and track decisions, the guided trigger, KLT cover. | Golden records byte-identical to phase 0's baseline with `createdAt` masked; v3 to v6 fixtures valid; transcripts identical; table tests copied from today's branches. |
+| 2 One definition | 3–4 | `sfm/config` and the lab's `options` module hold each value once: the mapper defaults with the named per-entry differences kept (25 and 8), seed 17, the stall rules, the operator defaults shared by CPU and GPU operators, `observationKey` and `pairKey` with today's strings, the triangulation status enum, the two-view failure table, the host layout constants once per kernel. The lab preset sits in one module, placed by item 4 (`website/src/lib/` until then). Both workers, the page and the six scripts that copy it read it: `measure-focal.mjs`, `measure-multi-video.mjs`, `benchmark-sfm-pyramid-e2e.mjs`, `benchmark-rotation-tracking.mjs`, `benchmark-sift-clahe.mjs`, `measure-video-sfm-performance.mjs`. Amendment 5 (#255, deviations 1 to 3, accepted): `observationKey` and `pairKey` are in `src/contracts/keys.ts`, the operator defaults shared by CPU and GPU operators in `src/geometry/operator-defaults.ts`, and the dense defaults in the lab's options module, `website/src/lib/lab-options.ts`. | Run record `options` identical; the output of `scripts/measure-focal.mjs` identical to phase 0's baseline; a test holds the preset to today's values. |
+| 3 Record split and named policies | 3–4 | `run-record.ts` split into schema, validate, assemble and summary behind a barrel; `buildRunRecord` and `buildMultiRunRecord` move in with the browser globals as an `environment` argument; the probe record shares the validator helpers. Every inline lab rule becomes a named unit with its current value and unit: pair minimums (16 entries = 8 matches; 32 entries; 16 tracker matches), the feature minimum 8, the retention rule (0.5 s, 3, 3), the legacy and track decisions, the guided trigger, KLT cover. Amendment 5 (#258, deviation 1, accepted): the builders move to `website/src/lib/run-record/page.ts`, beside the four modules and outside the barrel, so the collector does not load the page's modules. | Golden records byte-identical to phase 0's baseline with `createdAt` masked; v3 to v6 fixtures valid; transcripts identical; table tests copied from today's branches. |
 | 4 Shared mapper parts | 3–4 | The pure parts the two mappers copy (masks, seed pick, initialization error, track index, resume adoption, ranking, failure and retry state, result assembly) move to `sfm/mapper/*`; both generators call them. One `drive` (sync and async) with an explicit error rule, the component driver keeping its current rule as a named option; one depth post-step; one bundle-stage telemetry builder; the execution-delta and report-merge helpers; the record packers with today's layouts. The mapper–focal cycle is broken by injection: `incrementalSteps` passes itself to `focalSearchSteps`, so `focal-search.ts` no longer imports `mapper.ts` at run time. | Phase 0 digests of both mappers; request traces identical; plan reports identical to phase 0's baselines (kernel names, dispatches, submissions); the cycle search finds no cycle. |
 | 5 Worker by stage | 5–7, four pull requests | 5a the lab's pure helpers (audit lab, P1): budgets, feature cap, `medianMotionPx`, `trimStages`, the frame camera, colours, match lines and landmark colours, each with its variants kept (the worker's persistent colour cache, the job's per-call cache). 5b `SingleVideoJob` over the stage modules (as `MultiVideoJob` is), the worker keeping intake and the device. 5c `lab-device` for the five open sites and four loss handlers. 5d `lab-protocol`, `start(message)` instead of 23 positional parameters, typed `request<T>()` on the page. | Transcripts identical; table tests for each helper of 5a; the white-box hooks of `dense-gpu-mode-worker.test.mjs` and the source-regex test of `working-budget.test.mjs` rewritten to check the same thing (item 2); the browser tests in CI; new Node tests of `SingleVideoJob` with a fake port. |
 | 6 Long functions | 3–4 | The GPU host functions split without a change to the device steps: request checks, step generators and unpack of `checkPairEstimation`, `estimatePosePnPGpu`, `triangulateTracksGpu`, `evaluateSceneObservationsGpu`; the host half of the two BA routes once where it is verbatim; `IncrementalSfmSession.add` and `update` reduced to pure policies (`evictWindow`, `chooseAnchors`, `carryAnchorEdges`, `archiveSolvePlan`) with unit tests. | Step-name sequences and plan reports identical to phase 0's baselines; WGSL unchanged; session digests on the CPU device and, in the CI job, on SwiftShader. |
 | 7 Page controller and options schema | 4–5 | `lab-run` takes the run control that `runSfM`, `runMultiVideo` and `runBenchmark` copy (React keeps the state setters). `run-options` replaces the nine `*Override()` helpers (eight in `SfmLab.tsx` and `decodeOverride` in `decode-protocol.ts`) and the scattered parser calls with one table; the values the page sends stay the same. | Table test over about 40 query strings: start payloads and record options identical to phase 0's baseline; a Node test of the controller against a scripted fake worker (audit lab, P5); transcripts and golden records identical. |
 | 8 Boundaries (owner's go-ahead) | 3–5, two pull requests | Behaviour; outside rule 1. **8a Mapper boundary** (items 3 and 16): BA window, subset, partition and depth-filter policy move from `HostSceneDriver` into the mapper. This changes the accepted `bundle` request of `gpu-resident-scene.md`: the mapper decides the subset, and the result stops reporting it. So 8a carries that document's amendment. `sceneSteps` reaches parity with `incrementalSteps` (the six missing features and `verifiedPairs`) from the phase 4 parts; a typed request-to-result map. **8b Lab placement** (item 4): the lab's stage modules move to the area that item 4 names, exported from `src/gpu/internal.ts` only (Amendment 6); the scripts that copy the pipeline are ported to the stages, so their outputs change (audit lab, P7). | Parity gates, each behaviour change with its own record. 8a: `sceneSteps` with `HostSceneDriver` equals `incrementalSteps` with the CPU driver bit for bit for every phase 0 option set; the `incrementalSteps` digest unchanged; the `reconstructIncrementalScene` digests of the option sets that use the six features renewed once, in 8a's record; `test:shade` and `test:webgpu`. 8b: transcripts identical; a CPU-tier run of `SingleVideoJob` on a tiny synthetic sequence compared with WebGPU under Rule 1.2; each ported script's new output recorded. |
-| 9 Kernels, no compiler change | 2–3, one pull request per step | The conversions of audit kernel style, section 7, phase 1, narrowed by A1. An entry converts only if it has no per-lane loop and does not use the clamp-and-mask pattern today; the conversion then keeps its idle-lane shape. Checked in the kernels at `5e1c95c`: `planarPropose`, `planarVerify`, `planarFinish` and `claheApply` qualify, since they return early and run no loop. Every SLIC and mesh entry, `planarFit`, `kltEigenMax`, `houghVote` and `houghCollect` loop or clamp and mask, so they wait for C7 (phase 10). The compiler's map lowering emits the early return that A1 forbids (`kernel-lower.ts:756-767`), so a loop-carrying map cannot convert before C7. Further steps: the non-sparse kernels export the constants their hosts copy (`hough.shade.ts`: `MAX_SEGMENTS`, `SEGMENT_STRIDE`, `TIE`; `tsdf.shade.ts`: `EMPTY`), and the hosts import them; the three `chunkedPass` copies become one helper in `device`, with the TSDF floor and the planar split as parameters. Phase 9 touches no sparse-scene kernel: the inverse-depth conversion and the four test-only triangulation entries move to phase 10, after R03. | CPU-tier outputs equal before and after on the family's inputs (`test:shade`); the family's WebGPU test unchanged (`test:webgpu`); no new readback and no new submission in the plan report; an esbuild bundle check that a host's import of a shader constant resolves; a run on the RTX 5060 Ti while A1 is open (item 11). |
+| 9 Kernels, no compiler change | 2–3, one pull request per step | The conversions of audit kernel style, section 7, phase 1, narrowed by A1. An entry converts only if it has no per-lane loop and does not use the clamp-and-mask pattern today; the conversion then keeps its idle-lane shape. Checked in the kernels at `5e1c95c`: `planarPropose`, `planarVerify`, `planarFinish` and `claheApply` qualify, since they return early and run no loop. Every SLIC and mesh entry, `planarFit`, `kltEigenMax`, `houghVote` and `houghCollect` loop or clamp and mask, so they wait for C7 (phase 10). The compiler's map lowering emits the early return that A1 forbids (`kernel-lower.ts:756-767`), so a loop-carrying map cannot convert before C7. Further steps: the non-sparse kernels export the constants their hosts copy (`hough.shade.ts`: `MAX_SEGMENTS`, `SEGMENT_STRIDE`, `TIE`; `tsdf.shade.ts`: `EMPTY`), and the hosts import them; the three `chunkedPass` copies become one helper in `device`, with the TSDF floor and the planar split as parameters. Phase 9 touches no sparse-scene kernel: the inverse-depth conversion and the four test-only triangulation entries move to phase 10, after R03. **The k-NN body** (amendment 5; #257, probes K1 to K5): `knnMeanDistance` of `src/mvs/gpu/cloud-knn.shade.ts` stays an entry, and its body changes. One `insertSorted(@inout best, k, d2)` helper with a `while` replaces the two 31-step insertions (lines 116-126 and 146-155). A `scanBucket` helper reads the bindings by name. A `break` out of the ring loop, or a write and a `return`, replaces the `done` flag (lines 80, 82, 135 and 138). It is a body refactor of an entry, not a conversion. | CPU-tier outputs equal before and after on the family's inputs (`test:shade`); the family's WebGPU test unchanged (`test:webgpu`); no new readback and no new submission in the plan report; an esbuild bundle check that a host's import of a shader constant resolves; a run on the RTX 5060 Ti while A1 is open (item 11). The k-NN body (amendment 5): the same gate, with the WGSL and GLSL digests of `cloud-knn.shade.ts` renewed in its record and a dense cleanup timing against `docs/dense-mvs.md`. |
 | 10 Kernels, after the compiler changes | — | Behaviour; outside rule 1; one pull request per step, each after its compiler change. A step that edits a sparse-scene kernel also waits for R03 (rule 6). **C1:** one BA module, after R03, in the shared-module form that compiles today or with C1's storage parameter (section 6, amendment 1). **C3:** the hand-written compactions of SIFT, ORB, KLT, matching and MVS become `push` where the compiler holds the count on the device, and so does the pair-preparation copy of the scan after R03; `scan.shade.ts` stays the device layer's scan until an amendment of `engine-v2.md` retires it (item 14). **C2:** the 18 oracle twins go only if item 10 is decided yes, the 12 sparse ones after R03. **C6 and C7** (amendment 2 corrects this step from proposal 0095, "TypeCV's evidence"). After C7 alone, these maps convert, since R3 accepts their writes today: `siftDescribe` (`k * 128 + j`), the global descriptor (`globalWords[i]`), the scalar matchers (`query * 3 + c`, `query * 2 + c`) and `matchBrief` (`i * 3 + c`). `siftDescribe` also writes its `return` as `continue`. The entries that phase 9 left convert after C7 too: SLIC, mesh, `planarFit`, the KLT maximum, the Hough vote and collect. `planarFit` writes `t * 14 + c`, a form R3 accepts today, so planar depth needs no C6. After C6, the maps that write at a base plus the index convert, with C7 where they loop or clamp and mask. They are in SIFT blur (`level.outOffset + i`), ORB (`lv.offset + i`), KLT (`kltLevel.offset + k`, `2 * (o + k) + c`) and MVS (`view * P + i`). The triangulation flags (`count + h`) also wait for R03. C6 covers neither `siftOrient` (`k * 2 + written`, a carried local) nor k-NN (`knnMean[visitOrder[lane]]`, a permutation). So both stay entries, and the kernel audit marks k-NN intentional. No TypeCV kernel writes several fields at a runtime stride. **Sentinel → optional value** (amendment 2; the paragraphs after this table). After a pin that carries change 0088, the sentinel results of function-scope helpers become `T \| undefined`. After a pin that carries 0093, so do the flags in struct fields. The sentinels held in storage stay. **After R03:** the inverse-depth conversion (struct arrays drop the host packing), the sparse kernels' exported constants, and the four test-only triangulation entries removed or kept with a reason (item 12). **Entry points:** they go live when the owner says so (items 9 and 13). R03 itself retires the object-model protocol and `runIncrementalGpu`, under its own records. | C1: every BA digest and WebGPU BA test unchanged. C3: row order and counts bit-identical; no new readback. C2: WebGPU unchanged; the CPU digests renewed once, in item 10's record. C6 and C7: phase 9's gate plus a hardware run. Sentinel → optional value: a behaviour change under Rule 2.2, with its own record. The CPU-tier digests of the affected kernels are renewed once, in that record. Each family's WebGPU test keeps its verdicts. After R03: phase 9's gate; the tests of removed entries named in the pull request. Entry points: the surface bake of `typecv` and `typecv/gpu` unchanged; each new entry's surface baked; every deep path still resolves. |
 | 11 Dense | — | The audit of `src/mvs/`, a read-only record like the three of 2026-10-26, then its phases by amendment of this document. | The audit record states its configuration, method and checks; the amendment names the change and the gate of each phase; the document audit of rule 7. |
 
@@ -694,6 +754,13 @@ of #246:
    `compiler-changes.md`.
 3. The sentinel step waits for R03 (the next paragraphs).
 
+**0085's product work** (amendment 5). **Fact** (#260, a draft on 2026-10-27 at `3000200`). Open
+item 2 is in progress in #260, "build: adopt TypeShade change 0085, host calls without registration
+or setup". Its branch `claude/adopt-0085` starts from `94d28c8`. The device module of open item 2
+is `src/device/gpu/device.ts` since #250, and `src/gpu/device.ts` is its alias. Two TypeShade
+issues came from the planning of #260: typeshade/typeshade#790 and typeshade/typeshade#791 (section
+6, "TypeShade issues"). Open item 2 stays open until #260 merges.
+
 **The sentinel step** (amendment 2). **Fact** (TypeShade change 0088, `status: implemented`,
 typeshade/typeshade#769, on TypeShade `main` at `6c6a1d1`). A local, a parameter and a function
 result may hold `T | undefined`. The compiler lowers it to the value and a presence flag. The
@@ -738,6 +805,24 @@ a read that forgets to test for the value. Nothing relies on NaN. One spelling s
 carries changes 0088 and 0093, both `status: implemented`. So the compiler side of the step is
 met. **Inference.** The step edits sparse-scene kernels only, so it still waits for R03 (section 4,
 rule 6). It needs its own record under Rule 2.2.
+
+**The next pin** (amendment 5). **Fact** (TypeShade, read on 2026-10-27; the audit of #259, section
+0; #257). After the pin `725b2969`, typeshade/typeshade#779 implemented change 0097 (`09588799`,
+2026-10-26). Then typeshade/typeshade#782 implemented change 0096, the request of row C7
+(`a21f7024`, 2026-10-27). typeshade/typeshade#784 accepted proposal 0098, `null` as an absent value
+(`d0ce8843`, 2026-10-27). **Fact** (TypeShade change 0096 at `f0d41b36`, "Configuration and
+validation record" and "What it owes downstream"). 0096 is `status: implemented`. #782 merged on a
+SwiftShader basis, with the hardware run of decision D5 open. The owner decided that on 2026-10-27
+(Amendment 1 of 0096's plan record). 0096 expects three things of TypeCV:
+
+- the step "C6 and C7" of phases 9 and 10, each conversion with a hardware run while A1 is open;
+- a new verdict of probe S2;
+- its record in `compiler-changes.md` when the pin moves.
+
+**Inference.** A pin at or after `a21f7024` carries 0096. So the next pin bump brings it. The C7
+part of phase 10's step "C6 and C7" then becomes possible. Its gate is phase 9's gate plus a
+hardware run (section 7, item 11). Until such a pin, row C7, section 3.6 and the phase rows stand
+as written.
 
 **Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
 on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
@@ -945,19 +1030,225 @@ reading of deviation 2 above.
 Open after phase 1c: deviation 1 of phase 1b. `OUTSIDE` in `scripts/import-graph.mjs` names the
 float-matching kernel until it moves.
 
-**Status of the programme** (amendments 3 and 4, 2026-10-26). **Fact** (`main` at `4022861`, and
+**Phase 2** (amendment 5). **Fact** (#255, merged as `87724f9` on 2026-10-27). Its local gate ran
+on Node 22.22.0 at the pin `725b2969`, on the base `4022861` and on `8663dba`. Its commit 7,
+`1cc7828`, ran the checks that the coordinator named for it (#255, "Gate", table 3). CI run
+40432394275 on its head `1cc7828` was green before the merge. No kernel file changed, and the new
+modules are internal. #255 lists each commit and its sites.
+
+- `src/sfm/config/defaults.ts` holds `MAPPER_DEFAULTS`, `SESSION_DEFAULTS`,
+  `DEFAULT_GLOBAL_BUNDLE_RATIO`, `DEFAULT_BUNDLE_STALL_TOLERANCE`, `BUNDLE_SOLVER_STALL_TOLERANCE`,
+  `BUNDLE_DEFAULTS`, `bundleHuberPx` and `maxErrorOfHuberPx`. `incrementalControls`, the GPU
+  session, the focal search and both bundle adjustment routes read them. `bundleStalled` writes the
+  relative stall test once. `SHADER_STALL_TOLERANCE` is now `BUNDLE_SOLVER_STALL_TOLERANCE`.
+- The named differences of row 2 keep their values under their own names. The final bundle
+  adjustment has 25 iterations in the mapper and 8 in the session. The stall tolerance is 1e-4 in
+  the mapper and 1e-9 in the solvers.
+- `src/geometry/operator-defaults.ts` holds the defaults that a geometric operator and its GPU twin
+  share: `DEFAULT_SEED` (17), `PNP_DEFAULTS`, `pnpMinInliers`, `TRIANGULATION_DEFAULTS`,
+  `HOMOGRAPHY_DEFAULTS` and `imagePairHomographyIterations` (deviation 2). The eight sites of the
+  seed read `DEFAULT_SEED`.
+- `src/contracts/keys.ts` holds `observationKey`, `viewId:featureId`, which 26 sites in 13 files
+  read, and `pairKey`, `min:max`, which 9 sites in 5 files read (deviation 1).
+  `src/contracts/triangulation-status.ts` and `src/contracts/two-view-failures.ts` hold the status
+  codes and the failure table.
+- The host layout constants are held once per kernel: `PROGRESS_INTERVAL` in
+  `src/geometry/gpu/search-schedule.ts`, `RECOVERY_INFO` in `src/geometry/gpu/pair-estimation.ts`
+  and `BUNDLE_STATE` in `src/sfm/bundle/gpu/bundle-shared.ts`.
+- `src/sfm/config/lab-preset.ts` holds the lab preset: `LAB_MAPPER_NUMBERS` (500, 3, 1, 0.5, 4,
+  8), `LAB_MAPPER` and `LAB_WINDOW_SIZE` (32). `LAB_OPTIONS`, the `MAPPER` of
+  `website/src/workers/multi-video.ts` and the six scripts of row 2 read it.
+- `website/src/lib/lab-options.ts` holds the values that only the page and the workers need,
+  among them `LAB_OPTIONS` with its 21 keys. It also holds the dense defaults (deviation 3).
+- Commit 7 removes the private copy of `packRgba` from `src/features/gpu/features.ts`. So found
+  item (b) of phase 1c is closed.
+
+**Fact** (#255, "Gate", on `8663dba` against the base `4022861`).
+
+- `npm test` passes 465 of 465 (460 on the base). The Node half of `test:website` passes 287 of 287
+  (285 on the base). `npm run test:surface` passes 4 of 4, and `npm run test:digests` 46 of 46.
+  `npm run test:shade` passes 366 of 367 on both, with 1 skipped.
+- The gate of row 2 holds. The six golden records, the 28 lab transcripts, and the start payloads
+  and record options of 44 query strings (`website/run-options-browser.test.mjs`) are identical. So
+  the run record's `options` are. The 12 rows of `node scripts/measure-focal.mjs` equal
+  `tests/digests/measure-focal.json` with `ms` masked. `tests/lab-preset.test.ts` holds the preset
+  to today's values.
+- The examples print the same output. `tests/api-surface.txt` and `tests/digests/kernels.json` do
+  not change. `dist/` goes from 562 files to 593: the new modules add 31 paths, and four hashed
+  chunks change their names.
+- `node scripts/import-graph.mjs` reports 1 runtime cycle, 2 cycles that type-only imports add and
+  0 breaks, as on the base.
+- New tests: `tests/sfm-defaults.test.ts` (3 tests) and `tests/lab-preset.test.ts` (2) in
+  `npm test`, and `website/lab-options.test.mjs` (2) in `test:website`. No existing test changes an
+  assertion.
+- Six mentions in five living documents and ten code comments name the new places (rule 7). This
+  amendment follows for this document.
+
+**Deviation 1** (#255). Section 3.3 puts `observationKey` and `pairKey` in `sfm/model`. Delivered:
+`src/contracts/keys.ts`. **Fact** (#255). `validateReconstruction` (`src/geometry/validation.ts`)
+needs `observationKey`, and geometry may not import sfm (section 3.1). **Disposition.** Accepted by
+this amendment, under section 3.2: the contracts hold the encoders of records that cross a boundary.
+
+**Deviation 2** (#255). Row 2 puts "the operator defaults shared by CPU and GPU operators" in
+`sfm/config`. Delivered: `src/geometry/operator-defaults.ts`. **Fact** (#255). The operators are in
+geometry, and geometry may not import sfm (section 3.1). **Disposition.** Accepted by this
+amendment.
+
+**Deviation 3** (#255). Row 2 gives the lab's values to the lab's `options` module and does not
+name the dense defaults of `dense-run.ts`. Delivered: they move to `website/src/lib/lab-options.ts`,
+and `dense-run.ts` re-exports them under the same names. **Fact** (#255). The page bundle cannot
+import `dense-run.ts`. It imports `depth-archive.ts`, which runs `new TextEncoder()` when it loads.
+Phase 0's page harness (`website/lab-page-module.mjs`) runs the page bundle in a `vm` context that
+has no `TextEncoder`. **Disposition.** Accepted by this amendment, as part of the job of the
+options module.
+
+**Fact** (#255, "Found, not changed"; the lines on `f4e2dbf`). Row 2 does not name these values, so
+phase 2 left them:
+
+1. the Huber width 1.5 px of the history refinement (`src/sfm/session/history-refinement.ts:14` and
+   `:45`);
+2. the 3 px of the observation filter (`src/geometry/gpu/observations.ts:36` and `:51`);
+3. the view graph's `minComponentViews ?? 5` and `minVideoShare ?? 0.5`
+   (`src/sfm/multiview/view-graph.ts:262-263` and `:560-561`);
+4. three copies of the view graph's defaults in `MULTI_VIDEO_DEFAULTS`: `k` 10, `minMatches` 30
+   and `minEdgeInliers` 25 (`website/src/lib/multi-video.ts:17-19`, against
+   `src/sfm/multiview/view-graph.ts:254`, `:260` and `:261`);
+5. the bound 8192 of the page's KLT capacity parser (`website/src/lib/sift-quality.ts:124`), equal
+   to `KLT_MAX_CAPACITY` (`src/motion/gpu/klt.ts:74`);
+6. the GPU batch 512 (`src/geometry/gpu/pnp.ts:74` and `src/geometry/gpu/pair-estimation.ts:149`);
+7. the guided kernel `'scalar'` of the page's parser (`website/src/lib/sift-quality.ts:48`) and of
+   the worker's start defaults (`website/src/workers/sfm.worker.ts:565`);
+8. the history refinement's `iterations ?? 8` (`src/sfm/session/history-refinement.ts:52`);
+9. two more 3 px defaults, each of its own operator (`src/geometry/rotation.ts:38` and
+   `src/sfm/depth/inverse-depth-tracker.ts:130`);
+10. `ransacIterations: 512` of `scripts/benchmark-observation-expansion.mjs:216`, that script's own
+    value;
+11. the test copies, frozen so that a test still holds the value: `tests/digest-samples.ts:16-24`,
+    `tests/focal-search.test.ts:23-31`, and `PROGRESS_INTERVAL = 4` in
+    `tests/typeshade/pair-batch.test.mjs:78` and `tests/typeshade/pnp-batch.test.mjs:35`.
+
+**Fact** (#255, "Left to later phases"). Phase 2 leaves these to the rows that name them:
+
+- the seven packers of the camera and pose record (phase 4);
+- the progress throttle of 100 ms, the activity throttle of 200 ms and the feature cap (phase 5a);
+- the block and index arithmetic of the two bundle adjustment hosts (phase 6);
+- the defaults of the page's parsers and the nine `*Override()` helpers (phase 7);
+- the front-end values that five scripts copy (phase 8b).
+
+**Phase 3** (amendment 5). **Fact** (#258, merged as `f4e2dbf` on 2026-10-27). Its local gate ran
+on Node 22.22.0, on the baseline `1cc7828` and on its head `2fcdd63`. The pin stays `725b2969`. CI
+run 40446097074 on `2fcdd63` was green before the merge. The first push came from phase 2's head
+`1cc7828`. The branch was rebased onto `87724f9` with one force push, before any review.
+
+- `website/src/lib/run-record.ts` (1,885 lines on `87724f9`) becomes the barrel of
+  `website/src/lib/run-record/`: `schema.ts` (648 lines), `validate.ts` (769), `assemble.ts` (459)
+  and `summary.ts` (74). Each of the 81 top-level statements moves with its leading comments: 69
+  byte for byte, and 12 gain only `export`. The barrel exports the same 49 names, and all 49
+  declarations keep their text.
+- `website/src/lib/probe-record.ts` imports `finite`, `count` and `text` from
+  `run-record/validate.ts` and drops its own copies, which had the same text.
+- `buildRunRecord` and `buildMultiRunRecord` move from `website/src/components/SfmLab.tsx` to
+  `website/src/lib/run-record/page.ts` (deviation 1). Their new first parameter is
+  `environment: RunRecordEnvironment`, with the three browser globals that they read before:
+  `navigator`, `screen` and `devicePixelRatio`. The page passes its own at the four call sites. A
+  check that logged every read found the same 8 members read in the same order before and after.
+- Each inline rule of the SfM worker becomes a named unit with its current value and unit. The
+  worker calls it at the site of the rule:
+
+| Rule | Named unit (module in `website/src/lib/`) | Value and unit |
+| --- | --- | --- |
+| Feature minimum | `MIN_FEATURES`, `tooFewFeatures` (`lab-features.ts`) | 8 features |
+| Descriptor pair minimum | `PAIR_MIN_MATCH_ENTRIES`, `admitsPair` (`lab-matching.ts`) | 16 entries (8 matches) |
+| Precomputed pair minimum | `PRECOMPUTED_MIN_MATCH_ENTRIES`, `admitsPrecomputedPair` (`lab-matching.ts`) | 32 entries (16 matches) |
+| Tracker-only pair minimum | `MIN_PAIR_MATCHES` (`klt-join.ts`, named before phase 3) | 16 matches |
+| KLT cover | `tracksCoverPair` (`lab-matching.ts`) with `KLT_COVER_MATCHES` (`klt-join.ts`) | 64 matches (128 entries) |
+| Retention | `REFERENCE_SPACING_SECONDS`, `MAX_REFERENCES`, `ADJACENT_KEYFRAMES`, `retainedReferences`, `retainedFeatureIds` (`lab-matching.ts`) | 0.5 s; 3 references; 3 newest frames |
+| Legacy rule | `LEGACY_GATE_MIN_MATCH_ENTRIES`, `MOTION_REFERENCE_WIDTH`, `scaledMotionThresholdPx`, `legacyGateSkips` (`keyframe-gate.ts`) | 16 entries (8 matches); `keyframeMinMotionPx` (8 px) at 640 px; under `keyframeMaxGapSeconds` (1 s) |
+| Track rule | `trackGateDecision` (`keyframe-gate.ts`) | the median track displacement against the same threshold and gap; a median that is not finite decides nothing |
+| Guided trigger | `GUIDED_MIN_MATCH_ENTRIES`, `guidedMatchingRuns` (`guided-matching.ts`) | the SIFT front end, `?guided=1` and 16 plain entries (8 matches) |
+
+The three pair minimums keep their three units (section 7, item 5). The legacy minimum and the
+guided trigger keep their own constants, though each is 16 entries today. The choice of the rule
+that runs stays in `processFrame` until phase 5b.
+
+**Fact** (#258, "Gate", on `2fcdd63` against `1cc7828`).
+
+- `npm test` passes 465 of 465 on both. The Node half of `test:website` goes from 287 of 287 in 41
+  files to 294 of 294 in 42. The 7 new tests are the table tests of `website/lab-rules.test.mjs`,
+  with 56 rows. `npm run test:surface` passes 4 of 4 and `npm run test:digests` 46 of 46. The
+  generated-pages test and `website/run-options-browser.test.mjs` pass 1 of 1 each.
+- The gate of row 3 holds. The six golden records are byte-identical to phase 0's baseline with
+  `createdAt` masked. The v3 to v6 fixtures stay valid, the 28 transcripts are identical, and the
+  table tests pass.
+- `dist/` holds the same 593 files. The examples print the same output. The import graph adds the
+  7 new files and keeps 1 runtime cycle, 2 cycles that type-only imports add and 0 breaks. The
+  bundle of the collector holds the same lines, but for the three helpers that the probe record
+  dropped.
+
+**Fact** (#258, "Mutation facts", on `2fcdd63`). Eleven mutations each changed one value or one
+operator of one named unit, one at a time. The table tests caught 11 of 11. The 35 identity tests
+caught 3 of 11. **Inference** (#258). The transcripts and the golden records reach only the
+retention rule. So the exact values of the named rules rest on the table tests.
+
+**Fact** (#258, "Test changes named" and "Documents"). `website/lab-rules.test.mjs` is new, and
+`package.json` adds it to `test:website`. Each of its rows holds a named unit to the inline
+expression that it replaces, copied with its literals from `87724f9`. `website/lab-page-module.mjs`
+takes the two builders from `run-record/page.ts` with a fixed environment, and no fixture changes.
+`docs/lab-run-records.md` names the modules of `run-record/`. The other 9 mentions of
+`website/src/lib/run-record.ts` in 4 living documents stay true, since the barrel still exports
+what each cites. This amendment follows for this document.
+
+**Deviation 1** (#258). Row 3 says that `buildRunRecord` and `buildMultiRunRecord` "move in", read
+as into the record module, behind the barrel. Delivered: they move to
+`website/src/lib/run-record/page.ts`, outside the barrel. **Fact** (#258, measured on a scratch
+copy). Behind the barrel: (a) their imports of the page's modules add a third type-only import
+cycle; (b) on a tree with #255, they bring `sfm-video.ts` into the root typecheck, which reports 3
+TS2835 errors; (c) the collector (`website/worker.mjs`) would load the page's modules.
+**Disposition.** Accepted by this amendment. Row 3 and section 3.4 now say where the builders sit.
+
+**Deviation 2** (#258). The record stays in `website/src/lib/run-record/`. **Fact** (#258). Section
+7, item 4 decides the lab's stage modules and the preset, not the record. Section 3.4 and the lab
+audit place `run-record/` in the site. The scripts and the collector keep the barrel path. A move
+to `src/` would add files to `dist/` and names to the surface, which row 3 does not name.
+**Disposition.** Open. The record stays in `website/src/lib/`. Its placement in a library area is
+decided under section 7, item 4, or in phase 8b.
+
+**Fact** (#258, "Found, not fixed"; the lines on `f4e2dbf`).
+
+- (a) `website/src/components/SfmLab.tsx` imports `resultFileNames` (line 74) and
+  `MULTI_VIDEO_DEFAULTS` (line 89) and declares `denseSerial` (line 1778), and it uses none of them
+  (TS6133 under `noUnusedLocals`). Each was unused on `87724f9` too.
+- (b) Four JSDoc comments sit above a declaration that they do not describe: `SfmLab.tsx:261` and
+  `:269`, `run-record/schema.ts:91` and `run-record/summary.ts:25`. The split carried the last two
+  byte for byte.
+
+Open after phase 3: deviation 2, the two found items, and the facts that #258 gives for section 7,
+item 5 (recorded there).
+
+**Status of the programme** (amendments 3 to 5, 2026-10-27). **Fact** (`main` at `f4e2dbf`, and
 the pull requests named).
 
-| Step | Record | State on 2026-10-26 |
+| Step | Record | State on 2026-10-27 |
 | --- | --- | --- |
 | Phase 0 Characterize | #242, merged as `091a3e9` | done |
 | Phase 1a Build selection | #247, merged as `3e2777b` | done; open item 1 closed by amendment 3, item 2 moved to 1b (the phase 1 row) and closed by #250 |
-| The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open: 0085's TypeCV product work and the sentinel step (the paragraphs above) |
+| The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open: 0085's TypeCV product work (#260, in progress) and the sentinel step (the paragraphs above) |
 | Phase 1b Moves | #250, merged as `0d012e9` | done; deviation 1 open, deviation 2 accepted by amendment 4; three open items ("Phase 1b" above) |
-| Phase 1c Cross-area imports | #252, merged as `2d02a61` | done; its deviation accepted by amendment 4; its three found items left to later records ("Phase 1c" above) |
-| The Node 24 gate change | #249, merged as `4022861` (section 4, rule 2) | done; its deviation open until 32 green `digests (24)` jobs: 2 on 2026-10-26 |
-| Phase 2 One definition | none | in preparation: a plan is being made; no pull request yet |
-| Phases 3 to 11 | none | no pull request |
+| Phase 1c Cross-area imports | #252, merged as `2d02a61` | done; its deviation accepted by amendment 4; found item (b) closed by #255, items (a) and (c) left to later records ("Phase 1c" above) |
+| The Node 24 gate change | #249, merged as `4022861` (section 4, rule 2) | done; its deviation open until 32 green `digests (24)` jobs: 8 on 2026-10-27 |
+| Phase 2 One definition | #255, merged as `87724f9` | done; deviations 1 to 3 accepted by amendment 5; 11 found values left to later records ("Phase 2" above) |
+| The shards of the job `webgpu` | #256, merged as `94d28c8` ("The shards" above) | done; the commands of the common gate unchanged |
+| The TypeScript surface audit | #259, merged as `a3eb1ed` (section 6) | done; its six proposals and six questions wait for the owner (section 7, item 20) |
+| The k-NN probes | #257, merged as `74d1636` (section 6) | done; its phase 9 step and row C15 added by amendment 5 |
+| Phase 3 Record split and named policies | #258, merged as `f4e2dbf` | done; deviation 1 accepted by amendment 5, deviation 2 open (section 7, item 4); two found items left to later records ("Phase 3" above) |
+| 0085's TypeCV product work | #260, a draft | in progress ("The pin bump", open item 2) |
+| Phase 4 Shared mapper parts | none | next: phases 4 and 6 run in that order |
+| Phase 9 Kernels, no compiler change | none | next: it may run beside phases 4 to 7; item 11 is decided before its first step |
+| Phases 5 to 8, 10 and 11 | none | no pull request |
+
+**Fact** (amendment 5). Since 2026-10-26 the pull requests of the programme merge under the owner's
+standing approval (section 7, item 19). A pull request merges once every required check is green
+and no review thread is open.
 
 ## 6. Compiler changes this programme asks for
 
@@ -972,7 +1263,8 @@ rest on the lab audit's L1, L3, L4 and L8, also without a probe. C14 (amendment 
 measurements of TypeShade proposal 0090. **Fact** (amendment 1; #243,
 `tests/typeshade/compiler-probes.test.mjs`). TypeCV's probe suite now probes C2 (S1), C5 (S5) and
 C7 (S2) too. C4 and C10 to C13 stay without a probe: each needs a WebGPU device or an API that
-does not exist yet.
+does not exist yet. **Fact** (amendment 5; #257). The suite also probes row C15 (K6), and K1 to K6b
+probe the loops of `src/mvs/gpu/cloud-knn.shade.ts` ("The k-NN probes", below).
 
 | # | Limit (**Fact**) | Effect in TypeCV | Change asked | Lines |
 | --- | --- | --- | --- | --- |
@@ -990,6 +1282,7 @@ does not exist yet.
 | C12 | chunk rates live as long as the device | a record on a reused device includes earlier runs | a per-run epoch or snapshot of `chunkRates` | lab |
 | C13 | GPU time cannot be attributed to stages inside one library call | the job diffs kernel statistics; view-graph stages carry no `gpuMs` | a named profiling scope that labels plan reports, in the TypeShade runtime or in TypeCV's device | lab |
 | C14 | every TypeShade tool selects a shader module by its name in any directory, but `hostViewPath` writes its host view beside it, and `tsc` reads that view only under `moduleSuffixes` | the build split of section 2: GPU code selected by the directory `src/gpu`, generated views deleted by `scripts/build-gpu.mjs`, 27 kernel paths in `.prettierignore` | kernel modules compile in place: a shader module in any directory beside its host module, and the host views in a build directory outside the source tree | build |
+| C15 (amendment 5) | the proof refuses a write through an index array, `out[perm[i]]`, as "an element two iterations can share" (R3; probe K6); proposal 0095 excludes it by name | `knnMeanDistance` stays an entry (the phase 10 row); its lane form lowers (K6b) | none now; later, a parameter declared a permutation of the loop's range, checked at the call | ~1 |
 
 Not gaps (**Fact**, from the kernel audit's probes and rules):
 
@@ -1004,16 +1297,19 @@ Not gaps (**Fact**, from the kernel audit's probes and rules):
 esbuild bundle check confirms the import. Device-resident hashing and an on-device sort are gaps
 that remove no lines today and are not asked for.
 
-**Status of the rows** (amendments 1 to 3, 2026-10-26). **Fact** (TypeShade `main` at `b920aea`,
+**Status of the rows** (amendments 1 to 3 and 5). **Fact** (TypeShade `main` at `b920aea`,
 and issues typeshade/typeshade#761 and typeshade/typeshade#775). Each proposal below is accepted as
 a plan. No implementation of proposals 0090 to 0096 exists at `b920aea`. So TypeCV's pin `d36ac502`
 carries none of them. **Fact** (TypeShade `main` at `ff51e8f8`). After `b920aea`,
 typeshade/typeshade#773 implemented change 0093, which no row names. The proposals of the rows stay
 unimplemented there. **Fact** (amendment 3; #246, and TypeShade at `725b2969`). TypeCV's pin is
 `725b2969` since `c1bfe38`. Every proposal of the rows is `accepted` and not implemented there. So
-the pin carries none of them, and no row changes its state.
+the pin carries none of them, and no row changes its state. **Fact** (amendment 5; TypeShade
+`main` at `f0d41b36`, read on 2026-10-27). typeshade/typeshade#782 implemented change 0096 (row C7)
+after the pin. The other proposals of the rows are `accepted` there. The pin carries none of them
+(section 5, "The next pin").
 
-| Row | TypeShade record | State on 2026-10-26 |
+| Row | TypeShade record | State on 2026-10-27 |
 | --- | --- | --- |
 | C14 | proposal 0090 (typeshade/typeshade#763) | accepted 2026-10-26 |
 | C1 | proposal 0091 (typeshade/typeshade#767) | accepted 2026-10-26 |
@@ -1021,8 +1317,9 @@ the pin carries none of them, and no row changes its state.
 | C9 | issue typeshade/typeshade#761 | open |
 | C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2) |
 | C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2) |
-| C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11) |
+| C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11). Implemented on TypeShade `main` by typeshade/typeshade#782 (`a21f7024`, 2026-10-27), with that run open by the owner's decision; not at the pin (amendment 5) |
 | C4, C5, C10 to C13 | none | not opened (section 7, item 7) |
+| C15 | none: #257 recommends no proposal now (amendment 5) | not opened |
 
 **Fact** (amendment 2; the "Approval and plan record" of each proposal). The owner's go-ahead
 took the decisions that each proposal asked to settle before acceptance. The rest stay open:
@@ -1079,6 +1376,71 @@ the kernels' source). `kltEigenMax` is a `max` reduction and `houghVote` an `ato
 scatter. So C9 gates no step of section 5. Their conversions wait for C7 (phase 10), as the
 phase 9 row says.
 
+**The k-NN probes** (amendment 5). **Fact** (#257, merged as `74d1636` on 2026-10-27;
+`tests/typeshade/compiler-probes.test.mjs` at the pin `725b2969`). `src/mvs/gpu/cloud-knn.shade.ts`
+has one entry, `knnMeanDistance`, whose loops nest six deep. Eight probes measure its shapes. These
+five are accepted on WGSL, WebGL2 and both CPU tiers, with no diagnostic:
+
+- K1: a helper that takes a local `array<f32, 32>` as `@inout`;
+- K2: a helper that reads `xs` and `bucketStart` by name and hands the list on;
+- K3: a `break` of an inner loop, and of the outer loop by a flag;
+- K4: a `while (s > 0 && best[s - 1] > d2)`;
+- K5: a `return` from inside nested loops of an entry with no barrier.
+
+K3b, a labelled `break rings;`, is refused with `TS8099`. K6, a kernel function that writes
+`sums[visitOrder[lane]]`, runs on the CPU tier only, with a `TS8070` warning under rule R3. K6b,
+the same function that writes `sums[lane]`, lowers to a GPU loop. The suite passes 43 of 43: 35
+earlier probes and the 8 new ones. **Inference** (#257). At the pin, the compiler does not force
+the duplicated insertion, the 31-step loop or the `done` flag. The six-deep nest is the
+algorithm's. The permuted write is the one compiler limit here, and only for a kernel function
+(row C15). The host already applies the visit order to `knnMean`
+(`src/mvs/gpu/cloud-clean.ts:85-86`), so a permutation feature would remove about one line.
+
+**Decision** (the coordinator's, 2026-10-27, under the owner's standing approval of section 7,
+item 19). This amendment adopts the two proposals of #257: the k-NN step of phase 9 (section 5,
+the phase 9 row) and row C15. #257 recommends no TypeShade proposal now. **Inference** (#257).
+After a pin that carries 0096, the lane form (K6b) with the host's permutation could make the k-NN
+a kernel function. That needs its own record, since the phase 10 row keeps the k-NN an entry.
+
+**The TypeScript surface audit** (amendment 5). **Fact**
+([`audits/2026-10-27-typescript-surface-gaps.md`](audits/2026-10-27-typescript-surface-gaps.md),
+#259, merged as `a3eb1ed` on 2026-10-27; it states facts at `73c84dc` and the pin `725b2969`). The
+audit takes each construct that a TypeScript author reaches for. It records where TypeCV's 30
+kernel modules wrote a hand-made form instead, and what that form costs. Its section 3 ranks 27
+constructs. The order is the lines that a compiler change removes, then the sites, then a
+departure scale from D0 to D3. Its section 6 recommends six TypeShade proposals:
+
+- P1 (row T7): a record binding takes the flat typed array of its layout;
+- P2 (row T1): a device-resident `Map` and `Set` with a capacity;
+- P3 (row T4): `sort` on a function-scope array;
+- P4 (row T6): a bounded list in function scope;
+- P5 (row T17): a generic over an array's length;
+- P6 (row T22): `Infinity` and the finiteness tests.
+
+Its section 7 lists eleven kernel refactors that need no compiler change. **Inference** (the audit,
+section 7). Each is a candidate for phase 9 or 10, and each enters by an amendment, since a body
+refactor is no conversion. This amendment adds the first of them, the k-NN body. The audit's
+section 8 asks the owner six questions, which section 7, item 20 records as open decisions.
+
+**TypeShade issues** (amendment 5). **Fact** (typeshade/typeshade, read on 2026-10-27). These are
+the TypeShade issues that this document cites. Each is open, and each title is quoted as filed.
+
+| Issue | Title, as filed | Recorded from | Bears on |
+| --- | --- | --- | --- |
+| typeshade/typeshade#703 | "D3D12 (NVIDIA Blackwell, observed on an RTX 5060 Ti): a compute workgroup whose idle lanes return before heavy loops hangs the device; a kernel-author rule or a lowering of the out-of-range guard" | the accepted text (section 2) | A1; row C7 |
+| typeshade/typeshade#761 | "Kernel proof refuses the `min`/`max` scatter that surface §65 lists" | amendment 1 | row C9 |
+| typeshade/typeshade#775 | "Kernel loop stores of the `scaled` and `row-major` forms run unchecked at a stride of 0 and past the array's end" | amendment 2 | row C6: its fix lands before 0095's implementation (0095's D2) |
+| typeshade/typeshade#780 | "An `export *` kernel alias drops a binding that no entry uses and renumbers the later bindings" | amendment 4 (#250) | section 4, rule 4; phase 1b, deviation 1 |
+| typeshade/typeshade#788 | "The TS8008 text names only an `i32` loop counter, though Rule 7.5 accepts `u32`" | #257 | the remedy text of `TS8008` for a `u32` counter |
+| typeshade/typeshade#790 | "`tshc` from a source install cannot run under Node: the `bin` is `src/cli/bin.ts`, which Node refuses to type-strip inside `node_modules`" | #260 | 0085's product work; TypeCV's build does not need `tshc` |
+| typeshade/typeshade#791 | "A downstream cannot take the compiler's device when it needs the adapter's own limits or no `timestamp-query`: `configure({ limits, features })` takes fixed numbers and always adds the feature" | #260 | 0085's product work; TypeCV keeps its own device request in `src/device/gpu/device.ts` |
+| typeshade/typeshade#792 | "A kernel function that returns `f32 \| undefined` compiles with no diagnostic, and its host view declares the export as `never`" | #259, probe Q24 | the audit's row T19 |
+| typeshade/typeshade#793 | "`storage<array<array<u32>>>` compiles with no diagnostic to `var<storage, read> cells: array<array<u32>>;`, which WGSL forbids" | #259, probe Q49 | the audit's row T7 and P1 |
+| typeshade/typeshade#794 | "Diagnostic quality: two diagnostics for one mistake (a function value; a generic over a length), and a "Did you mean" that names the enclosing helper" | #259, probes Q41, Q52 and Q61a | the audit's P5 and P6 |
+
+**Fact** (the issues, and the audit's section 8, item 1). typeshade/typeshade#792 to #794 file the
+four compiler findings that the audit left unfiled: Q24, Q49, Q41 with Q52, and Q61a.
+
 ## 7. Decisions
 
 The owner's go-ahead of 2026-10-26 fixes each item at the choice this document proposes. An
@@ -1103,6 +1465,11 @@ recorded here by amendment.
    placement changes no record, since phase 2's gate holds the record's `options` identical.
    **Decision (2026-10-26).** Decided: the modules a script needs go to a library area; a module
    that only the page needs stays in `website/src/lib/`.
+   **Result (amendment 5, 2026-10-27).** **Fact** (#255 and #258). The lab preset is in
+   `src/sfm/config/lab-preset.ts`, since six scripts need it. The values that only the page and the
+   workers need are in `website/src/lib/lab-options.ts`. The run record stays in
+   `website/src/lib/run-record/` (section 5, "Phase 3", deviation 2). Its placement in a library
+   area is open, for this item or phase 8b.
 5. **Behaviour differences found by the audits**, each its own pull request if fixed:
    - the component driver's error rule;
    - `finalBundleIterations` 25 against 8, and stall 1e-4 against 1e-9;
@@ -1118,6 +1485,28 @@ recorded here by amendment.
 
    **Decision (2026-10-26).** Open. Each difference gets its own record and pull request when its
    phase reaches it. The structure phases keep today's behaviour (rule 1).
+   **Facts (amendment 5, 2026-10-27).** **Fact** (#255; the lines on `f4e2dbf`). Each difference
+   above keeps its value under its own name: `MAPPER_DEFAULTS` and `SESSION_DEFAULTS` (25 and 8),
+   `DEFAULT_BUNDLE_STALL_TOLERANCE` and `BUNDLE_SOLVER_STALL_TOLERANCE` (1e-4 and 1e-9),
+   `LAB_KLT_CAPACITY` and `KLT_DEFAULT_CAPACITY` (512 and 1024), `LAB_WORKER_DEFAULTS` against the
+   page's values, and `MULTI_VIDEO_RECORD_OPTIONS`. The dense fusion and clean defaults are written
+   once, as `DENSE_LAB_FUSION` and `denseCleanDefault` in `website/src/lib/lab-options.ts`. The page
+   reads them, and the start defaults of the worker do not change. Phase 2 found three more
+   differences:
+   - the page turns the dense MVS on (`website/src/components/SfmLab.tsx:856`), and the worker
+     defaults it off (`website/src/lib/lab-options.ts:115`, read at
+     `website/src/workers/sfm.worker.ts:556`);
+   - the page turns the focal search on (`SfmLab.tsx:728`, sent at `:2798`), and the worker
+     defaults it off (`lab-options.ts:117`, read at `sfm.worker.ts:566`);
+   - without `?gpuTimestamps=1`, the single-video worker takes the dense GPU timestamps from the
+     run's bounded-submissions mode (`sfm.worker.ts:1463`). The multi-video worker takes false
+     (`website/src/workers/multi-video.ts:184`). Neither default has a name.
+
+   **Fact** (#258). `website/src/lib/klt-join.ts:29` documents `MIN_PAIR_MATCHES = 16` as "A pair
+   needs this many matches to go to the mapper, as a descriptor pair does." `docs/klt-tracking.md`,
+   section 3.3 (line 249), says the same of a tracker pair. A descriptor pair goes to the mapper
+   with 16 match entries, which is 8 matches (`PAIR_MIN_MATCH_ENTRIES`). Both texts stay as written
+   until the record of this difference. The item stays open.
 6. **Code without a product caller:** `posed-evidence.ts` (329 lines) and the observation-expansion
    family (1,692 lines, exported from `typecv/gpu`). Keep, move to `experimental/`, or delete? A
    move or a deletion of the family removes exports of `typecv/gpu` (`src/gpu/index.ts:60-73`).
@@ -1152,6 +1541,8 @@ recorded here by amendment.
    and the pin bump (#246), and the item stays open.
    **Operating default (amendment 4, 2026-10-26).** **Fact.** It continued through phases 1b (#250)
    and 1c (#252), and the item stays open.
+   **Operating default (amendment 5, 2026-10-27).** **Fact.** It continued through phases 2 (#255)
+   and 3 (#258), and the item stays open.
 9. **The front end (`design-rules.md` §4) and the package path (§5.1):** decided separately, or
    together with the area entry points of phase 10? The `typecv/<area>` names of section 3.1
    presuppose the path `typecv`.
@@ -1170,6 +1561,11 @@ recorded here by amendment.
     runs on the same device.
     **Decision (2026-10-26).** Open. Decided before phase 9's first step: who runs it, and on which
     samples.
+    **Fact** (amendment 5; TypeShade change 0096, "Configuration and validation record", at
+    TypeShade `f0d41b36`). The owner stated on 2026-10-27 that the A1 device is a company computer
+    that they cannot reach. TypeShade merged 0096's implementation with its hardware run open, and
+    the run stays owed "by the actor TypeCV's `docs/library-structure.md` section 7 item 11 names".
+    The k-NN step of phase 9 (amendment 5) needs the same kind of run. The item stays open.
 12. **`EpipolarSession`**, the only kernel-function path today, called by tests and one
     benchmark: public or not? Making it non-public removes an export of `typecv/gpu`
     (`src/gpu/index.ts:102`), which waits for the next major version. **The four test-only
@@ -1211,6 +1607,32 @@ recorded here by amendment.
 18. **(f) The registration driver** (audit lab, question 6): how much should the programme invest
     in a `registration` stage around `IncrementalSfmSession`, which `engine-v2.md` replaces?
     **Decision (2026-10-26).** Open. Decided before phase 5b.
+19. **The owner's standing approval** (amendment 5). Does each pull request of the programme wait
+    for the owner's word before it merges?
+    **Decision (2026-10-26).** Decided by the owner. **Fact** (the session of 2026-10-26; the commit
+    message of amendment 4, `73c84dc`, records it). The owner wrote "모두 승인 앞으로도" ("all
+    approved, from now on too"). Every later merge of the programme is approved in advance. A phase,
+    an amendment, a documentation fix or a gate change needs no word for its own pull request. It
+    merges once every required check is green and no review thread is open. The coordinator still
+    reports first anything outside this accepted proposal: a new design rule, a new TypeShade
+    proposal or a change of a public declaration. The owner decides the acceptance of each
+    TypeShade proposal.
+20. **The questions of the TypeScript surface audit** (amendment 5; the audit of 2026-10-27,
+    section 8). Each is a decision of the owner:
+    1. which of P1 to P6 (section 6) to draft first; the ranking puts P1 first;
+    2. whether P2 is an amendment of TypeShade change 0080 (its decision 3) or a proposal of its
+       own;
+    3. whether a bounded list (P4) and narrow fields in storage (row T25) justify a §9.3 name
+       (Rules 9.6 and 13.6), or must find an ECMAScript form;
+    4. whether the body refactors of the audit's section 7 enter phase 9 by one amendment, with
+       #257's k-NN step, or by one amendment each;
+    5. whether `GpuP3pStatus`, a public export of `typecv/gpu`, may become a re-export of a shader
+       `enum` (the audit's section 7, step 11);
+    6. whether the 33 clamp-and-mask entries of row T11 wait for 0096's decision D4, or convert to
+       kernel functions after a pin that carries 0096.
+
+    **Decision (2026-10-27).** Open: each question is the owner's. **Fact.** This amendment adds
+    #257's k-NN step alone to phase 9. The other ten refactors wait for question 4.
 
 ## 8. Verification
 
@@ -1253,3 +1675,11 @@ recorded here by amendment.
   in #252 with its deviation, the places of section 3.1 after phase 1c, the kernel-alias limit of
   typeshade/typeshade#780 in rule 4, the declaration errors of #251, the merge of the Node 24 gate
   change #249 and the count of its monitor, the status of the programme), pull request #254.
+- 2026-10-26: the owner's standing approval of every later merge of the programme (section 7,
+  item 19), recorded by amendment 5.
+- 2026-10-27: amendment 5 (phase 2 delivered in #255 with its three deviations, the shards of the
+  job `webgpu` in #256, the TypeScript surface audit of #259 and its six questions, the k-NN probes
+  of #257 with a phase 9 step and row C15, phase 3 delivered in #258 with its two deviations, 0085's
+  product work in #260, typeshade/typeshade#788 and #790 to #794, the next pin with change 0096,
+  the owner's standing approval, the count of the Node 24 monitor, the status of the programme),
+  pull request #261.
