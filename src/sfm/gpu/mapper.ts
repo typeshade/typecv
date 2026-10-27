@@ -19,6 +19,7 @@ import { copyReconstruction } from '../model/copy.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { MapHistory } from '../session/map-history.ts';
 import {
+  historyTracks,
   measureHistory,
   refineHistory,
   refinedHistoryWindow,
@@ -860,6 +861,50 @@ export class IncrementalSfmSession {
       ) {
         const finalIterations =
             this.options.finalBundleIterations ?? SESSION_DEFAULTS.finalBundleIterations,
+          archive =
+            lateCalibration && reconstruction.views.length <= 64 ? reconstruction : undefined,
+          // A restart focal of a boundary winner maps the archive's tracks again at that focal,
+          // so it does not start from the map built at the boundary (docs/auto-focal.md, section
+          // 10). An archive beyond the 64 cameras of local GPU work reuses the archived map.
+          rebuildAtRatio = archive
+            ? async (ratio: number) => {
+                const { images: tracked, pairs: trackPairs } = historyTracks(archive);
+                try {
+                  const rebuilt = await runIncrementalGpu(
+                    this.device,
+                    applyFocal(tracked, ratio),
+                    trackPairs,
+                    {
+                      ...this.options,
+                      onReconstruction: undefined,
+                      focalSearch: undefined,
+                      refineSharedFocal: false,
+                      initialPair: undefined,
+                      cameraObservationMasks: undefined,
+                      focalGroups: undefined,
+                      rotationTracking: false,
+                      preVerified: undefined,
+                    },
+                    undefined,
+                    true,
+                  );
+                  completed = {
+                    ...completed,
+                    execution: {
+                      ...completed.execution,
+                      stages: [...completed.execution.stages, ...rebuilt.execution.stages],
+                      gpuBundleAdjustments:
+                        completed.execution.gpuBundleAdjustments +
+                        rebuilt.execution.gpuBundleAdjustments,
+                    },
+                  };
+                  return rebuilt.reconstruction;
+                } catch (error) {
+                  if (error instanceof ReconstructionInitializationError) return undefined;
+                  throw error;
+                }
+              }
+            : undefined,
           solved = await refineHistory(
             reconstruction,
             {
@@ -874,6 +919,7 @@ export class IncrementalSfmSession {
               refineSharedFocal: this.options.refineSharedFocal && !multipleFocalGroups,
               focalGroups: this.options.focalGroups,
               ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
+              ...(rebuildAtRatio ? { rebuildAtRatio } : {}),
             },
             async (model, options) => {
               const started = performance.now(),

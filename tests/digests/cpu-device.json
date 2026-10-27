@@ -4,8 +4,9 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
-    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+    "commit": "dc46aa2d3bdbaf99d396a30d787477a7c2b0b40e",
+    "src": "ec2f160ccd3a3520c812776765ed58256801ffd5",
+    "execArgv": []
   },
   "cases": {
     "IncrementalSfmSession/scene-28x11-window-8": {
@@ -215,11 +216,11 @@
       }
     },
     "IncrementalSfmSession/scene-90x6-focal-1.2": {
-      "output": "81948241ff12d53566083496a3e08bc6f0b3fb0537831211d7d77f6a89bed5ce",
+      "output": "374aa4d9bf893ff3dcdf4f6bcc1cd26ec60c7fa38af165ecc859c402a1068ed6",
       "parts": {
-        "adds": "067966fe8f7012d7b6c410fe222199503f14c02258dcbd0df8d28d12adc50e5a",
-        "finish": "1fed53e668bda0f7b6e71b29155a5b05816abdde60c5517a78acd63af3a2071b",
-        "focalSearch": "737a9915c0f83ab6cc0a7cf5458110da23a9be50427ac85a36ff3838bf9c7b5f"
+        "adds": "8d90da4f30e301e285eb7259b5e1ab21c254383c2c8fe7b6d3515b7a3b0f0097",
+        "finish": "ae565b9dc239db638aec5881e4b1293981f47e02155f59dd41bbbc0ac117c2b5",
+        "focalSearch": "0f3ad58fa45a8b05946b66b49e885a7983051efa6ad784405370a3548761c49f"
       },
       "trace": "5663ce5fe2991b744ad25309176ac5fcf0dde30f2633cfbdb82a18c3362cc1d3",
       "requests": {
@@ -428,10 +429,10 @@
       }
     },
     "reconstructIncrementalGpu/scene-90x6-focal-1.2/focal-search": {
-      "output": "96df5d400651c521a38ad3ed465a41e8527cd42cb4e6b22ea7c79607ae4303ca",
+      "output": "0ee5ae133851baf93a22aa00929eb821f802197ad91fd4ca6b4100d063fe41e5",
       "parts": {
-        "diagnostics": "d27a9b32a15d5e165df09d1d4a68e1231de75fb2245aadcaede85981b00daa61",
-        "reconstruction": "4ab972bbc118e595016f86a41d6a91a23d075f81082b204b6ad7c559b8343ec8",
+        "diagnostics": "6bfc8aff6b38051d06abf58bfda9730faf4e9bc776c2ce2694b9ffd778adfded",
+        "reconstruction": "61cf502791dd6304d31622145f7fbd52418e4e81708b3cd552aa9d1297c8e478",
         "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
         "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
         "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"
