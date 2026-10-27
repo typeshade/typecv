@@ -832,10 +832,17 @@ rule 6). It needs its own record under Rule 2.2.
 0; #257). After the pin `725b2969`, typeshade/typeshade#779 implemented change 0097 (`09588799`,
 2026-10-26). Then typeshade/typeshade#782 implemented change 0096, the request of row C7
 (`a21f7024`, 2026-10-27). typeshade/typeshade#784 accepted proposal 0098, `null` as an absent value
-(`d0ce8843`, 2026-10-27). **Fact** (TypeShade change 0096 at `f0d41b36`, "Configuration and
-validation record" and "What it owes downstream"). 0096 is `status: implemented`. #782 merged on a
-SwiftShader basis, with the hardware run of decision D5 open. The owner decided that on 2026-10-27
-(Amendment 1 of 0096's plan record). 0096 expects three things of TypeCV:
+(`d0ce8843`, 2026-10-27). **Fact** (TypeShade `main` at `f0d41b36`; the front matter of
+`changes/0099-bare-return-absent.md`, which `changes/README.md` makes the authority for a
+proposal's identity and state). Change 0099, "A bare `return;` and a path that ends the body are
+the absent value in a function with an optional result, as TypeScript reads them", is
+`status: implemented`. typeshade/typeshade#787 accepted it, and typeshade/typeshade#789
+implemented it. Its "What it owes downstream" names no TypeCV work. TypeShade `main` at
+`f0d41b36` is 12 commits after the pin. **Fact** (TypeShade change 0096 at `f0d41b36`,
+"Configuration and validation record" and "What it owes downstream"). 0096 is
+`status: implemented`. #782 merged on a SwiftShader basis, with the hardware run of decision D5
+open. The owner decided that on 2026-10-27 (Amendment 1 of 0096's plan record). 0096 expects three
+things of TypeCV:
 
 - the step "C6 and C7" of phases 9 and 10, each conversion with a hardware run while A1 is open;
 - a new verdict of probe S2;
