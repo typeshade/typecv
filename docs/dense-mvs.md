@@ -651,8 +651,10 @@ and `mvsPointData`: about (8 N + 28) bytes per pixel. The small arrays (`mvsCame
 gerrard-hall's previews are 640 × 427 (P = 273,280). Its depth stage takes 51.08 MiB at N = 12.
 
 The worker scales `workingBytes` and `poolBytes` with the square of the analysis edge, and by 4
-when the SIFT first octave is -1 (`start` in `website/src/workers/sfm.worker.ts`). Octave -1 is
-the lab default up to 640 px (`UPSAMPLED_EDGE_LIMIT` in `website/src/lib/sift-quality.ts`).
+when the SIFT first octave is -1 (`analysisScale` and `deviceBudgets` in
+`website/src/lib/working-budget.ts`, called by `start` in `website/src/workers/sfm.worker.ts`).
+Octave -1 is the lab default up to 640 px (`UPSAMPLED_EDGE_LIMIT` in
+`website/src/lib/sift-quality.ts`).
 So the lab uses 256 and 128 MiB at 640 px with octave -1, and 256 and 128 MiB at 1280 px with
 octave 0. A run with `?octave=0` at 640 px uses 64 and 32 MiB.
 

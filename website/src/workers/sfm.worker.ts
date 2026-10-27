@@ -18,7 +18,7 @@ import {
   trackerVerdicts,
   type TrackerPair,
 } from '../lib/klt-join.ts';
-import { tooFewFeatures } from '../lib/lab-features.ts';
+import { featureCap, tooFewFeatures } from '../lib/lab-features.ts';
 import {
   admitsPair,
   admitsPrecomputedPair,
@@ -41,7 +41,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run.ts';
-import { workingBytesFromAdapter } from '../lib/working-budget.ts';
+import { analysisScale, deviceBudgets } from '../lib/working-budget.ts';
 import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video.ts';
 import { adapterFacts } from '../lib/adapter-info.ts';
 import { reportGpuMs } from '../lib/run-record.ts';
@@ -592,20 +592,13 @@ async function start(
   const bounded = boundedRequest === true;
   // A device opened in the other submission mode, or under another flavor of the emulated double
   // than the page forces, is replaced, not reused.
-  // The working and pool budgets grow with the pixel count of the analysis frame: the SIFT
-  // pyramid of a 1280 px frame needs about 72 MB against the 64 MB default (`sift.ts`,
-  // `estimatedPeakBytes`), and the resident descriptors of the matching window grow with the
-  // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
-  // Octave -1 builds the pyramid at twice the frame's width and height: four times the pixels.
-  const scale = ((analysisEdge * analysisEdge) / (640 * 640)) * (firstOctave === -1 ? 4 : 1);
-  // `docs/gpu-budget.md` section 2 and Amendment 3 of `docs/dense-mvs.md`: the budget comes from
-  // the adapter's limits, half of its `maxBufferSize` when that is larger, and the device requests
-  // them. The stages split their work to fit it: size changes speed, not success.
-  const workingBytes = workingBytesFromAdapter(
-    Math.round(64 * 1024 ** 2 * scale),
-    adapter?.limits?.maxBufferSize,
-  );
-  const poolBytes = Math.round(32 * 1024 ** 2 * scale);
+  // The working and pool budgets grow with the pixel count of the analysis frame (`analysisScale`
+  // and `deviceBudgets` of `lib/working-budget.ts`): 64 and 32 MiB at 640 px, 256 and 128 MiB at
+  // 1280 px. `docs/gpu-budget.md` section 2 and Amendment 3 of `docs/dense-mvs.md`: the budget
+  // comes from the adapter's limits, half of its `maxBufferSize` when that is larger, and the
+  // device requests them. The stages split their work to fit it: size changes speed, not success.
+  const scale = analysisScale(analysisEdge, firstOctave);
+  const { workingBytes, poolBytes } = deviceBudgets(scale, adapter?.limits?.maxBufferSize);
   const reused =
     !!device &&
     !deviceUnavailable &&
@@ -665,12 +658,13 @@ async function start(
   }
   const opened = device;
   preparing('session');
-  // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
-  // 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in processFrame.
+  // The feature cap follows the pixel count of the analysis frame (`featureCap`): 4096 at 640 px,
+  // 16384 at 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in
+  // processFrame.
   const base = controls(profile);
   const options = {
     ...base,
-    maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
+    maxFeatures: featureCap(base.maxFeatures, scale),
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
     guidedKernel,
