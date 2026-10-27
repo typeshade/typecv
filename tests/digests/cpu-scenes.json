@@ -4,16 +4,17 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
-    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+    "commit": "dc46aa2d3bdbaf99d396a30d787477a7c2b0b40e",
+    "src": "ec2f160ccd3a3520c812776765ed58256801ffd5",
+    "execArgv": []
   },
   "cases": {
     "focalSearchSteps/scene-90x6-focal-1.2": {
-      "output": "8d4aebdf9df782a14241a0248991608fae484ee1302f05b388e89e8fb95ca627",
+      "output": "e36b860cc0f856c5d717a1025abb5d7324141fd1fc42b6fcfb67ab67c9cbf079",
       "parts": {
-        "candidates": "ccc1281ddf71554b9ec7d9449beeac15832c4d1c4cdc37e648f4eda69b9e8575",
-        "gridRatio": "bbda085d073cf962ab48663298972fda25255c2b9db4c679face41ea0d7e3644",
-        "ratio": "b2c863b6b889b0e514604dfe00abe1f3d88d5def3080bc70d2b90264d59124b2",
+        "candidates": "1ca96cd0faa31fd8b63c4f9c1912d9459d1662df71e2e2184b7a8e9b6f9cf67e",
+        "gridRatio": "e5ae18b672397696d5245893bd1043c6d9be4c93b4e8306624f56ea9f408b645",
+        "ratio": "1fd7739680478f75fd46b78c3527fb097df255d59cd1d31b086edb02bb1cf6d6",
         "views": "1ed3e25a528341581cb2b299672e7b6ad1efc619663d17de5e918de50a1edcaa"
       },
       "trace": "6dbb653f2975571fa61122dae5c1bafbbe6a86004ff89939ac2fd7c289329372",
@@ -128,10 +129,10 @@
       }
     },
     "reconstructIncremental/scene-90x6-focal-1.2/focal-search": {
-      "output": "ee204b9549d6c1970b122e74f96dfb4f021e5e1bc9c40e87d5012f42016e4519",
+      "output": "71fbe96cba65987801c2a2f521d33d976feb353d580714f02b52d9ef9ae973c2",
       "parts": {
-        "diagnostics": "b906bc1ecbef68a1b18c98180e8927c7db5a316bff5c94dfefee94e4d50c7f18",
-        "reconstruction": "e1f059e91462796397035520051615c970ff2a4c5abec268a1617bb674a9b1f7",
+        "diagnostics": "1ecfaee7dbc85a62dcc03ed452534272a37bb579464e467f7846d74e1dd31429",
+        "reconstruction": "10faf75f48f98045dfc51eac491ca14af042a2a92e04b98681c7877bc0db741c",
         "tracks": "ea932ca5ee7bc93cb5642a43954daf12b1e8dcdb80df5c9e80789f2573f46dd7",
         "unregistered": "ceba8e226fc1ae3ed6e6fd58d778d4365556868b78faf5e5abbab0c04e0bd392",
         "verifiedPairs": "b656c9c44ea885a367309149b121bf4f5f7b089498f6b6c674cfa8b9d9e7f321"

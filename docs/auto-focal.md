@@ -586,16 +586,26 @@ distortion, the lab's condition for a video), before and after:
 | graham-hall | 0.690 | 0.687 | 0.697 | 0.682 | 0.682 | 0.684 | 0.684 |
 
 The pyramid's relief is 0.301 before and 0.302 after. With the distortion known
-(`--distortion=1`), person-hall gives 0.684 before and after, and gerrard-hall 0.685 before and
-after (truth 0.684 and 0.683).
+(`--distortion=1`, the condition of the sample digests), the final ratios are:
+
+| Sample | Truth | Final before | Final after |
+| --- | --- | --- | --- |
+| south-building | 0.833 | 0.834 (+0.1 %) | 0.831 (−0.3 %) |
+| gerrard-hall | 0.683 | 0.685 | 0.685 |
+| person-hall | 0.684 | 0.684 | 0.684 |
+| graham-hall | 0.690 | 0.676 | 0.676 |
+
+The synthetic scene `scene-90x6-focal-1.2` of `tests/characterization.ts` (truth 0.8845) gives
+grid 0.8973 and final 0.8815 before and after, equal to 1e-8.
 
 ### 10.5 Cost
 
 Fact: on the sample's five views, the search ran 432 mapper requests in 122 to 151 s before and
 288 requests in 84 s after (one run each, a shared container). Before, the lower-bound winner
 sent the adaptive schedule to the full grid; after, the interior winner keeps it adaptive. The
-common set adds one host triangulation of each track per grid point. The fixture runs of 10.4
-took about the same time before and after (pyramid 16 s and 18 s, south-building 69 s and 74 s,
+common set adds one host triangulation of each track per grid point. The search on graham-hall makes 70 bundle requests where it made 60 (the adaptive schedule
+evaluates two more grid points; `tests/digests/cpu-graham-hall.json`); the other digest cases
+keep their request counts. The fixture runs of 10.4 took about the same time before and after (pyramid 16 s and 18 s, south-building 69 s and 74 s,
 graham-hall 53 s and 55 s, person-hall 204 s and 229 s).
 
 Fact: on the CPU reference a rebuild of the sample's 47-view archive took about 151 s, and the
@@ -610,8 +620,10 @@ is a boundary point and later views have arrived.
    chosen by parallax and rotation (the second part of candidate 1). Fact: on the sample, the
    five first views turn 0.04° to 0.20° and the common set still finds 1.107. Not measured: a
    subset chosen by parallax. Next action: its own record.
-2. Person-hall with zero distortion moves from 0.744 to 0.747 (truth 0.684, +8.8 % to +9.3 %).
-   With the distortion known it does not move (0.684). Open for the owner's decision.
+2. Two scenes move away from their truth by less than 0.5 %. Person-hall with zero distortion
+   moves from 0.744 to 0.747 (truth 0.684, +8.8 % to +9.3 %); with the distortion known it does
+   not move. South-building with the distortion known moves from 0.834 to 0.831 (truth 0.833,
+   +0.1 % to −0.3 %); with zero distortion from 0.842 to 0.843. Open for the owner's decision.
 3. The directional (bearing) mode keeps the score on the kept observations, with its complexity
    correction. Not measured on the common set.
 4. No session run of the sample with its images: the after-numbers come from the exported tracks.
