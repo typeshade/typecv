@@ -88,7 +88,7 @@ const { result, errors } = await inBrowser(
     if (!adapter) throw new Error('WebGPU adapter unavailable');
     const gpu = await adapter.requestDevice();
     const device = await api.ShadeDevice.open({ gpuDevice: gpu, solverCheckpoints: true });
-    // The options of the lab's worker (`website/src/workers/multi-video.ts`): the lab preset.
+    // The lab preset options.
     const MAPPER = {
       ...(ratio ? { globalBundleViewRatio: ratio, globalBundlePointRatio: ratio } : {}),
       seed: 7,

@@ -5,9 +5,8 @@ import { join } from 'node:path';
 import { scriptFiles, shardFiles } from '../scripts/ci-shard.mjs';
 
 // The shards of the CI job `webgpu` (.github/workflows/ci.yml): every test file of `test:webgpu`
-// and of `test:website` runs in exactly one shard. The shard counts here are the counts of the
-// job's matrix.
-const SHARDS = { 'test:webgpu': 3, 'test:website': 2 } as const;
+// runs in exactly one shard. The shard count here matches the job's matrix.
+const SHARDS = { 'test:webgpu': 3 } as const;
 
 const packageJson = JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8'));
 

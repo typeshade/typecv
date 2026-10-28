@@ -11,29 +11,30 @@ not reach down, and the background is nearly a plane. This record measures where
 
 ## 1. Configuration
 
-| Item | Identifier |
-| --- | --- |
-| Run record | `20261026043150261-58532c69` in the collector's KV; site commit `5e1c95c46ac3a7dca291ab2a77f6f207be01e888` (`main` at the time of the analysis) |
-| Input | Lab sample "Chimney Rock video B5 sample": 2560 × 1440 source, 1280 × 720 analysis, 34.2 s, 138 sampled frames at 4 fps, 47 keyframes (phase gate) |
-| Options | SIFT with 16,384 features, guided matching, `focalSearch: true`, `refineSharedFocal: true`, `windowSize` 32; dense: TSDF fusion with `view-weighted` visibility, `planarDepth: true`, `maxSources` 6, `bestSources` 3, window radius 5 at step 2 |
-| Result files | `typecv-reconstruction.json` (47 views, 19,123 landmarks, 90,391 observations), `typecv-dense.ply` (698,269 points), the depth archive `typecv-depths-c000.json` with parts `0000` to `0061` (47 views × 4 stages, inputs included) |
-| Reference | pycolmap 4.2.1 on the 47 archived 1280 × 720 keyframes: SIFT on the CPU, exhaustive matching, incremental mapping with one shared camera and the focal refined. Two runs: `SIMPLE_RADIAL` with the prior 1.2 × the long side, `SIMPLE_PINHOLE` with the prior 0.8 × the width. COLMAP is a reference, not ground truth. |
-| Environment | Linux x86_64 container without a GPU; Node 22.22.0; Python 3.13 with numpy 2.5.3, scipy 1.18.1, Pillow 12.3.0 (its JPEG encoder writes COLMAP's input) and pycolmap 4.2.1; the CPU reference mapper of `src/` at `5e1c95c` |
+| Item         | Identifier                                                                                                                                                                                                                                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run record   | `20261026043150261-58532c69` in the collector's KV; site commit `5e1c95c46ac3a7dca291ab2a77f6f207be01e888` (`main` at the time of the analysis)                                                                                                                                                                         |
+| Input        | Lab sample "Chimney Rock video B5 sample": 2560 × 1440 source, 1280 × 720 analysis, 34.2 s, 138 sampled frames at 4 fps, 47 keyframes (phase gate)                                                                                                                                                                      |
+| Options      | SIFT with 16,384 features, guided matching, `focalSearch: true`, `refineSharedFocal: true`, `windowSize` 32; dense: TSDF fusion with `view-weighted` visibility, `planarDepth: true`, `maxSources` 6, `bestSources` 3, window radius 5 at step 2                                                                        |
+| Result files | `typecv-reconstruction.json` (47 views, 19,123 landmarks, 90,391 observations), `typecv-dense.ply` (698,269 points), the depth archive `typecv-depths-c000.json` with parts `0000` to `0061` (47 views × 4 stages, inputs included)                                                                                     |
+| Reference    | pycolmap 4.2.1 on the 47 archived 1280 × 720 keyframes: SIFT on the CPU, exhaustive matching, incremental mapping with one shared camera and the focal refined. Two runs: `SIMPLE_RADIAL` with the prior 1.2 × the long side, `SIMPLE_PINHOLE` with the prior 0.8 × the width. COLMAP is a reference, not ground truth. |
+| Environment  | Linux x86_64 container without a GPU; Node 22.22.0; Python 3.13 with numpy 2.5.3, scipy 1.18.1, Pillow 12.3.0 (its JPEG encoder writes COLMAP's input) and pycolmap 4.2.1; the CPU reference mapper of `src/` at `5e1c95c`                                                                                              |
 
-Section 6 gives the commands. The scripts are `scripts/fetch-record-files.mjs`,
-`scripts/measure-mvs-sources.mjs`, `scripts/measure-focal-sweep.mjs` and
-`scripts/analyze-record.py` (the package `scripts/record_analysis/`).
+Section 6 gives the commands. Export, download and offline record analysis now run from
+`typeshade/web/apps/typecv/` (`scripts/fetch-record-files.mjs`, `scripts/analyze-record.py` and
+`scripts/record_analysis/`). The MVS and focal measurements remain in the pinned TypeCV source at
+`typeshade/web/sources/typecv/scripts/`.
 
 ## 2. Claims checked
 
 The owner brought an earlier analysis of the same record. Each of its claims was measured again.
 
-| Claim | Measured here | Verdict |
-| --- | --- | --- |
-| Focal 747 px (TypeCV) against 1,242 px (COLMAP) | TypeCV `fx` = 746.885 at the width 1280 (ratio 0.5835; `gridRatio` 0.3). COLMAP: 1,255.1 px (`SIMPLE_RADIAL`, k1 = 0.011, prior 1.2) and 1,246.0 px (`SIMPLE_PINHOLE`, prior 0.8). The two COLMAP runs change the camera model and the prior together, and differ by 0.7 %. | Confirmed |
-| View direction change, first to last view, 41.5° against 61.6° | 41.5° (TypeCV) against 61.5° and 61.8° (the two COLMAP runs) | Confirmed |
-| Median observations per feature 3 against 10 | TypeCV median 3, mean 4.73 (6,459 of the 19,123 tracks have two views). COLMAP median 8, mean 12.1 | Confirmed; the reference's median is 8 here |
-| Six other images connected around 30 s, with meaningful parallax | View 120 (30.0 s) has the sources 128, 130, 112, 110, 132 and 108, 2 to 3 s away. Their median triangulation angles are 4.4° to 6.7°. | Confirmed |
+| Claim                                                                                | Measured here                                                                                                                                                                                                                                                                                                                                                                                                                                             | Verdict                                                                                        |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Focal 747 px (TypeCV) against 1,242 px (COLMAP)                                      | TypeCV `fx` = 746.885 at the width 1280 (ratio 0.5835; `gridRatio` 0.3). COLMAP: 1,255.1 px (`SIMPLE_RADIAL`, k1 = 0.011, prior 1.2) and 1,246.0 px (`SIMPLE_PINHOLE`, prior 0.8). The two COLMAP runs change the camera model and the prior together, and differ by 0.7 %.                                                                                                                                                                               | Confirmed                                                                                      |
+| View direction change, first to last view, 41.5° against 61.6°                       | 41.5° (TypeCV) against 61.5° and 61.8° (the two COLMAP runs)                                                                                                                                                                                                                                                                                                                                                                                              | Confirmed                                                                                      |
+| Median observations per feature 3 against 10                                         | TypeCV median 3, mean 4.73 (6,459 of the 19,123 tracks have two views). COLMAP median 8, mean 12.1                                                                                                                                                                                                                                                                                                                                                        | Confirmed; the reference's median is 8 here                                                    |
+| Six other images connected around 30 s, with meaningful parallax                     | View 120 (30.0 s) has the sources 128, 130, 112, 110, 132 and 108, 2 to 3 s away. Their median triangulation angles are 4.4° to 6.7°.                                                                                                                                                                                                                                                                                                                     | Confirmed                                                                                      |
 | The dense stage flattens the angle between the top and the front face from 49° to 5° | View 120 in 4 × 3 blocks. The robust planes of the depth map differ from the sparse planes by 2.0° to 11.3° in 10 of 12 blocks. Blocks (1,1) and (3,1) meet at 50.1° (sparse) and 53.1° (depth map). The fused PLY differs from the sparse planes by more than 10° in 8 of 12 blocks (up to 55.6°). It gives 76.7° for that pair. At the landmark pixels the dense depth equals the sparse depth (view 120: median −0.7 %), partly by construction (3.3). | Not reproduced for the depth maps (3.3). The fusion into the PLY was not analysed (section 4). |
 
 ## 3. Facts found
@@ -53,28 +54,29 @@ The owner brought an earlier analysis of the same record. Each of its claims was
   table shows seven:
 
 | ratio | RMS px | observations kept | camera turn, first to last | truncated score px² |
-| --- | --- | --- | --- | --- |
-| 0.30 | 0.273 | 11,407 | 0.20° | 0.075 |
-| 0.46 | 0.263 | 10,839 | 0.19° | 0.178 |
-| 0.60 | 0.263 | 10,355 | 0.16° | 0.270 |
-| 0.80 | 0.258 | 9,897 | 0.13° | 0.356 |
-| 0.92 | 0.263 | 9,612 | 0.12° | 0.412 |
-| 1.21 | 0.259 | 9,037 | 0.09° | 0.521 |
-| 2.81 | 0.262 | 8,060 | 0.04° | 0.709 |
+| ----- | ------ | ----------------- | -------------------------- | ------------------- |
+| 0.30  | 0.273  | 11,407            | 0.20°                      | 0.075               |
+| 0.46  | 0.263  | 10,839            | 0.19°                      | 0.178               |
+| 0.60  | 0.263  | 10,355            | 0.16°                      | 0.270               |
+| 0.80  | 0.258  | 9,897             | 0.13°                      | 0.356               |
+| 0.92  | 0.263  | 9,612             | 0.12°                      | 0.412               |
+| 1.21  | 0.259  | 9,037             | 0.09°                      | 0.521               |
+| 2.81  | 0.262  | 8,060             | 0.04°                      | 0.709               |
 
-  The RMS error is flat over the whole grid (0.258 to 0.273 px). The observations kept fall
-  monotonically as the ratio grows. The truncated score of `scoreCandidates`
-  (`(m·e² + (n − m)·τ²) / n`, τ = 1.5 px) therefore rises monotonically, and the lowest grid point
-  wins.
+The RMS error is flat over the whole grid (0.258 to 0.273 px). The observations kept fall
+monotonically as the ratio grows. The truncated score of `scoreCandidates`
+(`(m·e² + (n − m)·τ²) / n`, τ = 1.5 px) therefore rises monotonically, and the lowest grid point
+wins.
 
-  These runs use the lab's `finalBundleIterations` of 8 (`--final 8`, the script's default). The
-  search runs its grid points differently: with `bundleIterations` (4) as the final iterations,
-  `rotationTracking: false` and one shared pair verification per pair. With `--final 4` and the
-  other two differences left, the scores at 0.3, 0.798 and 2.807 are 0.0754, 0.3556 and 0.7088
-  px². The trend holds.
+These runs use the lab's `finalBundleIterations` of 8 (`--final 8`, the script's default). The
+search runs its grid points differently: with `bundleIterations` (4) as the final iterations,
+`rotationTracking: false` and one shared pair verification per pair. With `--final 4` and the
+other two differences left, the scores at 0.3, 0.798 and 2.807 are 0.0754, 0.3556 and 0.7088
+px². The trend holds.
 
-  Caveat: these tracks survived the lab's run at 0.58, which favours that region. The trend was
-  not measured on other tracks (section 4).
+Caveat: these tracks survived the lab's run at 0.58, which favours that region. The trend was
+not measured on other tracks (section 4).
+
 - **Inference.** In the first 4 s the camera translates and barely turns: 0.04° to 0.20° in every
   run. The subset therefore does not observe the focal. A smaller focal makes every triangulation
   angle larger (the angle is about the disparity over the focal). More tracks then pass the 0.5°
@@ -90,24 +92,25 @@ The owner brought an earlier analysis of the same record. Each of its claims was
 ### 3.2 The sparse structure is a projectively distorted solution
 
 - **Fact.** Similarity alignment of the 47 camera poses to the reference (`analyze-record.py
-  colmap-compare`): the rotation difference has the median 6.8° and the maximum 14.2°. The
+colmap-compare`): the rotation difference has the median 6.8° and the maximum 14.2°. The
   camera-centre difference has the median 0.31 and the maximum 0.55 of the reference trajectory's
   radius. The mean reprojection error is 0.70 px for TypeCV (`analyze-record.py sparse`,
   `meanReprojectionErrorPx` 0.6956) and 0.35 px for COLMAP (`colmap-run`, 0.348).
 - **Fact.** Depth relief on the same pixels (`analyze-record.py relief`). It compares COLMAP's
   sparse depth at its feature pixels with TypeCV's dense `geometric-filtered` depth at those pixels:
 
-| view (time) | common pixels | depth spread p95 / p5, COLMAP | the same, TypeCV | log-log slope, TypeCV against COLMAP | note |
-| --- | --- | --- | --- | --- | --- |
-| 0 (0.0 s) | 3,546 | 1.146 | 1.146 | +0.97 (residual scatter 0.004) | the same relief |
-| 62 (15.5 s) | 8,370 | 1.196 | 1.094 | −0.15 | |
-| 104 (26.0 s) | 5,669 | 1.390 | 1.280 | −0.45 | |
-| 120 (30.0 s) | 5,700 | 2.164 | 1.555 | −0.35 | top third of the frame: COLMAP 0.89 × the median depth, TypeCV 1.04 ×; bottom third: 1.28 × against 0.81 ×; left third: 0.77 × against 1.03 × |
-| 137 (34.2 s) | 3,690 | 2.925 | 1.683 | −0.20 | right third: COLMAP 1.72 ×, TypeCV 0.98 × |
+| view (time)  | common pixels | depth spread p95 / p5, COLMAP | the same, TypeCV | log-log slope, TypeCV against COLMAP | note                                                                                                                                          |
+| ------------ | ------------- | ----------------------------- | ---------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 (0.0 s)    | 3,546         | 1.146                         | 1.146            | +0.97 (residual scatter 0.004)       | the same relief                                                                                                                               |
+| 62 (15.5 s)  | 8,370         | 1.196                         | 1.094            | −0.15                                |                                                                                                                                               |
+| 104 (26.0 s) | 5,669         | 1.390                         | 1.280            | −0.45                                |                                                                                                                                               |
+| 120 (30.0 s) | 5,700         | 2.164                         | 1.555            | −0.35                                | top third of the frame: COLMAP 0.89 × the median depth, TypeCV 1.04 ×; bottom third: 1.28 × against 0.81 ×; left third: 0.77 × against 1.03 × |
+| 137 (34.2 s) | 3,690         | 2.925                         | 1.683            | −0.20                                | right third: COLMAP 1.72 ×, TypeCV 0.98 ×                                                                                                     |
 
-  The residual scatter is 1.4826 × the median absolute deviation of the residuals from the
-  Theil-Sen line (view 0: MAD 0.0029). A third's depth is its median over the common pixels,
-  divided by the median of all the common pixels.
+The residual scatter is 1.4826 × the median absolute deviation of the residuals from the
+Theil-Sen line (view 0: MAD 0.0029). A third's depth is its median over the common pixels,
+divided by the median of all the common pixels.
+
 - **Inference.** The first view agrees with the reference. From 15 s on, the negative slopes mean
   that the depth order across the image is compressed and reversed. `relief.py` names this reading
   an inference too.
@@ -129,7 +132,7 @@ The owner brought an earlier analysis of the same record. Each of its claims was
   5 %. They differ from the sparse planes by more than 10° in 8 of 12 blocks, up to 55.6° in block
   (0,2). Blocks (1,1) and (3,1) meet at 50.1° (sparse), 53.1° (depth map) and 76.7° (PLY).
 - **Fact.** Dense depth at the landmark pixels against the landmark depth (`analyze-record.py
-  seeds`). View 0: median 0.0 %, 91 % within 2 %. View 62: 75 % within 2 %. View 120: 67 % within
+seeds`). View 0: median 0.0 %, 91 % within 2 %. View 62: 75 % within 2 %. View 120: 67 % within
   2 % and 98 % within 10 %. View 137: 54 % within 2 % and 80 % within 10 %. Landmarks without a
   dense depth at their pixel: 59 %, 25 %, 33 %, 20 % and 50 % for the views 0, 62, 104, 120 and 137.
 - **Fact.** This agreement is partly by construction. `mvsSeedAt` (`src/gpu/mvs.shade.ts`) writes
@@ -183,17 +186,18 @@ The owner brought an earlier analysis of the same record. Each of its claims was
   pairs with 16 or more matches (`--min-matches 16`) and 90,391 keypoints. The CPU reference mapper
   runs with the lab's controls and `refineSharedFocal: false`, the focal held at each ratio:
 
-| ratio | views | landmarks | observations | RMS px | mean px | camera turn, first to last |
-| --- | --- | --- | --- | --- | --- | --- |
-| 0.30 | 47 | 17,859 | 83,569 | 0.792 | 0.605 | 21.1° |
-| 0.5835 (the lab's result) | 47 | 18,131 | 84,444 | 0.738 | 0.556 | 41.0° (the lab: 41.5°) |
-| 0.80 | 47 | 16,293 | 80,563 | 0.604 | 0.435 | 65.2° |
-| 0.97 | 47 | 16,658 | 83,818 | 0.317 | 0.227 | 61.2° |
-| 1.30 | 47 | 15,840 | 77,855 | 0.643 | 0.474 | 57.1° |
+| ratio                     | views | landmarks | observations | RMS px | mean px | camera turn, first to last |
+| ------------------------- | ----- | --------- | ------------ | ------ | ------- | -------------------------- |
+| 0.30                      | 47    | 17,859    | 83,569       | 0.792  | 0.605   | 21.1°                      |
+| 0.5835 (the lab's result) | 47    | 18,131    | 84,444       | 0.738  | 0.556   | 41.0° (the lab: 41.5°)     |
+| 0.80                      | 47    | 16,293    | 80,563       | 0.604  | 0.435   | 65.2°                      |
+| 0.97                      | 47    | 16,658    | 83,818       | 0.317  | 0.227   | 61.2°                      |
+| 1.30                      | 47    | 15,840    | 77,855       | 0.643  | 0.474   | 57.1°                      |
 
-  The script's default of 32 matches keeps 623 pairs and moves these numbers in the fourth digit.
-  At 0.5835 it gives RMS 0.7388 px, 18,133 landmarks and 40.99°; at 0.97, 0.3169 px, 16,660 and
-  61.19°. COLMAP on the same images: ratio 0.98, 0.348 px, 61.5°.
+The script's default of 32 matches keeps 623 pairs and moves these numbers in the fourth digit.
+At 0.5835 it gives RMS 0.7388 px, 18,133 landmarks and 40.99°; at 0.97, 0.3169 px, 16,660 and
+61.19°. COLMAP on the same images: ratio 0.98, 0.348 px, 61.5°.
+
 - **Fact.** The depth relief of view 120 (`analyze-record.py sweep-relief`): the median depth of the
   model's landmarks in each image third over the view's median landmark depth. At 0.5835: rows top
   / middle / bottom 1.070 / 0.996 / 0.801, columns left / centre / right 1.078 / 0.941 / 0.984. At
@@ -243,31 +247,33 @@ The owner decides. Each needs its own record.
 
 ## 6. Reproduction
 
-The commands below ran on 2026-10-26 in the environment of section 1, from the repository root.
-They are POSIX `sh` lines. In PowerShell, write each command on one line without the `\` breaks,
-and run `py` (or `python`) in place of `python3`.
+The analysis ran on 2026-10-26 in the environment of section 1. The commands below preserve its
+parameters with the current repository paths: start in `web/apps/typecv/`; the measurement commands
+call the pinned source under `web/sources/typecv/`. They are POSIX `sh` lines. In PowerShell, write
+each command on one line without the `\` breaks, and run `py` (or `python`) in place of `python3`.
 
-`CLOUDFLARE_API_TOKEN` must reach the account of `wrangler.jsonc`; behind a proxy, wrangler's fetch
-needs `NODE_USE_ENV_PROXY=1`. `--limit 120` exports the newest 120 records, which held this record
+`CLOUDFLARE_API_TOKEN` must reach the account configured in `apps/typecv/wrangler.jsonc`; behind a proxy, Wrangler's fetch needs `NODE_USE_ENV_PROXY=1`. `--limit 120` exports the newest 120 records, which held this record
 on 2026-10-26. After more records arrive, raise the limit until the export holds it. The Python
-requirements are `scripts/requirements-record-analysis.txt` (Python 3.12 or later). The unit tests
-of the package run with `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+requirements are `apps/typecv/scripts/requirements-record-analysis.txt` (Python 3.12 or later). Run
+the unit tests from `apps/typecv/scripts/` with
+`python3 -m unittest discover -s record_analysis/tests -t .`.
 
 ```sh
+cd /path/to/web/apps/typecv
 node scripts/export-run-records.mjs --out lab-records --limit 120 --print none
 node scripts/fetch-record-files.mjs --record lab-records/20261026043150261-58532c69.json --out files-58532c69
 python3 scripts/analyze-record.py extract --manifest files-58532c69/typecv-depths-c000.json \
   --out files-58532c69/extracted
 python3 scripts/analyze-record.py frames --archive files-58532c69/extracted --out frames \
   --png-views 0,62,104,120,137
-node scripts/measure-mvs-sources.mjs --model files-58532c69/typecv-reconstruction.json
-node scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json --views 5 \
+node ../../sources/typecv/scripts/measure-mvs-sources.mjs --model files-58532c69/typecv-reconstruction.json
+node ../../sources/typecv/scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json --views 5 \
   --ratios 0.3,0.345,0.3967,0.4563,0.5247,0.6034,0.6939,0.798,0.9177,1.0554,1.2137,1.3957,1.6051,1.8458,2.1227,2.4411,2.8073
-node scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json --views 5 \
+node ../../sources/typecv/scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json --views 5 \
   --final 4 --ratios 0.3,0.798,2.8073
-node scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json \
+node ../../sources/typecv/scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json \
   --ratios 0.3,0.5835,0.8,0.97,1.3 --min-matches 16 --models sweep-models
-node scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json \
+node ../../sources/typecv/scripts/measure-focal-sweep.mjs --model files-58532c69/typecv-reconstruction.json \
   --ratios 0.5835,0.97
 python3 scripts/analyze-record.py sparse --export files-58532c69/typecv-reconstruction.json
 python3 scripts/analyze-record.py seeds --archive files-58532c69/extracted \

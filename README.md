@@ -80,11 +80,7 @@ node scripts/profile-kernel-ir.mjs # inspect actual kernel IR and O0/O2 WGSL off
 node scripts/import-graph.mjs # runtime import cycles and layering breaks (docs/library-structure.md 3.1)
 ```
 
-The public website is built from this repository. See [website development and
-Cloudflare deployment](website/README.md) for its source, browser checks and
-deployment commands. No credentials are required to visit or run the playground.
-
-The package is not published on npm. `npm run build` produces `dist/`.
+The public site and browser applications are maintained in [typeshade/web](https://github.com/typeshade/web). This repository contains the TypeCV library package; `npm run build` produces `dist/`.
 Examples currently demonstrate the SfM subset; additional domain examples will
 accompany their implementations.
 

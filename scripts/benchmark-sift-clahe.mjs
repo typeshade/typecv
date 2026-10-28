@@ -41,7 +41,7 @@ const { result, errors } = await inBrowser(
       boundedSubmissions: false,
       solverCheckpoints: true,
       maxModelsPerBatch: 32,
-      // The lab's budgets at 640 px with octave -1 (website/src/workers/sfm.worker.ts).
+      // The lab budget at 640 px with octave -1.
       workingBytes: 256 * 1024 ** 2,
       poolBytes: 128 * 1024 ** 2,
     });

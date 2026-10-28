@@ -367,7 +367,7 @@ def run_full(images_dir, output_dir, images, typecv_model):
     timings = {}
     db_start = time.perf_counter()
     with pycolmap.Database.open(database_path) as db:
-        # The website fixture's camera is fixed and shared across all eight images.
+        # The fixture's camera is fixed and shared across all eight images.
         reader = pycolmap.ImageReaderOptions()
         reader.camera_model = "OPENCV"
         reader.camera_params = "768,768,320,180,0,0,0,0"

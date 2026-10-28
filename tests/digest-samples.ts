@@ -13,7 +13,7 @@ import type { PairMatches } from '../src/reconstruction/types.ts';
 export const SAMPLES = ['south-building', 'gerrard-hall', 'person-hall', 'graham-hall'] as const;
 export type Sample = (typeof SAMPLES)[number];
 
-/** `LAB` of scripts/measure-focal.mjs (`LAB_OPTIONS` of website/src/workers/sfm.worker.ts) on 48e2711. */
+/** `LAB` of scripts/measure-focal.mjs (the lab `LAB_OPTIONS`) on 48e2711. */
 export const LAB = Object.freeze({
   ransacIterations: 500,
   maxErrorPx: 3,

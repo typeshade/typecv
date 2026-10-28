@@ -58,7 +58,7 @@ archive Blobs used by automatic sharing.
 
 To back up the retained raw depth archives without reloading:
 
-1. Review and copy the complete [tab recovery helper](../scripts/typecv-tab-rescue.js).
+1. Review and copy the complete `web/apps/typecv/scripts/typecv-tab-rescue.js`.
 2. In the completed tab, open Chrome DevTools **Sources → Snippets → New snippet**.
    Paste the helper and run it with **Ctrl+Enter** (Cmd+Enter on macOS).
 3. In the added **TypeCV 깊이맵 백업** panel, click **폴더 선택 후 전체 백업** and choose a
@@ -88,11 +88,11 @@ intermediate maps.
 All three supplied runs used site `e4e5046`, before the current merged implementation.
 The Dense angular threshold discussed below is still present at `dd086b4`.
 
-| Run | Registered views | Sparse landmarks | Dense points |
-| --- | ---: | ---: | ---: |
-| `44bb5d97` | 22 | 7,113 | 564,730 |
-| `106d9185` | 41 | 11,897 | 1,439,206 |
-| Chimney Rock, 15 videos | 333 | 69,245 | 3,079,603 |
+| Run                     | Registered views | Sparse landmarks | Dense points |
+| ----------------------- | ---------------: | ---------------: | -----------: |
+| `44bb5d97`              |               22 |            7,113 |      564,730 |
+| `106d9185`              |               41 |           11,897 |    1,439,206 |
+| Chimney Rock, 15 videos |              333 |           69,245 |    3,079,603 |
 
 For `44bb5d97`, a manually selected distant-road region loses all its depth hypotheses in
 geometric filtering. Three existing sparse landmarks there have maximum visible-camera
@@ -147,10 +147,10 @@ per part. The existing 50 MiB/file, 4 GiB/run, 1024-file and 256 KiB/record limi
 explicit. An oversized attachment manifest falls back to the small record with a preparation
 failure summary. Partial sends show failures and permit an explicit new-record retry.
 
-Reassemble downloaded parts before opening them as an ordinary result file:
+Reassemble downloaded parts before opening them as an ordinary result file. Run the app script from the web repository root:
 
 ```sh
-node scripts/reassemble-result-files.mjs --record run.json --parts downloaded --out recovered
+node apps/typecv/scripts/reassemble-result-files.mjs --record run.json --parts downloaded --out recovered
 ```
 
 The utility streams 256 KiB buffers, verifies each part's size and SHA, checks contiguous
@@ -395,7 +395,7 @@ surface coverage from positive photometric hypotheses.
 
 ## Send a saved backup without the original result tab
 
-`scripts/typecv-send-backup.js` adds a separate consent-based sender to an existing or fresh
+`web/apps/typecv/scripts/typecv-send-backup.js` adds a separate consent-based sender to an existing or fresh
 TypeCV Lab tab. Run it as a reviewed DevTools Snippet. In an empty Lab tab choose the saved
 small `typecv-run-record.json`, then choose the actual backup subfolder containing
 `typecv-depth-recovery.json`. This does not run reconstruction. Confirm the displayed

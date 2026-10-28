@@ -3,7 +3,7 @@
 //   node scripts/measure-ba-budget.mjs --scene south-building-24 --max-points 1500 \
 //     --budgets-kib default,1200,600 --out docs/experiments/gpu-budget/south-building-24-ba.json
 //
-// --scene name          a COLMAP sample of `website/public/sample` (poses and the dataset's SIFT
+// --scene name          a COLMAP sample directory (poses and the dataset's SIFT
 //                       matches, triangulated as in scripts/measure-mvs-range.mjs).
 // --max-points n        keep the n landmarks with the most observations (default 1500), so that a
 //                       run on SwiftShader takes minutes.

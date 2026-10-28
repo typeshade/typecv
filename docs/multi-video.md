@@ -588,7 +588,7 @@ Each step is one pull request. Each commit names this document.
 
 | Step | Pull request content                                                                                                                                                                                                                                               | What it proves                                                                                           |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| 1    | **Publish the test set.** 13 new entries in `website/samples/remote-videos.json` with `set` and `group` fields. `scripts/lab-remote-samples.mjs catalog` and `publish`. The `video-set` catalog entries. A test of the manifest.                                   | All 15 clips have frames in the bucket. The manifest, the catalog and the sets agree (section 9).        |
+| 1    | **Publish the test set.** 13 new entries in `apps/typecv/samples/remote-videos.json` with `set` and `group` fields. `apps/typecv/scripts/lab-remote-samples.mjs catalog` and `publish`. The `video-set` catalog entries. A test of the manifest.                   | All 15 clips have frames in the bucket. The manifest, the catalog and the sets agree (section 9).        |
 | 2    | **Canonical identity.** `videoId`, `frameKey`, `viewId` (2.4). Seeds from ids in `verifyPairs`. The CPU shuffle test of `incrementalSteps`. The decoder-agreement measurement.                                                                                     | Shuffled ids give the same map. How often two decodes of a frame differ.                                 |
 | 3    | **Global descriptor.** `globalDescriptorReference`, the kernel `globalAssign`, the vocabulary `rootsift-512-v1`, the idf. The recall measurement of the three candidates. A record of the choice (amendment).                                                      | Parity of 7.4. The default of 3.2 holds, or the record is amended with the winner.                       |
 | 4    | **The view graph.** `buildViewGraph` _(new)_: candidates (3.3), host descriptor store (3.5), matching and verification of candidates (3.4), components (4.1). A CPU-tier test on a synthetic 3-path scene and on the photo samples. Recorded: expansion on or off. | N·k pairs instead of N². Components are right on synthetic data. The 8-bit against float inlier change.  |
@@ -604,7 +604,7 @@ for the numbers of step 7.
 
 The owner confirmed by eye that all clips show the same object: Chimney Rock, Colorado. The
 creator is EJ Merl (Pexels). The license is the Pexels license (`https://www.pexels.com/license/`),
-checked 2026-10-20 in `website/samples/remote-videos.json`.
+checked 2026-10-20 in `apps/typecv/samples/remote-videos.json`.
 
 | Group | Pexels video ids                                        | Count | Already a lab sample          |
 | ----- | ------------------------------------------------------- | ----- | ----------------------------- |
@@ -614,9 +614,9 @@ checked 2026-10-20 in `website/samples/remote-videos.json`.
 The unrelated video for the distractor gate is `water-tower` (Pexels 33341651, also by EJ Merl).
 Fact: it is already a lab sample.
 
-**How the samples are published (fact).** `website/samples/remote-videos.json` lists each clip with
+**How the samples are published (fact).** `apps/typecv/samples/remote-videos.json` lists each clip with
 `id`, `title`, `creator`, `page`, `file` (a Pexels download URL), `duration` and a bilingual
-`description`. `scripts/lab-remote-samples.mjs catalog` writes the entries into the sample catalog
+`description`. `apps/typecv/scripts/lab-remote-samples.mjs catalog` writes the entries into the sample catalog
 (`catalogEntry`, `withRemoteEntries`). `publish` downloads one clip at a time with curl, checks the
 duration with ffprobe against the manifest (it fails when they differ by 0.5 s or more), cuts the
 frames at `videoSampleTimes(duration)` with ffmpeg, scales them to 640 × 360 and uploads them to the
@@ -762,8 +762,8 @@ Open: whether the CI job that published the earlier samples can run it again.
 Written on 2026-10-20 from `main` at `ebc39b6`. Files read: `website/src/lib/sfm-video.ts`,
 `website/src/lib/keyframe-gate.ts`, `website/src/lib/video-sampling.ts`,
 `website/src/lib/pose-alignment.ts`, `website/src/workers/sfm.worker.ts`,
-`src/sfm/mapper/mapper.ts`, `src/sfm/gpu/mapper.ts`, `scripts/lab-remote-samples.mjs`,
-`website/samples/remote-videos.json`, `docs/lab-run-records.md`, `docs/klt-tracking.md` and
+`src/sfm/mapper/mapper.ts`, `src/sfm/gpu/mapper.ts`, `apps/typecv/scripts/lab-remote-samples.mjs`,
+`apps/typecv/samples/remote-videos.json`, `docs/lab-run-records.md`, `docs/klt-tracking.md` and
 `docs/dense-mvs.md` (as the model of form). No code was changed, and no check other than the
 formatting check of this file was run.
 
@@ -774,7 +774,7 @@ Step 1 and step 6 check them.
 
 Decisions on the open questions of the draft, made by the coordinator by default on 2026-10-20:
 
-1. Step 1 publishes the test set with `scripts/lab-remote-samples.mjs publish` from the session
+1. Step 1 publishes the test set with `apps/typecv/scripts/lab-remote-samples.mjs publish` from the session
    container, as `desert-monument` was published. If the container has no Cloudflare credential,
    step 1 stops and reports it to the owner.
 2. The `video-set` catalog kind is accepted.
@@ -822,7 +822,7 @@ and its parts in `src/features/gpu/global-descriptor.ts`, the kernel `globalAssi
 `src/features/gpu/global-descriptor.shade.ts` with its host call `assignWordsGpu` and `globalDescriptorGpu` in
 `src/features/gpu/global-descriptor-gpu.ts`, and the vocabulary `rootsift-512-v1` in `src/gpu/vocabulary/`. The
 candidates VLAD and the thumbnail, and the k-means, are in `src/features/gpu/global-descriptor-candidates.ts`.
-The scripts are `scripts/global-descriptor-data.mjs` and `scripts/global-descriptor.mjs`.
+Both `global-descriptor-data.mjs` and `global-descriptor.mjs` are TypeCV library research tools under `sources/typecv/scripts/` in the web repository. The data script reads frozen sample-catalog metadata from `sources/typecv/tests/fixtures/global-descriptor/`, preserving the frame list from TypeCV revision `db7216a` after the website source moved.
 
 **The vocabulary.** Command: `node scripts/global-descriptor.mjs train <work-dir>`. It runs Lloyd's
 k-means (25 iterations, seed 1, the initial centers are 512 distinct training points) on the RootSIFT
@@ -859,7 +859,7 @@ verification accept with at least `minEdgeInliers` (25) inliers. The measurement
    photos, with a vocabulary trained without the photo samples.
 
 Configuration: `main` at `92639f9` plus this change, Node 22.22.0, the TypeShade pin of `package-lock.json`,
-CPU tier SIFT. The commands: `global-descriptor-data.mjs download|extract`, then `global-descriptor.mjs train`,
+CPU tier SIFT. The commands: `node scripts/global-descriptor-data.mjs download|extract`, then `node scripts/global-descriptor.mjs train`,
 `truth` and `recall`. The pair counts above come from `truth`.
 
 **Result.** Recall at k = 10 of the true pairs (`either`; `directed` in brackets).
@@ -1099,7 +1099,7 @@ Step 6 implements the lab side of the record. The pull request is typeshade/type
 
 | Part                 | Where                                                                                                                                                                                                                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pipeline on a device | `reconstructMultiVideoGpu` and `describeKeyframeGpu` in `src/sfm/multiview/gpu/multi-video.ts`: view ids, `buildViewGraph` with `gpuViewGraphBackend`, `componentInput` and `reconstructIncrementalGpu` for each component.                                                                                      |
+| Pipeline on a device | `reconstructMultiVideoGpu` and `describeKeyframeGpu` in `src/sfm/multiview/gpu/multi-video.ts`: view ids, `buildViewGraph` with `gpuViewGraphBackend`, `componentInput` and `reconstructIncrementalGpu` for each component.                                                                        |
 | Stage times          | `ViewGraph.timing` (`retrievalMs`, `pairMatchingMs`, `pairVerificationMs`, `componentsMs`) in `buildViewGraph`.                                                                                                                                                                                    |
 | The `multiVideo` job | `MultiVideoJob` in `website/src/lib/multi-video-job.ts` (messages `video`, `frame`, `endVideo`, `finish`). `website/src/workers/multi-video.ts` wires `multiStart`, `multiVideo`, `multiFrame`, `multiEndVideo` and `multiFinish`. `sfm.worker.ts` gains one import and one branch in `onmessage`. |
 | Page helpers         | `website/src/lib/multi-video.ts` (query, cap, tags, matrix, record options), `multi-video-input.ts` (`videoId` of a file or a sample, frames of a sample).                                                                                                                                         |
@@ -1165,13 +1165,13 @@ The pull request is typeshade/typecv#146. This amendment changes decision 5 of A
 
 **What changed.**
 
-| Part         | Where                                                                                                                                                                                                            |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage      | `scripts/lab-remote-samples.mjs publish` stores `/sample/<id>/source.mp4`. `--videos-only` and `--frames-only` choose the part. The manifest records `source` (size, SHA-256, `videoId`, size in pixels, codec). |
-| Worker       | `/sample/` answers `Range` with 206 and `Content-Range`, 416 for a range outside the object, `Accept-Ranges: bytes`, and `HEAD`. A header that is not one `bytes=` range gets 200 (`parseRange`).                |
-| Single video | `loadVideoSample` asks `sourceDecodable` once. A run of a decodable sample goes through `decodeUploadedFrames` with a `UrlSource` URL at the analysis edge. Otherwise the run uses the loaded JPEG frames.       |
-| Video set    | `runMultiVideo` asks `sourceDecodable` for each sample row and takes the same two paths.                                                                                                                         |
-| Record       | `options.videoSource` (`source`, `frames`, `mixed`), optional (`docs/lab-run-records.md`).                                                                                                                       |
+| Part         | Where                                                                                                                                                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage      | `apps/typecv/scripts/lab-remote-samples.mjs publish` stores `/sample/<id>/source.mp4`. `--videos-only` and `--frames-only` choose the part. The manifest records `source` (size, SHA-256, `videoId`, size in pixels, codec). |
+| Worker       | `/sample/` answers `Range` with 206 and `Content-Range`, 416 for a range outside the object, `Accept-Ranges: bytes`, and `HEAD`. A header that is not one `bytes=` range gets 200 (`parseRange`).                            |
+| Single video | `loadVideoSample` asks `sourceDecodable` once. A run of a decodable sample goes through `decodeUploadedFrames` with a `UrlSource` URL at the analysis edge. Otherwise the run uses the loaded JPEG frames.                   |
+| Video set    | `runMultiVideo` asks `sourceDecodable` for each sample row and takes the same two paths.                                                                                                                                     |
+| Record       | `options.videoSource` (`source`, `frames`, `mixed`), optional (`docs/lab-run-records.md`).                                                                                                                                   |
 
 **Decisions.**
 
@@ -1208,15 +1208,15 @@ The owner ran group A on a physical GPU (record `19f18274`, site `edb0d35`: four
 
 **What changed.**
 
-| Part | Where |
-| --- | --- |
-| Stopgap for #717 | `vite.gpu.config.ts`, plugin `typecv-skip-resident-dry-run`. It skips the dry pack of Resident bindings in the bundle. It rewrites module text at bundle time, touches no file in `node_modules`, and fails the build when the text is not as expected. `TYPECV_CHECK_RESIDENTS=1` keeps the dry run. Remove it when the pin fixes #717. Removed: the pin `3c6e964` carries the fix (typeshade/typeshade#720), so the plugin is gone from `vite.gpu.config.ts`. |
-| Pair verification in shared plans | `estimatePairsGpu` (`pair-estimation.ts`), `ShadeDevice.planStepsMany` (`device.ts`), `verifyImagePairsGpu` (`image-pair.ts`, internal entry), `executeMany` of `ViewGraphBackend`. The graph matches all pairs of a round first, then verifies them 48 at a time (`verifyBatch`), 16 pairs to a job. The pairs of a job run in rounds: one plan of the steps between two reads, one plan of the scoring chunks, one wait for all reads. A bounded-submission device verifies the pairs one by one. |
-| Dispatches | The graph searches with 64-model batches (`gpuViewGraphBackend`). The PnP of a component searches with 64-hypothesis batches (`pnpBatchSize`). A refit appends 128 rows to its model in one dispatch, not 16 (`REFIT_ROW_CHUNK`). The batch sizes were already free choices (`pair-batch.test.mjs`, `pnp-batch.test.mjs`). The row chunk changes only how the same rows split over dispatches. |
-| Reads | The final reads of PnP, triangulation, observations and pair estimation share one round trip. PnP no longer reads its refinement flag before the first iteration. The bundle adjustment no longer reads before the first CG chunk, and reads the stall cost in the same round trip as the flags. Each cut is result-neutral: every kernel of an inactive iteration is a guarded no-op. |
-| Progress | `onEvent` of `reconstructMultiVideoGpu` (`MultiVideoEvent`), `onProgress` of `buildViewGraph` (`ViewGraphProgress`), the `multiStage` and partial `model` messages of the job, `website/src/lib/multi-video-stages.ts`, the stage list and status line in `SfmLab.tsx`. |
-| Messages to the page | A growing map (`partial: true`) carries its landmarks as flat typed arrays (`packLandmarks` and `unpackScene` of `sfm-scene.ts`) and no observations. The final map of a component goes in parts of 4,000 landmarks (`model-chunks.ts`). The page deserializes every message on its main thread: in the owner's record `d40f8950` (53,323 points) the objects of a growing map made 164 long tasks (20 s). A harness with a stand-in worker and 53,323 landmarks went from 38 long tasks (5.6 s, longest 459 ms) to 5 (0.4 s, longest 105 ms). |
-| Tools | `scripts/measure-multi-video.mjs`, `scripts/extract-real-keyframes.mjs`, `scripts/measure-pair-cost.mjs`, `scripts/top-self-time.mjs`. `ShadeDevice.statistics` gains `reads` and `readWaves`. |
+| Part                              | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stopgap for #717                  | `vite.gpu.config.ts`, plugin `typecv-skip-resident-dry-run`. It skips the dry pack of Resident bindings in the bundle. It rewrites module text at bundle time, touches no file in `node_modules`, and fails the build when the text is not as expected. `TYPECV_CHECK_RESIDENTS=1` keeps the dry run. Remove it when the pin fixes #717. Removed: the pin `3c6e964` carries the fix (typeshade/typeshade#720), so the plugin is gone from `vite.gpu.config.ts`.                                                                                |
+| Pair verification in shared plans | `estimatePairsGpu` (`pair-estimation.ts`), `ShadeDevice.planStepsMany` (`device.ts`), `verifyImagePairsGpu` (`image-pair.ts`, internal entry), `executeMany` of `ViewGraphBackend`. The graph matches all pairs of a round first, then verifies them 48 at a time (`verifyBatch`), 16 pairs to a job. The pairs of a job run in rounds: one plan of the steps between two reads, one plan of the scoring chunks, one wait for all reads. A bounded-submission device verifies the pairs one by one.                                            |
+| Dispatches                        | The graph searches with 64-model batches (`gpuViewGraphBackend`). The PnP of a component searches with 64-hypothesis batches (`pnpBatchSize`). A refit appends 128 rows to its model in one dispatch, not 16 (`REFIT_ROW_CHUNK`). The batch sizes were already free choices (`pair-batch.test.mjs`, `pnp-batch.test.mjs`). The row chunk changes only how the same rows split over dispatches.                                                                                                                                                 |
+| Reads                             | The final reads of PnP, triangulation, observations and pair estimation share one round trip. PnP no longer reads its refinement flag before the first iteration. The bundle adjustment no longer reads before the first CG chunk, and reads the stall cost in the same round trip as the flags. Each cut is result-neutral: every kernel of an inactive iteration is a guarded no-op.                                                                                                                                                         |
+| Progress                          | `onEvent` of `reconstructMultiVideoGpu` (`MultiVideoEvent`), `onProgress` of `buildViewGraph` (`ViewGraphProgress`), the `multiStage` and partial `model` messages of the job, `website/src/lib/multi-video-stages.ts`, the stage list and status line in `SfmLab.tsx`.                                                                                                                                                                                                                                                                        |
+| Messages to the page              | A growing map (`partial: true`) carries its landmarks as flat typed arrays (`packLandmarks` and `unpackScene` of `sfm-scene.ts`) and no observations. The final map of a component goes in parts of 4,000 landmarks (`model-chunks.ts`). The page deserializes every message on its main thread: in the owner's record `d40f8950` (53,323 points) the objects of a growing map made 164 long tasks (20 s). A harness with a stand-in worker and 53,323 landmarks went from 38 long tasks (5.6 s, longest 459 ms) to 5 (0.4 s, longest 105 ms). |
+| Tools                             | `scripts/measure-multi-video.mjs`, `scripts/extract-real-keyframes.mjs`, `scripts/measure-pair-cost.mjs`, `scripts/top-self-time.mjs`. `ShadeDevice.statistics` gains `reads` and `readWaves`.                                                                                                                                                                                                                                                                                                                                                 |
 
 **Never-frozen behavior.**
 
@@ -1229,19 +1229,19 @@ The owner ran group A on a physical GPU (record `19f18274`, site `edb0d35`: four
 
 **Measured.** Configuration: this branch at `c9d8548` against `a121ae0` plus read counters only (same code otherwise), Node 22.22.0, headless Chromium with SwiftShader on a shared 4-core container, load average 12 to 17 during the runs, 2026-10-21. The set is real: the sample frames `desert-monument`, `chimney-rock-32291999` and `chimney-rock-32292000`, 10 keyframes each, 1,024 features (`scripts/extract-real-keyframes.mjs`, `scripts/measure-multi-video.mjs --real`). Timings on a loaded software GPU are noisy. Read the counts first.
 
-| Quantity | Before | After |
-| --- | --- | --- |
-| Pair matching (277 candidate pairs of 435; not changed on purpose) | 256.8 s | 184.7 s |
-| Pair verification | 59.9 s | 20.5 s |
-| Plans (submissions) of the graph | 6,355 (22.9 per pair) | 1,178 (4.3 per pair) |
-| Dispatches of the graph | 37,623 | 32,757 |
-| Time inside `plan()` in the graph | 37.1 s | 13.5 s |
-| Read round trips of the graph | 1,094 | 698 |
-| Reconstruction (30 of 30 views) | 112.0 s | 41.6 s |
-| of it bundle adjustment (30 calls) | 88.3 s, 803 read round trips | 24.9 s, 353 read round trips |
-| of it PnP (28 calls) | 14.9 s, 321 read round trips | 9.1 s, 206 read round trips |
-| of it triangulation and observations | 8.7 s | 7.4 s |
-| Total run | 428.8 s | 246.8 s |
+| Quantity                                                           | Before                       | After                        |
+| ------------------------------------------------------------------ | ---------------------------- | ---------------------------- |
+| Pair matching (277 candidate pairs of 435; not changed on purpose) | 256.8 s                      | 184.7 s                      |
+| Pair verification                                                  | 59.9 s                       | 20.5 s                       |
+| Plans (submissions) of the graph                                   | 6,355 (22.9 per pair)        | 1,178 (4.3 per pair)         |
+| Dispatches of the graph                                            | 37,623                       | 32,757                       |
+| Time inside `plan()` in the graph                                  | 37.1 s                       | 13.5 s                       |
+| Read round trips of the graph                                      | 1,094                        | 698                          |
+| Reconstruction (30 of 30 views)                                    | 112.0 s                      | 41.6 s                       |
+| of it bundle adjustment (30 calls)                                 | 88.3 s, 803 read round trips | 24.9 s, 353 read round trips |
+| of it PnP (28 calls)                                               | 14.9 s, 321 read round trips | 9.1 s, 206 read round trips  |
+| of it triangulation and observations                               | 8.7 s                        | 7.4 s                        |
+| Total run                                                          | 428.8 s                      | 246.8 s                      |
 
 The result is the same. The 157 edges have the same inlier and homography-inlier counts (22,412 inliers in all). The map has 2,435 landmarks, 0.405 px, and the registration order is equal. A synthetic scene of 40 keyframes (`--paths 2 --views 20 --points 150`) gives 417 identical edges and the same order. The same real set with its input order shuffled (`--shuffle 5`) gives the same edges, map and registration order as the canonical run: the shuffle gate (7.1) holds.
 
@@ -1324,9 +1324,9 @@ working budget, and `ShadeDeviceOptions.adapterLimits` lets that budget follow t
      else `cancelled` if any was cancelled, else `completed` if any completed, else `skipped`.
    - The `options` are those of the run, the same for every component.
      A component that fails does not stop the others. The failure is in its own block.
-   The reason a run has no dense cloud is `skipped` or `failure.message` of the summed block (see
-   `docs/lab-run-records.md`). A run that asked for the dense MVS and had no reconstructed
-   component records a `skipped` block with `No component was eligible for the dense MVS`.
+     The reason a run has no dense cloud is `skipped` or `failure.message` of the summed block (see
+     `docs/lab-run-records.md`). A run that asked for the dense MVS and had no reconstructed
+     component records a `skipped` block with `No component was eligible for the dense MVS`.
 7. **Export.** The components have no shared frame, so there is no merged cloud (inference: the
    canonical view ids of 2.4 fix the ids, not a coordinate frame). The export buttons act on the
    selected component, as "Export PLY" and "Export JSON" already do. With one component the file
