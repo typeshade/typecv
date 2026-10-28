@@ -4,7 +4,7 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "0d34ef594cbcd2dfd4c35352a521f60f525b0f75"
+    "commit": "78eb471835e5482e4f4ff0e9c7996d6baf78537d"
   },
   "compiler": "725b2969a9cac37400980c2c0058680368407602",
   "modules": {
@@ -26,8 +26,8 @@
       "withoutGlsl": 0
     },
     "cloud-knn.shade.ts": {
-      "wgsl": "9bee864246329fa73255cef753a8fb911e93811d6441c0b31c57aafe769e0143",
-      "glsl": "b576b08ca2ba61bf3af12980fe5cf8838c6a8ca2c2033766dd6fc1c3012a424c",
+      "wgsl": "2178cdad11919998a11ef3b2430857ea7ce48bad96e45d3ea0bec575cd06b727",
+      "glsl": "2ed9f9287591014ebdc2cb7bccb2344af97c21a9646acfd8e37e27f67ee04155",
       "entries": 1,
       "kernelFunctions": 0,
       "glslPrograms": 1,

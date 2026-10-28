@@ -6,6 +6,8 @@ import type { ImageFeatures, PairMatches, SparseReconstruction } from '../src/in
 import {
   bestCandidate,
   cameraAtRatio,
+  commonSetScore,
+  commonTracks,
   focalGrid,
   focalCandidateSteps,
   focalSearchControls,
@@ -15,8 +17,9 @@ import {
   scoreCandidates,
   type FocalCandidate,
 } from '../src/reconstruction/focal-search.ts';
-import { executeReconstructionJob } from '../src/reconstruction/mapper.ts';
+import { executeReconstructionJob, incrementalSteps } from '../src/reconstruction/mapper.ts';
 import { focalComponentsFixture } from './fixtures/focal-components.ts';
+import { scene } from './scene.ts';
 import { generalVideoFixture } from './fixtures/general-video.ts';
 
 // docs/auto-focal.md: the automatic shared-focal estimate.
@@ -163,7 +166,15 @@ function search(
   controls = focalSearchControls(true)!,
   minimumViews = 2,
 ) {
-  const machine = focalSearchSteps(images, pairs, options, controls, exhaustive, minimumViews);
+  const machine = focalSearchSteps(
+    images,
+    pairs,
+    options,
+    controls,
+    exhaustive,
+    minimumViews,
+    incrementalSteps,
+  );
   let next = machine.next();
   while (!next.done) {
     let value: unknown;
@@ -215,6 +226,9 @@ test('an invalid interpolated refinement falls back to a grid candidate that bui
     pairs,
     { ...lab, ransacIterations: 64 },
     focalSearchControls({ refineIterations: 12 })!,
+    undefined,
+    undefined,
+    incrementalSteps,
   );
   let next = machine.next();
   let rejected = false;
@@ -424,18 +438,18 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
   assert.ok(found.candidates.length < exhaustive.candidates.length);
   assert.ok(Math.abs(found.ratio - exhaustive.ratio) < 1e-6);
   assert.ok(Math.abs(found.gridRatio - exhaustive.gridRatio) < 1e-10);
-  // The pair verifications of the grid come from one base for each pair (docs/auto-focal.md,
-  // section 8). Their scores are those that a full verification at each focal gave before that
-  // change (measured 2026-10-21, `scripts/measure-focal.mjs --search=1`).
+  // The scores on the common observation set (`commonSetScore`, docs/auto-focal.md, section 10),
+  // measured 2026-10-27. The scores on each run's own observations were, at the same ratios,
+  // 0.482, 0.3688, 0.2257, 0.201, 0.2228, 0.2258, 0.3687 and 0.3923 (2026-10-21).
   const before: [number, number][] = [
-    [0.456, 0.482],
-    [0.525, 0.3688],
-    [0.603, 0.2257],
-    [0.694, 0.201],
-    [0.798, 0.2228],
-    [0.918, 0.2258],
-    [1.055, 0.3687],
-    [1.846, 0.3923],
+    [0.456, 0.3713],
+    [0.525, 0.3231],
+    [0.603, 0.2895],
+    [0.694, 0.2774],
+    [0.798, 0.2777],
+    [0.918, 0.2832],
+    [1.055, 0.404],
+    [1.846, 0.4117],
   ];
   for (const [ratio, score] of before) {
     const c = exhaustive.candidates.find((x) => Math.abs(x.ratio - ratio) < 5e-4)!;
@@ -474,4 +488,36 @@ test('graham-hall from the lab front end: the estimate lands within 5 % of COLMA
   // Measured 2026-10-21: 0.680 (−1.7 %); the subset's estimate 0.675.
   assert.ok(Math.abs(estimate / truth - 1) < 0.05, `estimate ${estimate}`);
   assert.equal(result.reconstruction.views.length, 12);
+});
+
+// docs/auto-focal.md, section 10: every grid point is scored on the tracks of the subset's input
+// matches, whatever its own run kept, so a focal gains nothing from the tracks the angle gate drops.
+test('the common-set score measures a map on the tracks of the input matches', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 40, views: 5 });
+  const tracks = commonTracks(inputs, pairs);
+  assert.equal(tracks.length, 40);
+  const truth = commonSetScore(tracks, inputs, reconstruction.views, 1.5);
+  assert.ok(truth < 1e-12, `truth ${truth}`);
+  // The same poses at half the focal misfit; each observation costs at most τ².
+  const wrong = commonSetScore(
+    tracks,
+    inputs,
+    reconstruction.views.map((v) => ({ ...v, camera: cameraAtRatio(v.camera, 0.4) })),
+    1.5,
+  );
+  assert.ok(wrong > 1e-3 && wrong <= 2.25, `wrong ${wrong}`);
+  // Views that a run did not register leave their observations out; no view, no score.
+  assert.ok(commonSetScore(tracks, inputs, reconstruction.views.slice(0, 3), 1.5) < 1e-12);
+  assert.equal(commonSetScore(tracks, inputs, [], 1.5), Infinity);
+  // A run with a common score is scored by it, not by the observations it kept.
+  const [kept, dropped] = scoreCandidates(
+    [
+      { ratio: 0.5, views: 5, rmsePx: 0.2, observations: 200, commonScore: 0.3 },
+      { ratio: 0.9, views: 5, rmsePx: 0.2, observations: 100, commonScore: 0.1 },
+    ],
+    1.5,
+  );
+  assert.equal(kept!.score, 0.3);
+  assert.equal(dropped!.score, 0.1);
+  assert.ok(!('commonScore' in kept!));
 });

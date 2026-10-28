@@ -1,9 +1,5 @@
-import { isInverseDepthTracker } from '../depth/inverse-depth-tracker.ts';
-import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+import { drive } from '../protocol/drive.ts';
+import { withDepthStep } from '../protocol/depth-step.ts';
 import { identityPose, projectPoint } from '../../geometry/pose.ts';
 import type { Pose, Camera } from '../../contracts/camera.ts';
 import { estimatePosePnP } from '../../geometry/pnp.ts';
@@ -21,20 +17,9 @@ import {
 } from '../bundle/local-bundle.ts';
 import type { BundleAdjustmentPartition } from '../bundle/local-bundle.ts';
 import { buildTracks } from '../tracks/tracks.ts';
-import { trackingEvidence } from '../tracks/tracking.ts';
-import { selectCameraObservations } from '../tracks/observation-selection.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from '../scene/scene.ts';
-import {
-  MAX_REGISTRATION_ATTEMPTS,
-  globalBundleDue,
-  executeReconstructionJob,
-  verifyPairs,
-} from './mapper.ts';
-import { copyReconstruction } from '../model/copy.ts';
-import {
-  ReconstructionInitializationError,
-  ReconstructionOperationError,
-} from '../protocol/errors.ts';
+import { globalBundleDue, executeReconstructionJob, verifyPairs } from './mapper.ts';
+import { ReconstructionOperationError } from '../protocol/errors.ts';
 import { incrementalControls } from '../config/incremental-controls.ts';
 import type {
   BundleSchedule,
@@ -42,15 +27,26 @@ import type {
   IncrementalResult,
   PairVerificationJob,
 } from './mapper.ts';
-import type {
-  ImageFeatures,
-  Landmark,
-  PairMatches,
-  SparseReconstruction,
-} from '../../contracts/scene.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx, maxErrorOfHuberPx } from '../config/defaults.ts';
-import { observationKey } from '../../contracts/keys.ts';
 import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
+import {
+  fewLandmarksError,
+  maskedInput,
+  noSeedError,
+  pickSeed,
+  runTracking,
+} from './initialization.ts';
+import { indexTracks, resumeMap } from './track-index.ts';
+import {
+  pnpFailure,
+  rankViews,
+  retryAfterRecovery,
+  retryWaits,
+  tooFewCorrespondences,
+  type RegistrationFailure,
+} from './registration.ts';
+import { mapperResult } from './result.ts';
 
 /** A triangulation result in the point channel that defers a depth: the status, negated. */
 const DEPTH_DEFERRED_POINT = -TriangulationStatus.depthSensitivity;
@@ -148,7 +144,7 @@ export function* sceneSteps(
   /** The size at the last global BA, carried across resumed runs; updated in place. */
   schedule?: BundleSchedule,
 ): Generator<SceneRequest, IncrementalResult, unknown> {
-  const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
+  const selected = maskedInput(images, inputPairs, options, { preVerified: false });
   inputPairs = selected.pairs;
   const { byId, controls } = incrementalControls(images, inputPairs, options);
   const keepTracking = !!(
@@ -170,48 +166,16 @@ export function* sceneSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates, trackingPairs, rotations } = yield* verifyPairs(
-    byId,
-    inputPairs,
-    controls,
-  );
-  const initial = options.initialPair
-    ? candidates.find(
-        (c) =>
-          (c.pair.first === options.initialPair![0] && c.pair.second === options.initialPair![1]) ||
-          (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
-      )
-    : candidates[0];
+  const verification = yield* verifyPairs(byId, inputPairs, controls);
+  const { verified, diagnostics, candidates, trackingPairs } = verification;
+  const initial = pickSeed(candidates, options.initialPair);
   if (!initial && !resume)
-    throw new ReconstructionInitializationError(
-      diagnostics,
-      undefined,
-      undefined,
-      keepTracking
-        ? trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            buildTracks(images, controls.rotationTracking ? trackingPairs : verified).tracks,
-          )
-        : undefined,
-      selected.selection,
-    );
+    throw noSeedError(images, controls, verification, keepTracking, selected.selection);
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
   const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
-  const viewTracks = new Map<number, { trackId: number; featureId: number }[]>(),
-    trackOfObservation = new Map<string, number>();
-  for (const view of images) viewTracks.set(view.id, []);
-  for (const track of graph.tracks)
-    for (const o of track.observations) {
-      viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
-    }
-  const pixelOf = (viewId: number, featureId: number): [number, number] => {
-    const k = byId.get(viewId)!.keypoints;
-    return [k[2 * featureId]!, k[2 * featureId + 1]!];
-  };
+  const { viewTracks, trackOfObservation, pixelOf } = indexTracks(images, graph.tracks, byId);
 
   // Index-based host state: no pose, point or observation lives here.
   const cameraOf = new Map<number, number>(),
@@ -236,31 +200,7 @@ export function* sceneSteps(
     cameraOf.set(view.id, index);
   };
   if (resume) {
-    // Track ids are rebuilt from the current edges; adopt a landmark through its observations.
-    const views = resume.views.map((v) => ({
-        ...v,
-        camera: { ...v.camera },
-        pose: { R: v.pose.R.slice(), t: v.pose.t.slice() },
-      })),
-      registered = new Set(views.map((v) => v.id)),
-      adopted = new Map<number, Landmark>();
-    for (const point of resume.landmarks) {
-      const trackId = point.observations
-        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
-        .find((id) => id !== undefined);
-      if (trackId === undefined) continue;
-      const observations = point.observations.filter(
-        (o) =>
-          registered.has(o.viewId) &&
-          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
-      );
-      const existing = adopted.get(trackId);
-      if (
-        observations.length >= 2 &&
-        (!existing || existing.observations.length < observations.length)
-      )
-        adopted.set(trackId, { trackId, xyz: point.xyz.slice(), observations });
-    }
+    const { views, landmarks: adopted } = resumeMap(resume, trackOfObservation);
     const model = { views, landmarks: [...adopted.values()] };
     yield* request<void>({ kind: 'load', model });
     views.forEach((v, i) => {
@@ -423,52 +363,36 @@ export function* sceneSteps(
   last.points = Math.min(last.points, trackOfPoint.length);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (trackOfPoint.length < minInitial)
-    throw new ReconstructionInitializationError(
-      diagnostics,
-      'Initial tracks did not produce enough reliable landmarks',
-      undefined,
-      keepTracking
-        ? trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            graph.tracks,
-            [],
-            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
-          )
-        : undefined,
+    throw fewLandmarksError(
+      controls,
+      verification,
+      graph.tracks,
+      keepTracking,
+      depthDeferred,
       selected.selection,
     );
   if (!resume) yield* adjust(bundleIterations);
   yield* publish();
-  const failure = new Map<number, { reason: string; at: number; attempts: number }>();
+  const failure = new Map<number, RegistrationFailure>();
   let recoveredAt = -1;
   while (cameraIds.length < images.length) {
-    const support = images
-      .filter((v) => !cameraOf.has(v.id))
-      .map((view) => ({
-        view,
-        correspondences: viewTracks.get(view.id)!.flatMap((entry) => {
-          const point = pointOf.get(entry.trackId);
-          return point === undefined ? [] : [{ featureId: entry.featureId, point }];
-        }),
-      }))
-      .sort((a, b) => b.correspondences.length - a.correspondences.length || a.view.id - b.view.id);
+    const support = rankViews(
+      images,
+      (id) => cameraOf.has(id),
+      viewTracks,
+      (trackId) => pointOf.get(trackId),
+    );
     let added = false;
     for (const { view, correspondences } of support) {
       const previous = failure.get(view.id);
       if (correspondences.length < minPnP) {
-        failure.set(view.id, {
-          reason: `Only ${correspondences.length} 2D–3D correspondences; need ${minPnP}`,
-          at: cameraIds.length,
-          attempts: previous?.attempts ?? 0,
-        });
+        failure.set(
+          view.id,
+          tooFewCorrespondences(correspondences.length, minPnP, cameraIds.length, previous),
+        );
         continue;
       }
-      if (
-        previous &&
-        (previous.at === cameraIds.length || previous.attempts >= MAX_REGISTRATION_ATTEMPTS)
-      )
-        continue;
+      if (retryWaits(previous, cameraIds.length)) continue;
       let pose: PnPResult;
       try {
         pose = yield* request<PnPResult>({
@@ -485,11 +409,7 @@ export function* sceneSteps(
         });
       } catch (error) {
         if (error instanceof ReconstructionOperationError) throw error;
-        failure.set(view.id, {
-          reason: (error as Error).message,
-          at: cameraIds.length,
-          attempts: (previous?.attempts ?? 0) + 1,
-        });
+        failure.set(view.id, pnpFailure(error, cameraIds.length, previous));
         continue;
       }
       yield* register(view, pose.pose);
@@ -509,7 +429,7 @@ export function* sceneSteps(
     yield* triangulate(graph.tracks.map((track) => track.id));
     yield* adjust(bundleIterations);
     yield* publish();
-    for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
+    retryAfterRecovery(failure);
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(
@@ -522,37 +442,29 @@ export function* sceneSteps(
   const meanReprojectionErrorPx = yield* request<number>({ kind: 'measure', maxErrorPx: maxError });
   const reconstruction = yield* request<SparseReconstruction>({ kind: 'snapshot' });
   options.onReconstruction?.(yield* request<SparseReconstruction>({ kind: 'snapshot' }));
-  return {
-    ...(selected.selection ? { observationSelection: selected.selection } : {}),
+  return mapperResult({
+    selection: selected.selection,
     reconstruction,
-    tracks: graph.tracks,
-    ...(keepTracking
-      ? {
-          tracking: trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            graph.tracks,
-            reconstruction.landmarks.map((p) => p.trackId),
-            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
-          ),
-        }
-      : {}),
-    unregistered: images
-      .filter((v) => !cameraOf.has(v.id))
-      .map((v) => ({
-        viewId: v.id,
-        reason: failure.get(v.id)?.reason ?? 'Disconnected from reconstructed tracks',
-      })),
-    diagnostics: {
-      initialPair: [first.id, second.id],
-      pairVerification: diagnostics,
-      conflictingTrackEdges: graph.conflictingEdges,
-      registrationOrder: cameraIds,
-      bundleAdjustments: bundleReports,
-      ...(bundlePartitions.length ? { bundlePartitions } : {}),
-      meanReprojectionErrorPx,
-    },
-  };
+    graph,
+    images,
+    registered: (id) => cameraOf.has(id),
+    failure,
+    initialPair: [first.id, second.id],
+    pairVerification: diagnostics,
+    registrationOrder: cameraIds,
+    bundleAdjustments: bundleReports,
+    bundlePartitions,
+    meanReprojectionErrorPx,
+    tracking: keepTracking
+      ? runTracking(
+          controls,
+          verification,
+          graph.tracks,
+          reconstruction.landmarks.map((p) => p.trackId),
+          depthDeferred,
+        )
+      : undefined,
+  });
 }
 
 /** @internal The CPU driver: the scene protocol over a `HostScene`, one request at a time. */
@@ -759,37 +671,8 @@ export function reconstructIncrementalScene(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const tracker = options.depthTracking;
-  if (tracker !== undefined && !isInverseDepthTracker(tracker))
-    throw new RangeError('Invalid depth tracker');
-  try {
-    const driver = new HostSceneDriver(),
-      machine = sceneSteps(
-        images,
-        inputPairs,
-        tracker ? { ...options, onReconstruction: undefined } : options,
-      );
-    let step = machine.next();
-    while (!step.done) {
-      let result: unknown;
-      try {
-        result = driver.execute(step.value);
-      } catch (error) {
-        step = machine.throw(error);
-        continue;
-      }
-      step = machine.next(result);
-    }
-    if (!tracker) return step.value;
-    const result = publishDepth(
-      step.value,
-      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
-    );
-    options.onReconstruction?.(copyReconstruction(result.reconstruction));
-    return result;
-  } catch (error) {
-    if (tracker && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
-    throw error;
-  }
+  return withDepthStep(images, options, (controls) => {
+    const driver = new HostSceneDriver();
+    return drive(sceneSteps(images, inputPairs, controls), (job) => driver.execute(job), 'pass');
+  });
 }

@@ -1,9 +1,10 @@
-import { isInverseDepthTracker } from '../depth/inverse-depth-tracker.ts';
+import { depthTrackingInput } from '../depth/depth-publication.ts';
+import { driveAsync } from '../protocol/drive.ts';
 import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+  checkDepthTracker,
+  publishTrackedDepth,
+  recordFailedDepth,
+} from '../protocol/depth-step.ts';
 import { bundleAdjustInverseDepthGpu } from '../depth/gpu/inverse-depth.ts';
 import {
   incrementalSteps,
@@ -13,14 +14,14 @@ import {
   type IncrementalResult,
   type ReconstructionJob,
 } from '../mapper/mapper.ts';
-import {
-  ReconstructionOperationError,
-  ReconstructionInitializationError,
-} from '../protocol/errors.ts';
+import { ReconstructionInitializationError } from '../protocol/errors.ts';
 import { copyReconstruction } from '../model/copy.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../contracts/scene.ts';
 import { MapHistory } from '../session/map-history.ts';
+import { evictWindow } from '../session/window.ts';
+import { archiveSolvePlan } from '../session/archive-solve.ts';
 import {
+  historyTracks,
   measureHistory,
   refineHistory,
   refinedHistoryWindow,
@@ -30,8 +31,6 @@ import {
   rotationTrackingControls,
   type ReconstructionTracking,
 } from '../tracks/tracking.ts';
-import { cameraCenter } from '../../geometry/pose.ts';
-import { GeometryEstimationError } from '../../geometry/errors.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
 import { estimatePosePnPGpu } from '../../geometry/gpu/pnp.ts';
 import { type GpuGeometryExecution } from '../../geometry/gpu/execution.ts';
@@ -47,14 +46,14 @@ import {
   evaluateObservationsGpu,
   evaluateContinuedObservationsGpu,
 } from '../../geometry/gpu/observations.ts';
-import { bundleAdjustGpu } from '../bundle/gpu/bundle.ts';
+import { bundleAdjustGpu, type GpuBundleAdjustmentResult } from '../bundle/gpu/bundle.ts';
+import type { BundleAdjustmentOptions } from '../bundle/bundle-adjustment.ts';
 import type { GpuConsensusExecution } from '../../geometry/gpu/two-view.ts';
 import { verifyImagePairGpu } from '../../geometry/gpu/image-pair.ts';
 import { validateFeatures } from '../tracks/tracks.ts';
 import {
   applyFocal,
   cameraWidth,
-  historyFocalSeeds,
   focalSearchControls,
   type FocalSearchResult,
 } from '../focal/focal-search.ts';
@@ -64,7 +63,7 @@ import {
   type GpuFloatMatchOptions,
   type GpuFloatMatches,
 } from '../../features/gpu/float-matching.ts';
-import { MAPPER_DEFAULTS, SESSION_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
+import { MAPPER_DEFAULTS, SESSION_DEFAULTS } from '../config/defaults.ts';
 import { pairKey } from '../../contracts/keys.ts';
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
@@ -316,6 +315,40 @@ function verificationKey(
   ])}`;
 }
 
+/**
+ * The record of a GPU bundle adjustment stage (`onStage`), with the problem as the solver saw it.
+ * For a request of the mapper (`request`), the record also names the variable views and counts
+ * the bearing observations. The archive solve of `finish` passes no request.
+ */
+function bundleStage(
+  started: number,
+  model: SparseReconstruction,
+  bundle: GpuBundleAdjustmentResult,
+  request?: { readonly options: BundleAdjustmentOptions | undefined },
+): GpuIncrementalResult['execution']['stages'][number] {
+  const elapsedMs = performance.now() - started,
+    observations = model.landmarks.reduce((sum, p) => sum + p.observations.length, 0);
+  return {
+    operation: 'bundle',
+    elapsedMs,
+    execution: bundle.execution,
+    problem: request
+      ? {
+          views: model.views.length,
+          variableViewIds: request.options?.variableViewIds?.slice(),
+          landmarks: model.landmarks.length,
+          observations: observations + (bundle.diagnostics.directionalObservations ?? 0),
+          ...(bundle.directionalConstraints
+            ? {
+                directionalConstraints: bundle.directionalConstraints.length,
+                directionalObservations: bundle.diagnostics.directionalObservations,
+              }
+            : {}),
+        }
+      : { views: model.views.length, landmarks: model.landmarks.length, observations },
+  };
+}
+
 type SessionState = {
   model?: SparseReconstruction;
   verification: Map<string, Awaited<ReturnType<typeof verifyImagePairGpu>>>;
@@ -334,8 +367,7 @@ async function runIncrementalGpu(
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
-  if (options.depthTracking !== undefined && !isInverseDepthTracker(options.depthTracking))
-    throw new RangeError('Invalid depth tracker');
+  checkDepthTracker(options);
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
     ...v,
@@ -435,27 +467,7 @@ async function runIncrementalGpu(
           schurCache: controls.schurCache,
         });
         gpuBundleAdjustments++;
-        stages.push({
-          operation: 'bundle',
-          elapsedMs: performance.now() - started,
-          execution: result.execution,
-          problem: {
-            views: job.args[0].views.length,
-            variableViewIds: job.args[1]?.variableViewIds?.slice(),
-            landmarks: job.args[0].landmarks.length,
-            observations:
-              job.args[0].landmarks.reduce(
-                (sum, landmark) => sum + landmark.observations.length,
-                0,
-              ) + (result.diagnostics.directionalObservations ?? 0),
-            ...(result.directionalConstraints
-              ? {
-                  directionalConstraints: result.directionalConstraints.length,
-                  directionalObservations: result.diagnostics.directionalObservations,
-                }
-              : {}),
-          },
-        });
+        stages.push(bundleStage(started, job.args[0], result, { options: job.args[1] }));
         return result;
       }
     }
@@ -471,28 +483,21 @@ async function runIncrementalGpu(
       finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
       completeRegisteredObservations,
     );
-    let step = machine.next();
-    while (!step.done) {
-      let value: unknown;
-      const event = { operation: step.value.kind, index: ++operationIndex };
-      try {
+    const mapped = await driveAsync(
+      machine,
+      async (job) => {
+        const event = { operation: job.kind, index: ++operationIndex };
         options.onProgress?.({ ...event, phase: 'start' });
         const beforeStages = stages.length;
-        value = await execute(step.value);
+        const value = await execute(job);
         if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
         options.onProgress?.({ ...event, phase: 'complete' });
-      } catch (error) {
-        step = machine.throw(
-          error instanceof GeometryEstimationError
-            ? error
-            : new ReconstructionOperationError(error),
-        );
-        continue;
-      }
-      step = machine.next(value);
-    }
+        return value;
+      },
+      'wrap',
+    );
     const result: GpuIncrementalResult = {
-      ...step.value,
+      ...mapped,
       execution: {
         backend: device.backend,
         stages,
@@ -514,8 +519,7 @@ async function runIncrementalGpu(
       depthTrackingInput(result, views, controls.cameraObservationMasks),
       (m, c, o) => bundleAdjustInverseDepthGpu(device, m, c, o),
     );
-    const published = publishDepth(result, updated);
-    options.onReconstruction?.(copyReconstruction(published.reconstruction));
+    const published = publishTrackedDepth(result, updated, options);
     return {
       ...published,
       execution: {
@@ -527,8 +531,7 @@ async function runIncrementalGpu(
       },
     };
   } catch (error) {
-    if (options.depthTracking && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
+    recordFailedDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
     throw error;
   }
 }
@@ -631,79 +634,23 @@ export class IncrementalSfmSession {
       };
     }
     const windowSize = this.options.windowSize ?? SESSION_DEFAULTS.windowSize;
-    if (images.length > windowSize) {
-      const recent = images.slice(-(windowSize - 2));
-      const recentIds = new Set(recent.map((view) => view.id));
-      let anchors: readonly number[] | undefined = this.result?.diagnostics.initialPair;
-      // Retain the first reference while waiting for sufficient initial parallax.
-      if (!this.state.model) anchors = [images[0]!.id];
-      if (this.state.model) {
-        // Shared-landmark counts of every registered pair, from one pass over the observations.
-        const shared = new Map<string, number>();
-        for (const point of this.state.model.landmarks) {
-          const ids = point.observations.map((o) => o.viewId).sort((a, b) => a - b);
-          for (let i = 0; i < ids.length; i++)
-            for (let j = i + 1; j < ids.length; j++) {
-              const key = pairKey(ids[i]!, ids[j]!);
-              shared.set(key, (shared.get(key) ?? 0) + 1);
-            }
-        }
-        const common = (a: number, b: number) => shared.get(pairKey(a, b)) ?? 0;
-        // Move the local gauge to existing registered cameras; their world poses are preserved.
-        const candidates = this.state.model.views.filter((view) => recentIds.has(view.id));
-        let best = 0;
-        for (let i = 0; i < candidates.length; i++)
-          for (let j = i + 1; j < candidates.length; j++) {
-            const a = candidates[i]!,
-              b = candidates[j]!;
-            const ac = cameraCenter(a.pose),
-              bc = cameraCenter(b.pose);
-            const distance = Math.hypot(...ac.map((v, k) => v - bc[k]!));
-            if (distance > best && distance > 1e-8 && common(a.id, b.id) >= 12) {
-              anchors = [a.id, b.id];
-              best = distance;
-            }
-          }
-      }
-      const keep = new Set([...recentIds, ...(anchors ?? [])]);
-      images = images.filter((view) => keep.has(view.id));
-      edges = edges.filter((pair) => keep.has(pair.first) && keep.has(pair.second));
-      if (this.state.model && anchors) {
-        const existing = new Set(edges.map((pair) => pairKey(pair.first, pair.second)));
-        // Carry real shared observations across an evicted chain; verify these edges normally.
-        for (const anchor of anchors)
-          for (const view of images) {
-            if (view.id === anchor) continue;
-            const key = pairKey(anchor, view.id);
-            if (existing.has(key)) continue;
-            const matches: number[] = [];
-            for (const point of this.state.model.landmarks) {
-              let a: number | undefined, b: number | undefined;
-              for (const o of point.observations) {
-                if (o.viewId === anchor) a = o.featureId;
-                else if (o.viewId === view.id) b = o.featureId;
-              }
-              if (a !== undefined && b !== undefined) matches.push(a, b);
-            }
-            if (matches.length >= 16) {
-              edges.push({ first: anchor, second: view.id, matches: Uint32Array.from(matches) });
-              existing.add(key);
-            }
-          }
-        this.state.model = {
-          views: this.state.model.views.filter((view) => keep.has(view.id)),
-          landmarks: this.state.model.landmarks
-            .map((point) => ({
-              ...point,
-              observations: point.observations.filter((o) => keep.has(o.viewId)),
-            }))
-            .filter((point) => point.observations.length >= 2),
-        };
+    const eviction = evictWindow(
+      images,
+      edges,
+      windowSize,
+      this.state.model,
+      this.result?.diagnostics.initialPair,
+    );
+    if (eviction) {
+      images = eviction.images;
+      edges = eviction.edges;
+      if (eviction.model) {
+        this.state.model = eviction.model;
         this.result = {
           ...this.result!,
           diagnostics: {
             ...this.result!.diagnostics,
-            initialPair: anchors as readonly [number, number],
+            initialPair: eviction.anchors as readonly [number, number],
           },
         };
       }
@@ -827,87 +774,85 @@ export class IncrementalSfmSession {
       : this.history.update(result.reconstruction);
     let completed = result;
     if (final && !this.options.depthTracking) {
-      const fullWindow = reconstruction.views.length > result.reconstruction.views.length,
-        reference = result.reconstruction.views[0]!.camera,
-        multipleFocalGroups =
-          !!this.options.focalGroups &&
-          new Set(reconstruction.views.map((v) => this.options.focalGroups!.get(v.id))).size > 1,
-        shape = (camera: typeof reference) => (camera.cy + 0.5) / (camera.cx + 0.5),
-        sharedCamera =
-          this.focal &&
-          !this.options.focalGroups &&
-          reconstruction.views.every(
-            ({ camera }) =>
-              Math.abs(shape(camera) - shape(reference)) < 1e-9 &&
-              Math.abs(camera.fy / camera.fx - reference.fy / reference.fx) < 1e-9 &&
-              (camera.k1 ?? 0) === (reference.k1 ?? 0) &&
-              (camera.k2 ?? 0) === (reference.k2 ?? 0),
-          ),
-        focalRatios =
-          sharedCamera && this.options.refineSharedFocal
-            ? historyFocalSeeds(this.focal!, reference.fx / cameraWidth(reference))
-            : undefined,
-        lateCalibration =
-          (focalRatios?.length ?? 0) > 1 &&
-          reconstruction.views.some((v) => !this.focal!.views.includes(v.id)),
-        needsFullSolve = fullWindow || lateCalibration;
-      if (
-        needsFullSolve &&
-        !this.options.separateDirectionalObservations &&
-        !this.options.maxRelativeDepthStdDev
-      ) {
-        const finalIterations =
-            this.options.finalBundleIterations ?? SESSION_DEFAULTS.finalBundleIterations,
-          solved = await refineHistory(
-            reconstruction,
-            {
-              iterations:
-                finalIterations === 0
-                  ? 0
-                  : (this.options.historyBundleIterations ??
-                    ((focalRatios?.length ?? 0) > 1
-                      ? Math.max(finalIterations, 32)
-                      : finalIterations)),
-              huberPx: bundleHuberPx(this.options.maxErrorPx ?? MAPPER_DEFAULTS.maxErrorPx),
-              refineSharedFocal: this.options.refineSharedFocal && !multipleFocalGroups,
-              focalGroups: this.options.focalGroups,
-              ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
-            },
-            async (model, options) => {
-              const started = performance.now(),
-                index = completed.execution.stages.length + 1;
-              this.options.onProgress?.({ operation: 'bundle', index, phase: 'start' });
-              let bundle;
-              try {
-                bundle = await bundleAdjustGpu(this.device, model, {
-                  ...options,
-                  schurCache: this.options.schurCache,
-                });
-              } finally {
-                this.options.onProgress?.({ operation: 'bundle', index, phase: 'complete' });
+      const plan = archiveSolvePlan(
+        reconstruction,
+        result.reconstruction,
+        this.focal,
+        this.options,
+      );
+      if (plan.kind === 'solve') {
+        const archive = plan.rebuildArchive ? reconstruction : undefined,
+          // A restart focal of a boundary winner maps the archive's tracks again at that focal,
+          // so it does not start from the map built at the boundary (docs/auto-focal.md, section
+          // 10). An archive beyond the 64 cameras of local GPU work reuses the archived map.
+          rebuildAtRatio = archive
+            ? async (ratio: number) => {
+                const { images: tracked, pairs: trackPairs } = historyTracks(archive);
+                try {
+                  const rebuilt = await runIncrementalGpu(
+                    this.device,
+                    applyFocal(tracked, ratio),
+                    trackPairs,
+                    {
+                      ...this.options,
+                      onReconstruction: undefined,
+                      focalSearch: undefined,
+                      refineSharedFocal: false,
+                      initialPair: undefined,
+                      cameraObservationMasks: undefined,
+                      focalGroups: undefined,
+                      rotationTracking: false,
+                      preVerified: undefined,
+                    },
+                    undefined,
+                    true,
+                  );
+                  completed = {
+                    ...completed,
+                    execution: {
+                      ...completed.execution,
+                      stages: [...completed.execution.stages, ...rebuilt.execution.stages],
+                      gpuBundleAdjustments:
+                        completed.execution.gpuBundleAdjustments +
+                        rebuilt.execution.gpuBundleAdjustments,
+                    },
+                  };
+                  return rebuilt.reconstruction;
+                } catch (error) {
+                  if (error instanceof ReconstructionInitializationError) return undefined;
+                  throw error;
+                }
               }
-              const stage: GpuIncrementalResult['execution']['stages'][number] = {
-                operation: 'bundle',
-                elapsedMs: performance.now() - started,
-                execution: bundle.execution,
-                problem: {
-                  views: model.views.length,
-                  landmarks: model.landmarks.length,
-                  observations: model.landmarks.reduce((sum, p) => sum + p.observations.length, 0),
-                },
-              };
-              completed = {
-                ...completed,
-                execution: {
-                  ...completed.execution,
-                  stages: [...completed.execution.stages, stage],
-                  gpuBundleAdjustments: completed.execution.gpuBundleAdjustments + 1,
-                },
-              };
-              this.options.onStage?.(stage);
-              return bundle;
-            },
-          );
+            : undefined;
+        const solved = await refineHistory(
+          reconstruction,
+          { ...plan.refinement, ...(rebuildAtRatio ? { rebuildAtRatio } : {}) },
+          async (model, options) => {
+            const started = performance.now(),
+              index = completed.execution.stages.length + 1;
+            this.options.onProgress?.({ operation: 'bundle', index, phase: 'start' });
+            let bundle;
+            try {
+              bundle = await bundleAdjustGpu(this.device, model, {
+                ...options,
+                schurCache: this.options.schurCache,
+              });
+            } finally {
+              this.options.onProgress?.({ operation: 'bundle', index, phase: 'complete' });
+            }
+            const stage = bundleStage(started, model, bundle);
+            completed = {
+              ...completed,
+              execution: {
+                ...completed.execution,
+                stages: [...completed.execution.stages, stage],
+                gpuBundleAdjustments: completed.execution.gpuBundleAdjustments + 1,
+              },
+            };
+            this.options.onStage?.(stage);
+            return bundle;
+          },
+        );
         reconstruction = solved.reconstruction;
         this.history.replace(reconstruction);
         completed = {
@@ -920,12 +865,11 @@ export class IncrementalSfmSession {
               observations: solved.after.observations,
               initialCost: solved.before.cost,
               finalCost: solved.after.cost,
-              deferred:
-                solved.deferred || (!!this.options.refineSharedFocal && multipleFocalGroups),
+              deferred: solved.deferred || plan.focalDeferred,
             },
           },
         };
-      } else if (needsFullSolve) {
+      } else if (plan.kind === 'measure') {
         // The archive does not yet own pending bearing factors or re-admit conditional
         // depth after a full pose/focal change. Preserve the completed local contracts.
         const measured = measureHistory(reconstruction);

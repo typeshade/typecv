@@ -58,6 +58,48 @@ function cellGap(d: i32, f: f32): f32 {
   return 0.;
 }
 
+/** Insert `d2` in place into the `k` smallest squared distances of `best`: the k-th falls off. */
+function insertSorted(@inout best: array<f32, 32>, k: u32, d2: f32): void {
+  let s: u32 = k - 1;
+  while (s > 0 && best[s - 1] > d2) {
+    best[s] = best[s - 1];
+    s = s - 1;
+  }
+  best[s] = d2;
+}
+
+/** Insert the points of cell (`x`, `y`, `z`) other than point `i` that are closer than the k-th. */
+function scanBucket(
+  @inout best: array<f32, 32>,
+  k: u32,
+  i: u32,
+  px: f32,
+  py: f32,
+  pz: f32,
+  x: u32,
+  y: u32,
+  z: u32,
+): void {
+  const bucket: u32 = cellBucket(x, y, z) & cloudControl.mask;
+  const end: u32 = bucketStart[bucket + 1];
+  for (let j: u32 = bucketStart[bucket]; j < end; j++) {
+    if (j !== i && gridCells[j * 3] === x && gridCells[j * 3 + 1] === y && gridCells[j * 3 + 2] === z) {
+      const ex: f32 = gridPoints[j * 3] - px;
+      const ey: f32 = gridPoints[j * 3 + 1] - py;
+      const ez: f32 = gridPoints[j * 3 + 2] - pz;
+      const d2: f32 = ex * ex + ey * ey + ez * ez;
+      if (d2 < best[k - 1]) insertSorted(best, k, d2);
+    }
+  }
+}
+
+/** The mean of the square roots of the `k` smallest squared distances. */
+function meanOf(@inout best: array<f32, 32>, k: u32): f32 {
+  let sum: f32 = 0.;
+  for (let m: u32 = 0; m < k; m++) sum += sqrt(best[m]);
+  return sum / f32(k);
+}
+
 @compute([64])
 export function knnMeanDistance(@builtin('global_invocation_id') gid: vec3u): void {
   let lane: u32 = cloudRange.first + gid.x;
@@ -77,86 +119,47 @@ export function knnMeanDistance(@builtin('global_invocation_id') gid: vec3u): vo
   const fy: f32 = clamp((py - cloudControl.originY) / h - f32(cy), 0., 1.);
   const fz: f32 = clamp((pz - cloudControl.originZ) / h - f32(cz), 0., 1.);
   let best: array<f32, 32> = fill<f32, 32>(NO_DISTANCE);
-  let done: bool = false;
   for (let r: u32 = 0; r <= cloudControl.maxRing; r++) {
-    if (!done) {
-      const ring: i32 = i32(r);
-      for (let dz: i32 = -ring; dz <= ring; dz++) {
-        const gz: f32 = cellGap(dz, fz);
-        for (let dy: i32 = -ring; dy <= ring; dy++) {
-          const gy: f32 = cellGap(dy, fy);
-          // A row whose nearest cell is farther than the k-th distance holds no closer point.
-          // The factor leaves room for the rounding of the cell position.
-          const rowGap: f32 = (gz * gz + gy * gy) * h * h * PRUNE_SAFETY;
-          if (rowGap <= best[k - 1]) {
-            const onShell: bool = abs(dz) === ring || abs(dy) === ring;
-            const cellsInRow: i32 = onShell ? 2 * ring + 1 : 2;
-            for (let t: i32 = 0; t < cellsInRow; t++) {
-              const dx: i32 = onShell ? t - ring : t * 2 * ring - ring;
-              const gx: f32 = cellGap(dx, fx);
-              const gap: f32 = (gz * gz + gy * gy + gx * gx) * h * h * PRUNE_SAFETY;
-              const nx: i32 = cx + dx;
-              const ny: i32 = cy + dy;
-              const nz: i32 = cz + dz;
-              if (gap <= best[k - 1] && nx >= 1 && ny >= 1 && nz >= 1) {
-                const bucket: u32 =
-                  cellBucket(u32(nx), u32(ny), u32(nz)) & cloudControl.mask;
-                const end: u32 = bucketStart[bucket + 1];
-                for (let j: u32 = bucketStart[bucket]; j < end; j++) {
-                  if (
-                    j !== i &&
-                    gridCells[j * 3] === u32(nx) &&
-                    gridCells[j * 3 + 1] === u32(ny) &&
-                    gridCells[j * 3 + 2] === u32(nz)
-                  ) {
-                    const ex: f32 = gridPoints[j * 3] - px;
-                    const ey: f32 = gridPoints[j * 3 + 1] - py;
-                    const ez: f32 = gridPoints[j * 3 + 2] - pz;
-                    const d2: f32 = ex * ex + ey * ey + ez * ez;
-                    if (d2 < best[k - 1]) {
-                      // Insert in place: the k-th value falls off.
-                      let s: u32 = k - 1;
-                      for (let step: u32 = 0; step < 31; step++) {
-                        if (s > 0 && best[s - 1] > d2) {
-                          best[s] = best[s - 1];
-                          s = s - 1;
-                        }
-                      }
-                      best[s] = d2;
-                    }
-                  }
-                }
-              }
-            }
+    const ring: i32 = i32(r);
+    for (let dz: i32 = -ring; dz <= ring; dz++) {
+      const gz: f32 = cellGap(dz, fz);
+      for (let dy: i32 = -ring; dy <= ring; dy++) {
+        const gy: f32 = cellGap(dy, fy);
+        // A row whose nearest cell is farther than the k-th distance holds no closer point.
+        // The factor leaves room for the rounding of the cell position.
+        const rowGap: f32 = (gz * gz + gy * gy) * h * h * PRUNE_SAFETY;
+        if (rowGap <= best[k - 1]) {
+          const onShell: bool = abs(dz) === ring || abs(dy) === ring;
+          const cellsInRow: i32 = onShell ? 2 * ring + 1 : 2;
+          for (let t: i32 = 0; t < cellsInRow; t++) {
+            const dx: i32 = onShell ? t - ring : t * 2 * ring - ring;
+            const gx: f32 = cellGap(dx, fx);
+            const gap: f32 = (gz * gz + gy * gy + gx * gx) * h * h * PRUNE_SAFETY;
+            const nx: i32 = cx + dx;
+            const ny: i32 = cy + dy;
+            const nz: i32 = cz + dz;
+            if (gap <= best[k - 1] && nx >= 1 && ny >= 1 && nz >= 1)
+              scanBucket(best, k, i, px, py, pz, u32(nx), u32(ny), u32(nz));
           }
         }
       }
-      const reach: f32 = f32(r) * h;
-      if (best[k - 1] <= reach * reach) done = true;
+    }
+    // The k-th distance is inside the ring's inner radius: no farther cell holds a closer point.
+    const reach: f32 = f32(r) * h;
+    if (best[k - 1] <= reach * reach) {
+      if (active) knnMean[i] = meanOf(best, k);
+      return;
     }
   }
-  if (!done) {
-    best = fill<f32, 32>(NO_DISTANCE);
-    for (let j: u32 = 0; j < cloudControl.count; j++) {
-      if (j !== i) {
-        const ex: f32 = gridPoints[j * 3] - px;
-        const ey: f32 = gridPoints[j * 3 + 1] - py;
-        const ez: f32 = gridPoints[j * 3 + 2] - pz;
-        const d2: f32 = ex * ex + ey * ey + ez * ez;
-        if (d2 < best[k - 1]) {
-          let s: u32 = k - 1;
-          for (let step: u32 = 0; step < 31; step++) {
-            if (s > 0 && best[s - 1] > d2) {
-              best[s] = best[s - 1];
-              s = s - 1;
-            }
-          }
-          best[s] = d2;
-        }
-      }
+  best = fill<f32, 32>(NO_DISTANCE);
+  for (let j: u32 = 0; j < cloudControl.count; j++) {
+    if (j !== i) {
+      const ex: f32 = gridPoints[j * 3] - px;
+      const ey: f32 = gridPoints[j * 3 + 1] - py;
+      const ez: f32 = gridPoints[j * 3 + 2] - pz;
+      const d2: f32 = ex * ex + ey * ey + ez * ez;
+      if (d2 < best[k - 1]) insertSorted(best, k, d2);
     }
   }
-  let sum: f32 = 0.;
-  for (let m: u32 = 0; m < k; m++) sum += sqrt(best[m]);
-  if (active) knnMean[i] = sum / f32(k);
+  if (active) knnMean[i] = meanOf(best, k);
 }

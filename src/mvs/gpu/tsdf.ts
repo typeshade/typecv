@@ -9,6 +9,7 @@
  */
 import type { Resident } from 'typeshade/runtime';
 import { readTogether } from '../../device/gpu/readback.ts';
+import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 import { tsdfBoxTable } from './tsdf-box-table.ts';
 import { TsdfViewChannels } from './tsdf-view-channels.ts';
 import { TsdfUploadWindow, type TsdfUploadWindowReport } from './tsdf-upload-window.ts';
@@ -21,6 +22,7 @@ import {
   tsdfIntegrate,
   tsdfViewCarve,
   tsdfResetVotes,
+  EMPTY,
 } from './tsdf.shade.ts';
 import {
   TSDF_BLOCK_VOXELS,
@@ -118,7 +120,6 @@ export interface TsdfReport {
   readonly report: ShadePlanReport;
 }
 
-const EMPTY = 0xffffffff;
 /** Bytes of one block: its voxels, and two slots of the table at three words each. */
 const BLOCK_BYTES = 4 * TSDF_BLOCK_WORDS + 2 * 3 * 4;
 /** The points one block is expected to give (the extraction falls back to smaller ranges). */
@@ -136,37 +137,10 @@ const POINT_BYTES = 12 + 4 * TSDF_POINT_WORDS;
  * chunk's `min` instead. A software adapter has no GPU watchdog to stay below.
  */
 export const TSDF_OCCUPANCY_FLOOR = 16384;
-const LANES = 64;
-
-/** The most elements of one dispatch: the adapter's workgroups per dimension, LANES lanes each. */
-export function maxLanes(device: Pick<ShadeDevice, 'maxKernelElements'>): number {
-  return Math.max(LANES, Math.floor(device.maxKernelElements / LANES) * LANES);
-}
-
-/** The chunks of one pass over `total` elements under `key`, with the TSDF's occupancy floor. */
-function* chunkedPass(
-  device: ShadeDevice,
-  key: string,
-  total: number,
-  dispatch: (range: { first: number; end: number }, groups: number) => void,
-) {
-  const warm = { id: key, run: () => dispatch({ first: 0, end: 0 }, 0) };
-  for (let first = 0; first < total;) {
-    // One dispatch runs at most `maxComputeWorkgroupsPerDimension` workgroups of LANES lanes.
-    const remaining = Math.min(total - first, maxLanes(device));
-    const least = Math.min(remaining, device.occupancyFloors ? LANES : TSDF_OCCUPANCY_FLOOR);
-    let n = Math.min(remaining, device.chunkSize(key, remaining, least, TSDF_OCCUPANCY_FLOOR));
-    if (n < remaining) n = Math.max(least, n - (n % LANES));
-    const range = { first, end: first + n };
-    yield [
-      key,
-      () => dispatch(range, Math.ceil(n / LANES)),
-      undefined,
-      { key, units: n, minUnits: TSDF_OCCUPANCY_FLOOR, warm },
-    ] as const;
-    first += n;
-  }
-}
+/** The most elements of one dispatch (moved to the device layer, kept here for its importers). */
+export { maxLanes } from '../../device/gpu/chunked-pass.ts';
+/** The TSDF's chunks: its occupancy floor, and each chunk capped at the adapter's workgroup limit. */
+const TSDF_CHUNKS = { floor: TSDF_OCCUPANCY_FLOOR, limit: 'cap' } as const;
 
 function nextPow2(n: number): number {
   let p = 16;
@@ -433,11 +407,17 @@ export async function fuseTsdfGpu(
         await upload(v);
         const tsdfControl = controlOf(volume, input, v, T - 1, box, extraOf());
         await steps(
-          chunkedPass(device, 'tsdfAllocate', P, (tsdfRange, groups) =>
-            tsdfAllocate(
-              { tsdfControl, tsdfRange, ...viewBindings, tsdfGrid, tsdfTable: table },
-              groups,
-            ),
+          chunkedPass(
+            device,
+            'tsdfAllocate',
+            'tsdfAllocate',
+            P,
+            (tsdfRange, groups) =>
+              tsdfAllocate(
+                { tsdfControl, tsdfRange, ...viewBindings, tsdfGrid, tsdfTable: table },
+                groups,
+              ),
+            TSDF_CHUNKS,
           ),
           'allocate',
           v,
@@ -518,8 +498,14 @@ export async function fuseTsdfGpu(
       // Blocks for the claimed slots, then the voxels, zeroed by the device.
       const assignControl = controlOf(volume, input, 0, passT - 1, box, extraOf());
       await steps(
-        chunkedPass(device, 'tsdfAssign', passT, (tsdfRange, groups) =>
-          tsdfAssign({ tsdfControl: assignControl, tsdfRange, tsdfTable: passTable }, groups),
+        chunkedPass(
+          device,
+          'tsdfAssign',
+          'tsdfAssign',
+          passT,
+          (tsdfRange, groups) =>
+            tsdfAssign({ tsdfControl: assignControl, tsdfRange, tsdfTable: passTable }, groups),
+          TSDF_CHUNKS,
         ),
         'assign',
         -1,
@@ -537,8 +523,13 @@ export async function fuseTsdfGpu(
           tsdfVoxels,
         };
         await steps(
-          chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
-            tsdfIntegrate({ ...bindings, tsdfRange }, groups),
+          chunkedPass(
+            device,
+            'tsdfIntegrate',
+            'tsdfIntegrate',
+            P,
+            (tsdfRange, groups) => tsdfIntegrate({ ...bindings, tsdfRange }, groups),
+            TSDF_CHUNKS,
           ),
           'integrate',
           v,
@@ -548,8 +539,13 @@ export async function fuseTsdfGpu(
         );
         if (o.visibility === 'ray-count')
           await steps(
-            chunkedPass(device, 'tsdfCarve', P, (tsdfRange, groups) =>
-              tsdfCarve({ ...bindings, tsdfRange }, groups),
+            chunkedPass(
+              device,
+              'tsdfCarve',
+              'tsdfCarve',
+              P,
+              (tsdfRange, groups) => tsdfCarve({ ...bindings, tsdfRange }, groups),
+              TSDF_CHUNKS,
             ),
             'carve',
             v,
@@ -568,8 +564,10 @@ export async function fuseTsdfGpu(
               chunkedPass(
                 device,
                 'tsdfResetVotes',
+                'tsdfResetVotes',
                 blocks * TSDF_BLOCK_VOXELS,
                 (tsdfRange, groups) => tsdfResetVotes({ tsdfRange, tsdfVotes }, groups),
+                TSDF_CHUNKS,
               ),
               'carve',
               -1,
@@ -595,6 +593,7 @@ export async function fuseTsdfGpu(
               chunkedPass(
                 device,
                 'tsdfViewCarve',
+                'tsdfViewCarve',
                 blocks * TSDF_BLOCK_VOXELS,
                 (tsdfRange, groups) =>
                   tsdfViewCarve(
@@ -611,6 +610,7 @@ export async function fuseTsdfGpu(
                     },
                     groups,
                   ),
+                TSDF_CHUNKS,
               ),
               'carve',
               v,
@@ -628,19 +628,25 @@ export async function fuseTsdfGpu(
       const spareData = allocU32(TSDF_POINT_WORDS);
       const countControl = controlOf(volume, input, 0, passT - 1, box, extraOf(0, 0));
       await steps(
-        chunkedPass(device, 'tsdfExtract', voxels, (tsdfRange, groups) =>
-          tsdfExtract(
-            {
-              tsdfControl: countControl,
-              tsdfRange,
-              tsdfGrid,
-              tsdfTable: passTable,
-              tsdfVoxels,
-              tsdfPoints: spare,
-              tsdfPointData: spareData,
-            },
-            groups,
-          ),
+        chunkedPass(
+          device,
+          'tsdfExtract',
+          'tsdfExtract',
+          voxels,
+          (tsdfRange, groups) =>
+            tsdfExtract(
+              {
+                tsdfControl: countControl,
+                tsdfRange,
+                tsdfGrid,
+                tsdfTable: passTable,
+                tsdfVoxels,
+                tsdfPoints: spare,
+                tsdfPointData: spareData,
+              },
+              groups,
+            ),
+          TSDF_CHUNKS,
         ),
         'count',
         -1,
@@ -656,19 +662,25 @@ export async function fuseTsdfGpu(
         const tsdfPointData = allocU32(TSDF_POINT_WORDS * counted);
         const writeControl = controlOf(volume, input, 0, passT - 1, box, extraOf(1, counted));
         await steps(
-          chunkedPass(device, 'tsdfExtract', voxels, (tsdfRange, groups) =>
-            tsdfExtract(
-              {
-                tsdfControl: writeControl,
-                tsdfRange,
-                tsdfGrid,
-                tsdfTable: passTable,
-                tsdfVoxels,
-                tsdfPoints,
-                tsdfPointData,
-              },
-              groups,
-            ),
+          chunkedPass(
+            device,
+            'tsdfExtract',
+            'tsdfExtract',
+            voxels,
+            (tsdfRange, groups) =>
+              tsdfExtract(
+                {
+                  tsdfControl: writeControl,
+                  tsdfRange,
+                  tsdfGrid,
+                  tsdfTable: passTable,
+                  tsdfVoxels,
+                  tsdfPoints,
+                  tsdfPointData,
+                },
+                groups,
+              ),
+            TSDF_CHUNKS,
           ),
           'extract',
           -1,

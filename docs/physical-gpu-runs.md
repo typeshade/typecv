@@ -36,6 +36,7 @@ Run each row twice when the device was cold: the first pass compiles the kernels
 | 9   | ORB front end (#123, #127)                            | `?features=orb` and `?`                        | COLMAP south-building (12) and the pyramid | Registered views, feature and matching stage times                   |
 | 10  | Hough lines (#125, #128)                              | none in the lab; `scripts/benchmark-hough.mjs` | south-building frame 0                     | WebGPU total against the CPU reference (55 to 67 ms)                 |
 | 11  | Automatic focal (#162)                                | `?` (focal "Auto")                             | The pyramid video sample                   | Time to the first map, `result.focalSearch`, against `4a8aa2ff`      |
+| 12  | Hardware check: flavor (0085) and kernel families     | `/lab/check/` (Settings → Hardware check)      | None: the page builds its inputs           | `scripts/compare-hardware-check.mjs`: no `FAIL` row                  |
 
 ## Notes
 
@@ -47,3 +48,8 @@ Run each row twice when the device was cold: the first pass compiles the kernels
   through Playwright with the default adapter.
 - KLT step 7 (`docs/klt-tracking.md`) is the physical-device step of the KLT record. Row 8 is its
   first measurement.
+- Row 12 sends a hardware-check record, not a run record (`docs/lab-run-records.md`, "Hardware
+  check"). Type the device's model in the page's field first. Run it on each device you can reach,
+  the iPhone first, then row 1 in the same browser. `docs/library-structure.md`, section 7, item
+  11, decides whether its record on the RTX 5060 Ti is the run on the A1 device that the kernel
+  phases need (`docs/hardware-observations.md`, A1).

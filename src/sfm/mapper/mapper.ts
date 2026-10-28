@@ -1,14 +1,7 @@
 import { identityPose, projectPoint } from '../../geometry/pose.ts';
-import {
-  isInverseDepthTracker,
-  type InverseDepthTracking,
-  type InverseDepthSnapshot,
-} from '../depth/inverse-depth-tracker.ts';
-import {
-  depthTrackingInput,
-  publishDepth,
-  recordDeferredDepth,
-} from '../depth/depth-publication.ts';
+import type { InverseDepthTracking, InverseDepthSnapshot } from '../depth/inverse-depth-tracker.ts';
+import { drive } from '../protocol/drive.ts';
+import { withDepthStep } from '../protocol/depth-step.ts';
 import {
   verifyImagePair,
   type ImagePairVerification,
@@ -18,7 +11,6 @@ import { estimatePosePnP } from '../../geometry/pnp.ts';
 import { estimateRelativeRotation, type RelativeRotationOptions } from '../../geometry/rotation.ts';
 import {
   mergeTrackingPair,
-  trackingEvidence,
   type PairRotationEvidence,
   type ReconstructionTracking,
 } from '../tracks/tracking.ts';
@@ -45,10 +37,7 @@ import {
 import type { BundleAdjustmentPartition } from '../bundle/local-bundle.ts';
 import { pairSeed } from '../model/identity.ts';
 import { buildTracks, validateFeatures } from '../tracks/tracks.ts';
-import {
-  selectCameraObservations,
-  type CameraObservationSelection,
-} from '../tracks/observation-selection.ts';
+import type { CameraObservationSelection } from '../tracks/observation-selection.ts';
 import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import {
   applyFocal,
@@ -75,8 +64,25 @@ import {
 import { copyReconstruction } from '../model/copy.ts';
 import { imagePairHomographyIterations } from '../../geometry/operator-defaults.ts';
 import { MAPPER_DEFAULTS, bundleHuberPx } from '../config/defaults.ts';
-import { observationKey, pairKey } from '../../contracts/keys.ts';
+import { pairKey } from '../../contracts/keys.ts';
 import { TriangulationStatus } from '../../contracts/triangulation-status.ts';
+import {
+  fewLandmarksError,
+  maskedInput,
+  noSeedError,
+  pickSeed,
+  runTracking,
+} from './initialization.ts';
+import { indexTracks, resumeMap } from './track-index.ts';
+import {
+  pnpFailure,
+  rankViews,
+  retryAfterRecovery,
+  retryWaits,
+  tooFewCorrespondences,
+  type RegistrationFailure,
+} from './registration.ts';
+import { mapperResult } from './result.ts';
 
 /** @internal */
 export { judgePair } from '../pairs/pair-verdict.ts';
@@ -225,7 +231,7 @@ export interface IncrementalResult {
   readonly verifiedPairs?: readonly PairMatches[];
 }
 
-/** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
+/** Numerical requests shared by the synchronous reference and asynchronous device driver. */
 export type ReconstructionJob =
   | { kind: 'verifyPair'; args: Parameters<typeof verifyImagePair> }
   | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
@@ -399,38 +405,12 @@ function executeCpuMapper(
     controls: IncrementalOptions,
   ) => Generator<ReconstructionJob, IncrementalResult, unknown>,
 ): IncrementalResult {
-  const tracker = options.depthTracking;
-  if (tracker !== undefined && !isInverseDepthTracker(tracker))
-    throw new RangeError('Invalid depth tracker');
-  try {
-    const machine = create(tracker ? { ...options, onReconstruction: undefined } : options);
-    let step = machine.next();
-    while (!step.done) {
-      let result: unknown;
-      try {
-        result = executeReconstructionJob(step.value);
-      } catch (error) {
-        step = machine.throw(error);
-        continue;
-      }
-      step = machine.next(result);
-    }
-    if (!tracker) return step.value;
-    const result = publishDepth(
-      step.value,
-      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
-    );
-    options.onReconstruction?.(copyReconstruction(result.reconstruction));
-    return result;
-  } catch (error) {
-    if (tracker && error instanceof ReconstructionInitializationError)
-      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
-    throw error;
-  }
+  return withDepthStep(images, options, (controls) =>
+    drive(create(controls), executeReconstructionJob, 'pass'),
+  );
 }
 
-/** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
-export const MAX_REGISTRATION_ATTEMPTS = 3;
+export { MAX_REGISTRATION_ATTEMPTS } from './registration.ts';
 
 /** @internal Common control flow; drivers select numerical execution explicitly. */
 /**
@@ -463,7 +443,7 @@ export interface IncrementalControls {
   readonly stallTolerance: number;
 }
 
-/** @internal The model size at the last global BA, which the schedule compares the model to. */
+/** The model size at the last global BA, which the schedule compares the model to. */
 export interface BundleSchedule {
   views: number;
   points: number;
@@ -666,15 +646,9 @@ export function* incrementalSteps(
   /** @internal Explicit batch refinement may complete observations in already registered views. */
   completeRegisteredObservations = false,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
-  const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
+  const selected = maskedInput(images, inputPairs, options, { preVerified: true });
   inputPairs = selected.pairs;
-  if (selected.changedPairKeys.size)
-    options = {
-      ...options,
-      preVerified: options.preVerified?.filter(
-        (p) => !selected.changedPairKeys.has(pairKey(p.verified.first, p.verified.second)),
-      ),
-    };
+  options = selected.options;
   const search = focalSearchControls(options.focalSearch);
   if (search && !resume) {
     incrementalControls(images, inputPairs, options);
@@ -687,6 +661,7 @@ export function* incrementalSteps(
         search,
         false,
         minimumFocalViews,
+        incrementalSteps,
       );
     } catch (error) {
       if (error instanceof ReconstructionInitializationError && selected.selection)
@@ -735,58 +710,26 @@ export function* incrementalSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates, trackingPairs, rotations } = yield* verifyPairs(
+  const verification = yield* verifyPairs(
     byId,
     inputPairs,
     controls,
     preVerifiedByKey(inputPairs, options.preVerified),
   );
-  const initial = options.initialPair
-    ? candidates.find(
-        (c) =>
-          (c.pair.first === options.initialPair![0] && c.pair.second === options.initialPair![1]) ||
-          (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
-      )
-    : candidates[0];
+  const { verified, diagnostics, candidates, trackingPairs } = verification;
+  const initial = pickSeed(candidates, options.initialPair);
   if (!initial && !resume)
-    throw new ReconstructionInitializationError(
-      diagnostics,
-      undefined,
-      undefined,
-      keepTracking
-        ? trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            buildTracks(images, controls.rotationTracking ? trackingPairs : verified).tracks,
-          )
-        : undefined,
-      selected.selection,
-    );
+    throw noSeedError(images, controls, verification, keepTracking, selected.selection);
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
   const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
-  // Per-view index of the track graph: which tracks a view observes, through which feature.
-  const viewTracks = new Map<number, { trackId: number; featureId: number }[]>(),
-    trackOfObservation = new Map<string, number>();
-  for (const view of images) viewTracks.set(view.id, []);
-  for (const track of graph.tracks)
-    for (const o of track.observations) {
-      viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
-      trackOfObservation.set(observationKey(o.viewId, o.featureId), track.id);
-    }
-  const pixelOf = (viewId: number, featureId: number): [number, number] => {
-    const k = byId.get(viewId)!.keypoints;
-    return [k[2 * featureId]!, k[2 * featureId + 1]!];
-  };
+  const { viewTracks, trackOfObservation, pixelOf } = indexTracks(images, graph.tracks, byId);
 
   // Mutable map state. Landmarks persist across registrations and are keyed by track.
-  const views: RegisteredView[] = resume
-    ? resume.views.map((v) => ({
-        ...v,
-        camera: { ...v.camera },
-        pose: { R: v.pose.R.slice(), t: v.pose.t.slice() },
-      }))
+  const resumed = resume ? resumeMap(resume, trackOfObservation) : undefined;
+  const views: RegisteredView[] = resumed
+    ? resumed.views
     : [
         { id: first.id, camera: { ...first.camera }, pose: identityPose() },
         {
@@ -796,28 +739,9 @@ export function* incrementalSteps(
         },
       ];
   const registered = new Map(views.map((v) => [v.id, v])),
-    landmarks = new Map<number, Landmark>(),
+    landmarks = resumed?.landmarks ?? new Map<number, Landmark>(),
     // Track id -> registered view count when triangulation last failed or the landmark was dropped.
     triedAt = new Map<number, number>();
-  if (resume)
-    for (const point of resume.landmarks) {
-      // Track ids are rebuilt from the current edges; adopt a landmark through its observations.
-      const trackId = point.observations
-        .map((o) => trackOfObservation.get(observationKey(o.viewId, o.featureId)))
-        .find((id) => id !== undefined);
-      if (trackId === undefined) continue;
-      const observations = point.observations.filter(
-        (o) =>
-          registered.has(o.viewId) &&
-          trackOfObservation.get(observationKey(o.viewId, o.featureId)) === trackId,
-      );
-      const existing = landmarks.get(trackId);
-      if (
-        observations.length >= 2 &&
-        (!existing || existing.observations.length < observations.length)
-      )
-        landmarks.set(trackId, { trackId, xyz: point.xyz.slice(), observations });
-    }
   const model = (): SparseReconstruction => ({ views, landmarks: [...landmarks.values()] });
   const publish = () => options.onReconstruction?.(copyReconstruction(model()));
   const order = views.map((view) => view.id),
@@ -1020,38 +944,27 @@ export function* incrementalSteps(
     for (const view of views) yield* continueTracks(view.id);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (landmarks.size < minInitial)
-    throw new ReconstructionInitializationError(
-      diagnostics,
-      'Initial tracks did not produce enough reliable landmarks',
-      undefined,
-      keepTracking
-        ? trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            graph.tracks,
-            [],
-            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
-          )
-        : undefined,
+    throw fewLandmarksError(
+      controls,
+      verification,
+      graph.tracks,
+      keepTracking,
+      depthDeferred,
       selected.selection,
     );
   if (!resume) yield* adjust(bundleIterations);
   publish();
-  const failure = new Map<number, { reason: string; at: number; attempts: number }>();
+  const failure = new Map<number, RegistrationFailure>();
   // Map size at which a recovery pass (global retriangulation and refinement) last ran.
   let recoveredAt = -1;
   /** Unregistered views with the landmarks their tracks reach, the best supported first. */
   const rank = () =>
-    images
-      .filter((v) => !registered.has(v.id))
-      .map((view) => ({
-        view,
-        correspondences: viewTracks.get(view.id)!.flatMap((entry) => {
-          const point = landmarks.get(entry.trackId);
-          return point ? [{ featureId: entry.featureId, point }] : [];
-        }),
-      }))
-      .sort((a, b) => b.correspondences.length - a.correspondences.length || a.view.id - b.view.id);
+    rankViews(
+      images,
+      (id) => registered.has(id),
+      viewTracks,
+      (trackId) => landmarks.get(trackId),
+    );
   const estimatePose = function* (
     view: ImageFeatures,
     correspondences: readonly { featureId: number; point: Landmark }[],
@@ -1136,29 +1049,20 @@ export function* incrementalSteps(
     for (const { view, correspondences } of support) {
       const previous = failure.get(view.id);
       if (correspondences.length < minPnP) {
-        failure.set(view.id, {
-          reason: `Only ${correspondences.length} 2D–3D correspondences; need ${minPnP}`,
-          at: views.length,
-          attempts: previous?.attempts ?? 0,
-        });
+        failure.set(
+          view.id,
+          tooFewCorrespondences(correspondences.length, minPnP, views.length, previous),
+        );
         continue;
       }
       // Retry a failed registration once per map growth, a bounded number of times.
-      if (
-        previous &&
-        (previous.at === views.length || previous.attempts >= MAX_REGISTRATION_ATTEMPTS)
-      )
-        continue;
+      if (retryWaits(previous, views.length)) continue;
       let pose: ReturnType<typeof estimatePosePnP>;
       try {
         pose = yield* estimatePose(view, correspondences, minPnP);
       } catch (error) {
         if (error instanceof ReconstructionOperationError) throw error;
-        failure.set(view.id, {
-          reason: (error as Error).message,
-          at: views.length,
-          attempts: (previous?.attempts ?? 0) + 1,
-        });
+        failure.set(view.id, pnpFailure(error, views.length, previous));
         continue;
       }
       yield* addView(view, pose.pose);
@@ -1178,7 +1082,7 @@ export function* incrementalSteps(
     yield* triangulate(graph.tracks.map((track) => track.id));
     yield* adjust(bundleIterations);
     publish();
-    for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
+    retryAfterRecovery(failure);
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(
@@ -1214,36 +1118,28 @@ export function* incrementalSteps(
     meanErrorPx = finalEvaluation.meanErrorPx;
   }
   publish();
-  return {
-    ...(selected.selection ? { observationSelection: selected.selection } : {}),
+  return mapperResult({
+    selection: selected.selection,
     reconstruction: finalModel,
-    tracks: graph.tracks,
-    unregistered: images
-      .filter((v) => !registered.has(v.id))
-      .map((v) => ({
-        viewId: v.id,
-        reason: failure.get(v.id)?.reason ?? 'Disconnected from reconstructed tracks',
-      })),
-    diagnostics: {
-      initialPair: [first.id, second.id],
-      pairVerification: diagnostics,
-      conflictingTrackEdges: graph.conflictingEdges,
-      registrationOrder: order,
-      bundleAdjustments: bundleReports,
-      ...(bundlePartitions.length ? { bundlePartitions } : {}),
-      meanReprojectionErrorPx: meanErrorPx,
-    },
+    graph,
+    images,
+    registered: (id) => registered.has(id),
+    failure,
+    initialPair: [first.id, second.id],
+    pairVerification: diagnostics,
+    registrationOrder: order,
+    bundleAdjustments: bundleReports,
+    bundlePartitions,
+    meanReprojectionErrorPx: meanErrorPx,
+    tracking: keepTracking
+      ? runTracking(
+          controls,
+          verification,
+          graph.tracks,
+          finalModel.landmarks.map((p) => p.trackId),
+          depthDeferred,
+        )
+      : undefined,
     verifiedPairs: verified,
-    ...(keepTracking
-      ? {
-          tracking: trackingEvidence(
-            controls.rotationTracking ? trackingPairs : verified,
-            rotations,
-            graph.tracks,
-            finalModel.landmarks.map((p) => p.trackId),
-            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
-          ),
-        }
-      : {}),
-  };
+  });
 }

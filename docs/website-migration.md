@@ -5,7 +5,8 @@ site, the TypeCV lab and playground, website tests, record and sample operations
 Cloudflare deployment. This repository now contains the TypeCV library, its documentation and
 examples, library tests, build, and package release configuration.
 
-The removal is based on TypeCV revision `db7216a4d0d763996b677bbf27deb0f3913c930c`. The application
+The removal is based on TypeCV revision `db7216a4d0d763996b677bbf27deb0f3913c930c` and
+reconciled with library changes through `715fd1b694508014315e1a505aa2c970051a7f3a`. The application
 source and site tests were migrated into `web/apps/typecv`; the source checkout no longer needs the
 Astro plugin to format library files. Record and sample workflows, Wrangler configuration, and
 site-only deployment scripts moved with the application. The library CI retains all three
@@ -25,12 +26,13 @@ remaining configuration checks.
 
 ## Validation
 
-- `npm ci`, formatting, TypeScript checks and the library build passed.
-- `npm test`: 440 tests passed; `npm run test:surface`: 4 tests passed.
-- The shard assignment check passed and all three library WebGPU shards remain in CI.
+- At the reconciled `715fd1b694508014315e1a505aa2c970051a7f3a` base, `npm run format:check`,
+  `npm run typecheck`, `npm test` (477/477), `npm run build`, and `npm run test:surface` (6/6)
+  passed. `npm pack --dry-run` passed and the tarball contains no `website/` paths. The corresponding
+  app record and hardware-check tests passed 24/24 in Chromium on SwiftShader.
+- The shard assignment check passed and all three library WebGPU shards remain in CI. The updated digest declaration guard from the merged base is preserved.
 - The global-descriptor metadata move preserves all 248 serialized frames exactly. Retained
   dependency versions are unchanged; the lockfile removes 91 site-only entries.
-- `npm pack --dry-run` passed and includes no `website/` paths.
 - `test:shade` was still executing its existing CPU-intensive MVS/TSDF cases when the shared
   execution server lost the session. Its final output and exit status could not be recovered;
   it is not recorded as a pass. The full required suite remains enabled in CI.

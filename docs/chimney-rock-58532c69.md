@@ -236,8 +236,15 @@ The owner decides. Each needs its own record.
    triangulation-angle gate in image terms (disparity) during the search. Then a focal is not
    rewarded for passing more tracks through the 0.5° gate. Choose the calibration subset by
    parallax and rotation, not by input order.
+   **Implemented (#267) for the score**, with the common observation set
+   (`docs/auto-focal.md`, section 10). On the exported tracks the search now gives 1.107 (was
+   0.343) and the final 47-view map 1.021 (was 0.356). The subset selection stays open
+   (`docs/auto-focal.md` 10.6, item 1).
 2. The final calibration. When the grid winner is a boundary, rebuild the observations at each
    restart focal. Do not reuse the map built at the boundary focal.
+   **Implemented (#267)** (`docs/auto-focal.md` 10.3, item 3). A CPU replay of the final solve on
+   the exported map, with the seeds 0.5835, 0.918 and 2.807, ends at 0.967 (mean error 0.227 px)
+   with the rebuild and at 0.640 (0.678 px) with the reuse (`docs/auto-focal.md` 10.4).
 3. The matching reach of one video. Today a keyframe meets distant keyframes directly only through
    the window's long-baseline reference, and never beyond the 32-view window. Keep descriptors, or
    a retrieval index, for more keyframes, so that distant keyframes are matched directly. Measure
@@ -308,3 +315,5 @@ the session window to the keyframe times of the export.
   listed as not analysed. The labels, the search settings of 3.1 and the pixel sets of the thirds
   are stated. The median-filtered normal now leaves out zero depths: 46.6° became 45.9°. The
   sweeps now pass the views in time order, and no number of 3.1 or 3.5 changed.
+- 2026-10-27: candidates 1 (the score) and 2 of section 5 marked implemented (#267). Sections 3
+  and 4 are not changed: they describe `5e1c95c`.

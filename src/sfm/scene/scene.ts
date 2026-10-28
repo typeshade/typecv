@@ -1,5 +1,6 @@
 import { validateCamera } from '../../geometry/camera.ts';
 import type { Camera, Pose } from '../../contracts/camera.ts';
+import { cameraRecord, poseRecord } from '../../contracts/camera-record.ts';
 import { validatePose } from '../../geometry/pose.ts';
 import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 
@@ -123,15 +124,11 @@ export class HostScene {
   }
   setPose(index: number, pose: Pose): void {
     this.checkCamera(index);
-    this.cameraPoses.set(pose.R, index * POSE_STRIDE);
-    this.cameraPoses.set(pose.t, index * POSE_STRIDE + 9);
+    this.cameraPoses.set(poseRecord(pose), index * POSE_STRIDE);
   }
   setCamera(index: number, camera: Camera): void {
     this.checkCamera(index);
-    this.cameraModels.set(
-      [camera.fx, camera.fy, camera.cx, camera.cy, camera.k1 ?? 0, camera.k2 ?? 0],
-      index * MODEL_STRIDE,
-    );
+    this.cameraModels.set(cameraRecord(camera), index * MODEL_STRIDE);
   }
   /** A copy of a camera's pose. */
   pose(index: number): Pose {

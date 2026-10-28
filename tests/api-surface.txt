@@ -3145,7 +3145,7 @@ function voxelDownsampleGpu(device: ShadeDevice, cloud: CleanCloud, options?: Vo
 -- wordHistogram
 function wordHistogram(assigned: ArrayLike<number>, words?: number): Uint32Array;
 
-== typecv/gpu: 60 declarations that the names reference
+== typecv/gpu: 67 declarations that the names reference
 
 -- AnchoredInverseDepth
 interface AnchoredInverseDepth {
@@ -3260,6 +3260,15 @@ interface DepthTrackingResult {
     readonly reconstruction?: SparseReconstruction;
     readonly snapshot: InverseDepthSnapshot;
 }
+
+-- DetailedTrackTriangulation
+type DetailedTrackTriangulation = {
+    readonly status: 0;
+    readonly track: TrackTriangulation;
+} | {
+    readonly status: 1 | 3 | 4 | 5;
+    readonly track?: undefined;
+};
 
 -- FeatureObservation
 interface FeatureObservation {
@@ -3579,6 +3588,29 @@ interface PreVerifiedPair {
     readonly rejected?: boolean;
 }
 
+-- ReconstructionJob
+type ReconstructionJob = {
+    kind: 'verifyPair';
+    args: Parameters<typeof verifyImagePair>;
+} | {
+    kind: 'pnp';
+    args: Parameters<typeof estimatePosePnP>;
+} | {
+    kind: 'triangulation';
+    observations: readonly (readonly TriangulationObservation[])[];
+    options: Parameters<typeof triangulateTrackDetailed>[1];
+    trackIds: readonly number[];
+} | {
+    kind: 'bundle';
+    args: Parameters<typeof bundleAdjust>;
+} | {
+    kind: 'observations';
+    model: SparseReconstruction;
+    maxError: number;
+    depth?: DepthSensitivityOptions;
+    stage: 'continuation' | 'filter' | 'measure' | 'final';
+};
+
 -- ReconstructionTracking
 interface ReconstructionTracking {
     readonly pairs: readonly PairMatches[];
@@ -3632,6 +3664,13 @@ interface TrackTriangulation {
     readonly inliers: Uint8Array;
     readonly maxAngleDeg: number;
     readonly meanErrorPx: number;
+}
+
+-- TrackTriangulationOptions
+interface TrackTriangulationOptions extends DepthSensitivityOptions {
+    readonly maxErrorPx?: number;
+    readonly minAngleDeg?: number;
+    readonly maxPairHypotheses?: number;
 }
 
 -- TriangulationObservation
@@ -3700,5 +3739,17 @@ interface TwoViewResult {
     readonly meanReprojectionErrorPx: number;
 }
 
+-- bundleAdjust
+function bundleAdjust(input: SparseReconstruction, options?: BundleAdjustmentOptions): BundleAdjustmentResult;
+
 -- createKltPairCache
 function createKltPairCache(device: ShadeDevice, options?: KltPairCacheOptions): KltPairCache;
+
+-- estimatePosePnP
+function estimatePosePnP(worldPoints: Float64Array, pixels: Float64Array, camera: Camera, options?: PnPOptions): PnPResult;
+
+-- triangulateTrackDetailed
+function triangulateTrackDetailed(observations: readonly TriangulationObservation[], options?: TrackTriangulationOptions): DetailedTrackTriangulation;
+
+-- verifyImagePair
+function verifyImagePair(matches: Float64Array, first: Camera, second: Camera, options?: ImagePairOptions): ImagePairVerification;
