@@ -43,7 +43,7 @@ const joinFile = '/tmp/typecv-structure-quality-klt-join.mjs';
 await writeFile(
   joinFile,
   (
-    await transform(await readFile('website/src/lib/klt-join.ts', 'utf8'), {
+    await transform(await readFile('tests/fixtures/lab-helpers/klt-join.ts', 'utf8'), {
       loader: 'ts',
       format: 'esm',
       target: 'es2022',
@@ -415,7 +415,7 @@ const report = {
         'src/sfm/gpu/mapper.ts',
         'src/geometry/gpu/triangulation.shade.ts',
         'src/geometry/gpu/observations.ts',
-        'website/src/lib/klt-join.ts',
+        'tests/fixtures/lab-helpers/klt-join.ts',
         'dist/gpu/index.js',
       ].map(async (p) => [p, sha(await readFile(p))]),
     ),

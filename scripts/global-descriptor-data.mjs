@@ -5,17 +5,18 @@
  *   node scripts/global-descriptor-data.mjs download <work-dir>
  *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n] [--training]
  *
- * `download` fetches the sample frames that the catalog (`website/public/sample/index.json`) lists
+ * `download` fetches the sample frames that the frozen catalog fixture (`tests/fixtures/global-descriptor/catalog.json`) lists
  * from original videos at https://cv.typeshade.dev/sample/<id>/source.mp4 with curl and ffmpeg. `extract` runs the SIFT of the
  * CPU tier (`extractSiftGpuResident`, RootSIFT, at most 4096 features) on each frame and writes
  * `<work-dir>/features/<id>/frame-NN.sift`: a u32 count, then 2 f32 per keypoint (x, y), then
  * 128 f32 per descriptor. It needs `npm run build`, curl and ffmpeg (JPEG to RGBA).
  *
  * Which frames: every photo of the photo samples, every third frame (`TEST_STRIDE`) of the 15
- * videos of the Chimney Rock test set (`set` in `website/samples/remote-videos.json`), and every
+ * videos of the Chimney Rock test set (`set` in `tests/fixtures/global-descriptor/remote-videos.json`), and every
  * fourth frame (`SAMPLE_STRIDE`) of the other video samples. The strides keep the exhaustive
  * matching of the recall measurement to some thousand pairs and the SIFT of the CPU tier to
- * about an hour.
+ * about an hour. The catalog and video manifest are frozen from TypeCV revision db7216a; see
+ * tests/fixtures/global-descriptor/README.md.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,9 +31,11 @@ export const VIDEO_FOCAL = 0.8;
 
 /** Every frame of every video and photo sample: `{ id, kind, index, width, height, set, group, camera }`. */
 export function listFrames() {
-  const catalog = JSON.parse(readFileSync(join(root, 'website/public/sample/index.json'), 'utf8'));
+  const catalog = JSON.parse(
+    readFileSync(join(root, 'tests/fixtures/global-descriptor/catalog.json'), 'utf8'),
+  );
   const manifest = JSON.parse(
-    readFileSync(join(root, 'website/samples/remote-videos.json'), 'utf8'),
+    readFileSync(join(root, 'tests/fixtures/global-descriptor/remote-videos.json'), 'utf8'),
   );
   const labels = new Map(manifest.videos.map((v) => [v.id, v]));
   const frames = [];

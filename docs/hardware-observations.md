@@ -2,8 +2,7 @@
 
 The SfM lab at `/lab/`, the triangulation probe at `/lab/probe/` and the hardware check at
 `/lab/check/` run TypeCV's GPU pipeline in the visitor's browser. With the visitor's consent, each
-run sends one record to the site's collector (`docs/lab-run-records.md`). The **Export lab run
-records** workflow (`.github/workflows/lab-records.yml`) reads the records back ("Reading the
+run sends one record to the site's collector (`docs/lab-run-records.md`). The **Export TypeCV lab run records** workflow (`web/.github/workflows/typecv-lab-records.yml`) reads the records back ("Reading the
 records" in that document).
 
 This document is the digest of those records by device. It covers the owner's two devices,
@@ -350,7 +349,7 @@ bound of its family's test, its times and any device loss. To record an observat
 1. Export the record. Run the **Export lab run records** workflow with the input `record` set to
    the record's id.
 2. Read the comparison in the job summary of that run. Or, on a checkout, run
-   `node scripts/compare-hardware-check.mjs --record lab-records/<id>.json`. Add
+   `node web/apps/typecv/scripts/compare-hardware-check.mjs --record lab-records/<id>.json`. Add
    `--against lab-records/<earlier id>.json` when the observation is about a change on that
    device.
 3. Find the section of the device: A for the NVIDIA Blackwell, B for the iPhone. For another

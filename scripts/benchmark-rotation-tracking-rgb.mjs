@@ -50,7 +50,7 @@ for (const scenario of ['translation', 'rotation', 'rotation-zoom']) {
 const pyramid = [];
 for (let id = 0; id < 8; id++) {
   const bytes = await readFile(
-    resolve('website/public/sample/pyramid', `frame-${String(id).padStart(2, '0')}.jpg`),
+    resolve('tests/fixtures/lab-images/pyramid', `frame-${String(id).padStart(2, '0')}.jpg`),
   );
   pyramid.push({ id, png: bytes.toString('base64'), sha256: sha(bytes), mime: 'image/jpeg' });
 }

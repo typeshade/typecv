@@ -10,7 +10,7 @@ import json, sys, os, math
 import numpy as np
 from PIL import Image
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "website", "public", "sample")
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tests", "fixtures", "lab-images")
 rng = np.random.default_rng(1)
 
 

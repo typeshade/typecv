@@ -1,4 +1,4 @@
-// The import graph of `src/` and `website/src/`: the runtime import cycles, the cycles that
+// The import graph of `src/`: the runtime import cycles, the cycles that
 // type-only imports add, and the imports that break the layering rule of
 // docs/library-structure.md, section 3.1 (phase 0 of section 5).
 //
@@ -7,8 +7,7 @@
 //
 // An import is an `import` or `export … from` declaration, a dynamic `import()` of a string
 // literal, or an `import('…')` type, whose relative specifier names a file under `src/` or
-// `website/src/`. A `.astro` file contributes the imports of its frontmatter and of its inline
-// scripts. A specifier resolves as written, then with `.ts`, `.tsx` or `/index.ts` added. A
+// A specifier resolves as written, then with `.ts`, `.tsx` or `/index.ts` added. A
 // relative specifier that names no file is reported as unresolved, and the command exits 1.
 //
 // An import is type-only when TypeScript and esbuild erase it from the emitted module: `import
@@ -34,7 +33,7 @@ import { dirname, join, sep } from 'node:path';
 import ts from 'typescript';
 
 const ROOT = join(import.meta.dirname, '..');
-const TREES = ['src', 'website/src'];
+const TREES = ['src'];
 
 /** The areas of section 3.1, each with its level: an area imports only the areas below it. */
 export const LEVELS = Object.freeze({
@@ -98,7 +97,7 @@ export function areaOf(file, root = ROOT) {
   return target === undefined ? undefined : areaOf(target, root);
 }
 
-/** The source files of the two trees, relative to `root`, with `/`, sorted. */
+/** The source files under `src/`, relative to `root`, with `/`, sorted. */
 export function sourceFiles(root = ROOT) {
   const files = [];
   const walk = (directory) => {
@@ -106,7 +105,7 @@ export function sourceFiles(root = ROOT) {
       const path = `${directory}/${entry.name}`;
       if (entry.isDirectory()) walk(path);
       // A generated host view (`*.shade.typeshade.ts`) exists only during a build.
-      else if (/\.(tsx?|mts|astro)$/.test(entry.name) && !/\.(d|typeshade)\.m?ts$/.test(entry.name))
+      else if (/\.(tsx?|mts)$/.test(entry.name) && !/\.(d|typeshade)\.m?ts$/.test(entry.name))
         files.push(path);
     }
   };
@@ -114,21 +113,11 @@ export function sourceFiles(root = ROOT) {
   return files.sort();
 }
 
-/** The TypeScript of a `.astro` file: its frontmatter and its inline scripts. */
-function astroScripts(text) {
-  const parts = [];
-  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (front) parts.push(front[1]);
-  for (const match of text.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g))
-    if (!/\ssrc=/.test(match[1] ?? '')) parts.push(match[2]);
-  return parts.join('\n');
-}
-
 /** The imports a file writes: specifier, type-only, form and line. */
 export function importsOf(file, text) {
   const source = ts.createSourceFile(
     file,
-    file.endsWith('.astro') ? astroScripts(text) : text,
+    text,
     ts.ScriptTarget.Latest,
     true,
     file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
@@ -320,7 +309,7 @@ export function report(root = ROOT) {
 export function formatReport(result) {
   const kind = (found) => (found.typeOnly ? 'type-only' : 'runtime  ');
   const lines = [
-    'Import graph of src/ and website/src/ (docs/library-structure.md, section 3.1)',
+    'Import graph of src/ (docs/library-structure.md, section 3.1)',
     `${result.files} files, ${result.imports} imports, ${result.runtimeImports} of them at run time`,
     '',
     `Runtime import cycles: ${result.runtimeCycles.length}`,

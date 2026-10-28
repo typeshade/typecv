@@ -8,6 +8,13 @@ or fails; selected after a run, the **Send record** button sends it.
 [Hardware observations](hardware-observations.md) gathers what these records showed on each of
 the owner's devices, with the remedy of each observation.
 
+This document records the collector and the measurements that use it. Current application source
+and operations are owned by [`typeshade/web`](https://github.com/typeshade/web): the Worker and
+scripts are under `apps/typecv/`, and production workflows are under `.github/workflows/`.
+Implementation paths in the historical sections refer to the TypeCV source revision that was
+measured. For current deployment and record operations, use the web repository paths in Setup and
+Reading the records below.
+
 ## What a record holds
 
 `website/src/lib/run-record/` defines the record (`typecv-run-record-v6`) and its validator:
@@ -223,8 +230,9 @@ validator.
 ## Video-only examples (2026-10-23)
 
 The lab now lists original video examples and saved results. The earlier `pyramid` eight-JPEG
-entry and the calibrated photograph entries were removed. Image regression data is under
-`tests/fixtures/lab-images`, outside the public site. All video examples require a readable,
+entry and the calibrated photograph entries were removed. Library regression data remains under
+`tests/fixtures/lab-images`; the app-hosted samples and sample manifest are under
+`web/apps/typecv/fixtures/` and `web/apps/typecv/samples/`. All video examples require a readable,
 decodable source video; failure is reported instead of substituting JPEG frames. Thumbnails
 are display-only. The default analysis edge is 1280 px, and the source is decoded at the edge
 selected for each run. A current video sample record therefore has `options.videoSource: 'source'`;
@@ -415,8 +423,8 @@ The lab's two **COLMAP south-building** buttons load twelve photographs of the
 [COLMAP demo dataset](https://demuc.de/colmap/datasets/) south-building (image credit
 Christopher Zach), resized to 640 × 480, with the dataset's refined intrinsics scaled to
 that size and the poses of its bundled sparse model
-(`tests/fixtures/lab-images/south-building/`, derived by
-`scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
+(`web/apps/typecv/fixtures/lab-images/south-building/`, derived by
+`apps/typecv/scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
 on the photographs with the lab's front end, scale-space SIFT
 (`extractSiftGpuResident`) and the tiled L2 matcher with a 0.8 ratio test, and the
 calibrated intrinsics held fixed (`PHOTO_PROFILE` in `lib/lab-options.ts`). The second feeds the dataset's own SIFT keypoints and raw matches
@@ -1079,27 +1087,28 @@ button. There is no separate record-only or files-only opt-in.
 
 ## Setup
 
-The deploy workflow (`.github/workflows/deploy.yml`) runs `scripts/ensure-run-records.mjs`
-before `wrangler deploy`. The script lists the account's KV namespaces with the deploy
-token, creates `typecv-records` when it is missing, writes the namespace id into
-`wrangler.jsonc` for that deploy, and stores the `RECORDS_READ_TOKEN` Actions secret as
-the Worker's secret when the repository has one. The deploy token
-(`CLOUDFLARE_API_TOKEN`) needs **Workers KV Storage: Edit** for this; without it the
-script removes the binding, warns, and the site deploys with the collector answering 503. `scripts/setup-run-records.ps1` does the same steps by hand from the owner's
-machine. The read routes stay closed until a `RECORDS_READ_TOKEN` secret exists.
+TypeCV production deployment is owned by `typeshade/web/.github/workflows/deploy.yml`, gated by
+`WEBSITE_OPERATIONS_ENABLED` and the `typecv-production` environment. The workflow validates
+`CLOUDFLARE_API_TOKEN` and `RECORDS_READ_TOKEN` before provisioning or deploying; either missing
+secret stops the deployment. In `web/apps/typecv/`, `scripts/ensure-run-records.mjs` binds the
+existing `typecv-records` KV namespace and stores the required read token as a Worker secret.
+`CLOUDFLARE_API_TOKEN` needs **Workers KV Storage: Edit**. The script refuses to replace a namespace
+if listing fails, and any namespace or secret setup failure stops the deployment. The old
+`setup-run-records.ps1` manual workflow is retired.
 
-The result files need the private R2 bucket `typecv-records`. The deploy runs
-`scripts/ensure-record-files-bucket.mjs`, which creates the bucket and keeps the `RECORD_FILES`
-binding of `wrangler.jsonc`. The token needs **Workers R2 Storage: Edit**, as it does for
-`typecv-samples`. Without it the script removes the binding, the file routes answer 503, and the
-lab disables the box. The bucket is separate from the public `typecv-samples` and has no public
-access.
+The same deployment runs `apps/typecv/scripts/ensure-samples-bucket.mjs` and
+`apps/typecv/scripts/ensure-record-files-bucket.mjs` for the public `typecv-samples` bucket and
+private `typecv-records` bucket, then validates that both bindings are present before deploying.
+Each helper can remove its binding if R2 access is unavailable, but the production workflow then
+fails validation and does not deploy. The token needs **Workers R2 Storage: Edit** for both buckets.
+The private result-file bucket is separate from the public sample bucket and has no public access.
 
 ## Reading the records
 
-The **Export lab run records** workflow (`.github/workflows/lab-records.yml`, run by
-hand from the Actions tab or by an agent through the API) reads the KV namespace with
-the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
+The **Export TypeCV lab run records** workflow (`web/.github/workflows/typecv-lab-records.yml`)
+can be run by hand from Actions when `WEBSITE_OPERATIONS_ENABLED` is true on `main`. It reads the
+KV namespace with the `typecv-production` environment's `CLOUDFLARE_API_TOKEN`
+(`web/apps/typecv/scripts/export-run-records.mjs`, the Cloudflare
 REST API) and needs no read token. It prints one summary line per record to the job
 log, prints the failed runs in full (`print: all` prints every record), and uploads the
 JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 or later record
@@ -1149,8 +1158,9 @@ visitor's note), the browser, the commit of the comparison and its result. For e
 check `<id>` (site `<commit>`, NVIDIA `blackwell`, "RTX 5060 Ti", Chrome 155 on Windows; compared
 at `<commit>` against `<earlier id>`): 40 rows, 0 FAIL. The table goes into the pull request.
 
-`scripts/fetch-record-files.mjs` fetches and checks the result files of an exported record, and
-`scripts/analyze-record.py` analyses them offline (`docs/chimney-rock-58532c69.md`).
+`web/apps/typecv/scripts/fetch-record-files.mjs` fetches and checks the result files of an exported
+record, and `web/apps/typecv/scripts/analyze-record.py` analyses them offline
+([archived analysis](chimney-rock-58532c69.md)). Run these commands from `web/apps/typecv/`.
 
 With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
 

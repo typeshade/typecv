@@ -944,10 +944,10 @@ propagation carries it to the neighbours. The test holds the bounds of "Step 3 r
 
 ### 7.3 TUM against ground-truth depth (lab, needs a data change)
 
-The TUM sample (`tests/fixtures/lab-images/tum-fr3-structure-texture-far/`) has 16 frames at
+The TUM sample (`web/apps/typecv/fixtures/lab-images/tum-fr3-structure-texture-far/`) has 16 frames at
 640 × 480 and motion-capture poses. Its README states that the depth maps are not included.
 
-The data change: `scripts/prepare-lab-tum-sample.py` gains a `--depth` option. It copies the
+The data change: `apps/typecv/scripts/prepare-lab-tum-sample.py` gains a `--depth` option. It copies the
 depth image nearest in time to each frame (`depth.txt` of the sequence) as
 `depth-NN.png`, 16-bit, 640 × 480, depth = value / 5000 m. Raw, a frame is 614,400 B and 16
 frames are 9.8 MB. The PNG size is not measured. The TUM file-format page states that the
@@ -999,20 +999,20 @@ valid, and a dense point count at least 25 % of COLMAP's fused count.
 Each step is one pull request, in this order. Each names this document on a line of its own
 in its commits.
 
-| Step | Pull request content                                                                                                                       | What it proves                                                                                                                        |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Step | Pull request content                                                                                                                           | What it proves                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | `src/mvs/gpu/mvs-views.ts`: view selection, depth ranges, seeds, normalization. `tests/mvs-views.test.ts`. The COLMAP defaults of 3.7 checked. | Source lists of gerrard-hall from the dataset's features are stable. The defaults in this document are right.                         |
-| 2    | `mvsUndistort`, `mvsInitialize`, `mvsSeed`, `mvsPropagate` (photometric) on one reference, CPU tier. `tests/typeshade/mvs.test.mjs`.       | Photometric accuracy on the synthetic scene. Chunk invariance. The defaults of iterations, window step and bilateral weights.         |
-| 3    | The chunk keys and `warm` steps. `tests/typeshade/mvs-webgpu.test.mjs`.                                                                    | WebGPU agrees with the CPU tier. The SwiftShader rate of each key.                                                                    |
-| 4    | The geometric pass and `mvsFilter`.                                                                                                        | The error tail shrinks. Reference order changes no result.                                                                            |
-| 5    | Fusion, `mvsFuseFlags`, the scan, `mvsScatterPoints`, colors. `reconstructDenseGpu` and its export.                                        | Point accuracy and the duplicate count on the synthetic scene. The memory formula of 4.2.                                             |
-| 6    | The worker: `dense`, the kept RGBA, the messages of 5.3, cancel, the run record v5.                                                        | A lab run on gerrard-hall posts depth maps and points without a block of the page. `liveBytes` before the MVS.                        |
-| 7    | The viewer and the page: the dense cloud, the switch, the point budget, binary PLY.                                                        | The page shows 10^5 to 10^6 points. The PLY loads in a standard reader.                                                               |
-| 8    | TUM depth maps in the sample and `--depth` in `scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                                  | Depth accuracy against independent ground truth.                                                                                      |
-| 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                       | Agreement with COLMAP's dense output on the COLMAP samples.                                                                           |
-| 10   | Physical-device runs and the gate rows of 7.5.                                                                                             | No device loss on devices A and B. The physical rates.                                                                                |
-| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                         | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                              |
-| 12   | The mesh of 3.13: `meshDenseCloud`, `meshDenseCloudGpu`, the lab switch, the mesh PLY and `dense.mesh` in the run record.                  | A sphere and a plane mesh within half a voxel, the sphere closed. The device equals the CPU reference. A lab cloud meshes in seconds. |
+| 2    | `mvsUndistort`, `mvsInitialize`, `mvsSeed`, `mvsPropagate` (photometric) on one reference, CPU tier. `tests/typeshade/mvs.test.mjs`.           | Photometric accuracy on the synthetic scene. Chunk invariance. The defaults of iterations, window step and bilateral weights.         |
+| 3    | The chunk keys and `warm` steps. `tests/typeshade/mvs-webgpu.test.mjs`.                                                                        | WebGPU agrees with the CPU tier. The SwiftShader rate of each key.                                                                    |
+| 4    | The geometric pass and `mvsFilter`.                                                                                                            | The error tail shrinks. Reference order changes no result.                                                                            |
+| 5    | Fusion, `mvsFuseFlags`, the scan, `mvsScatterPoints`, colors. `reconstructDenseGpu` and its export.                                            | Point accuracy and the duplicate count on the synthetic scene. The memory formula of 4.2.                                             |
+| 6    | The worker: `dense`, the kept RGBA, the messages of 5.3, cancel, the run record v5.                                                            | A lab run on gerrard-hall posts depth maps and points without a block of the page. `liveBytes` before the MVS.                        |
+| 7    | The viewer and the page: the dense cloud, the switch, the point budget, binary PLY.                                                            | The page shows 10^5 to 10^6 points. The PLY loads in a standard reader.                                                               |
+| 8    | TUM depth maps in the sample and `--depth` in `apps/typecv/scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                          | Depth accuracy against independent ground truth.                                                                                      |
+| 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                           | Agreement with COLMAP's dense output on the COLMAP samples.                                                                           |
+| 10   | Physical-device runs and the gate rows of 7.5.                                                                                                 | No device loss on devices A and B. The physical rates.                                                                                |
+| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                             | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                              |
+| 12   | The mesh of 3.13: `meshDenseCloud`, `meshDenseCloudGpu`, the lab switch, the mesh PLY and `dense.mesh` in the run record.                      | A sphere and a plane mesh within half a voxel, the sphere closed. The device equals the CPU reference. A lab cloud meshes in seconds. |
 
 Steps 1 to 5 need no change to the lab. Steps 8 and 9 can run in parallel with steps 6 and 7.
 
@@ -1388,7 +1388,7 @@ What changed:
   time, the device's bytes of 4.3, failure). `RUN_RECORD_FORMATS` keeps v3 and v4. `denseRecord`
   builds the block from `denseResult`, and `denseLine` is its line on the page.
 - `website/worker.mjs` adds `denseStatus` and `densePoints` to the listing metadata.
-  `scripts/export-run-records.mjs` shows them in the summary line and prints a run whose dense
+  `web/apps/typecv/scripts/export-run-records.mjs` shows them in the summary line and prints a run whose dense
   MVS failed under `--print failures`. `docs/lab-run-records.md` describes v5.
 
 The message shapes (5.3, as amended):
@@ -1513,7 +1513,7 @@ result is `docs/experiments/dense-mvs/tum-fr3-structure-texture-far.json`.
 
 What changed:
 
-- `scripts/prepare-lab-tum-sample.py --depth` writes `depth-NN.png` for each frame: the depth
+- `apps/typecv/scripts/prepare-lab-tum-sample.py --depth` writes `depth-NN.png` for each frame: the depth
   image of the sequence nearest in time, 16-bit grayscale, at the analysis size (nearest
   neighbour if resized), depth = value / 5000 m. `sample.json` gains `depthFile` per frame and
   `depthUnitsPerMeter`. The 16 files are 976,381 B in all (about 61 KB each). The frames did not
@@ -3071,15 +3071,15 @@ Measured on 2026-10-23 against `6ed4980`, same TypeShade pin and synthetic truth
 (`tests/typeshade/mvs-cases.mjs`, 128 × 96, five views, four photometric and four geometric
 iterations, seed 0). Distances are divided by the scene normalization radius.
 
-| Fused-cloud metric | Rounded source depth | Coherent inverse-depth interpolation |
-| --- | ---: | ---: |
-| Points | 3,841 | 3,979 |
-| Points within 1% of the true surface | 72.065% | 73.536% |
-| Points within 5% of the true surface | 98.360% | 98.492% |
-| Median surface distance / radius | 0.5652% | 0.5093% |
-| 95th percentile surface distance / radius | 3.2011% | 3.0806% |
-| Median normal error | 4.447° | 4.419° |
-| Duplicates | 4.790% | 4.323% |
+| Fused-cloud metric                        | Rounded source depth | Coherent inverse-depth interpolation |
+| ----------------------------------------- | -------------------: | -----------------------------------: |
+| Points                                    |                3,841 |                                3,979 |
+| Points within 1% of the true surface      |              72.065% |                              73.536% |
+| Points within 5% of the true surface      |              98.360% |                              98.492% |
+| Median surface distance / radius          |              0.5652% |                              0.5093% |
+| 95th percentile surface distance / radius |              3.2011% |                              3.0806% |
+| Median normal error                       |               4.447° |                               4.419° |
+| Duplicates                                |               4.790% |                               4.323% |
 
 The median positional error decreases by 9.9%, with a smaller error tail and a larger share
 of accurate points. Point count alone is not a completeness measurement. This synthetic

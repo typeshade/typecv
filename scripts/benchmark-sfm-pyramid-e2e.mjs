@@ -131,7 +131,7 @@ const { result, errors } = await inBrowser(
           pixels,
           time: [0, 1, 2, 4, 8, 12, 16, 20][index],
         });
-        // Match the website's thumbnail conversion as part of sample preparation.
+        // Match the lab's thumbnail conversion as part of sample preparation.
         canvas.toDataURL('image/jpeg', 0.78);
       } finally {
         bitmap.close();
@@ -201,7 +201,7 @@ const { result, errors } = await inBrowser(
               id: frame.id,
               camera: {
                 fx: frame.width * 0.8,
-                // The website derives one square-pixel focal length from source width (0.8 × width by default).
+                // The lab derives one square-pixel focal length from source width (0.8 × width by default).
                 fy: frame.width * 0.8,
                 cx: (frame.width - 1) / 2,
                 cy: (frame.height - 1) / 2,

@@ -62,7 +62,6 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm --prefix website ci
       - run: npm run check
       # After the build of `npm run check`: the declaration surface and the kernels' shader text
       # (docs/library-structure.md, section 5, phase 0).
@@ -73,19 +72,15 @@ jobs:
       # compared on Node 22 only, and the digests job compares base and head on every major.
       - run: npm run test:digests
         if: matrix.node == 22
-      - run: npm --prefix website run check
-      - run: npm run build:website
       - run: npm run example
       - run: npm run example:incremental
   webgpu-shard:
-    # The browser-side gate, in shards: `test:webgpu` on three runners and `test:website` on two,
-    # the files of each shard chosen by scripts/ci-shard.mjs (tests/ci-shard.test.ts holds that
-    # every file runs once). One runner took 60 to 110 minutes for the whole set; a shard takes
-    # about a third. `audit:typeshade` runs once, with the first website shard.
+    # The WebGPU tests run in three shards. scripts/ci-shard.mjs assigns every file once, as
+    # checked by tests/ci-shard.test.ts. `audit:typeshade` runs with the first shard.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    name: webgpu shard (${{ matrix.script }} ${{ matrix.shard }}/${{ matrix.of }})
+    name: webgpu shard (${{ matrix.shard }}/${{ matrix.of }})
     strategy:
       fail-fast: false
       matrix:
@@ -93,8 +88,6 @@ jobs:
           - { script: 'test:webgpu', shard: 1, of: 3 }
           - { script: 'test:webgpu', shard: 2, of: 3 }
           - { script: 'test:webgpu', shard: 3, of: 3 }
-          - { script: 'test:website', shard: 1, of: 2 }
-          - { script: 'test:website', shard: 2, of: 2 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -102,18 +95,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm --prefix website ci
       - run: npx playwright install --with-deps --only-shell chromium
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm run build
-      - if: matrix.script == 'test:webgpu'
-        run: node --test --test-concurrency=1 $(node scripts/ci-shard.mjs test:webgpu ${{ matrix.shard }} ${{ matrix.of }})
-      - if: matrix.script == 'test:website' && matrix.shard == 1
+      - run: node --test --test-concurrency=1 $(node scripts/ci-shard.mjs test:webgpu ${{ matrix.shard }} ${{ matrix.of }})
+      - if: matrix.shard == 1
         run: npm run audit:typeshade
-      - if: matrix.script == 'test:website'
-        run: npm run build:website
-      - if: matrix.script == 'test:website'
-        run: node --test $(node scripts/ci-shard.mjs test:website ${{ matrix.shard }} ${{ matrix.of }})
   webgpu:
     # The check that the ruleset names. It is green when every shard is green, red when one is
     # not, and skipped with the shards for a documentation-only change (a skipped job counts as
@@ -206,8 +193,7 @@ jobs:
           node scripts/compare-digests.mjs "$RUNNER_TEMP/digests/base" "$RUNNER_TEMP/digests/head"
           --declared tests/digests/expected-changes.json --pull-request "$PR_NUMBER"
   docs:
-    # The site renders `docs/*.md` and copies `docs/**/*.json`, so a documentation change still
-    # builds the site and checks that every generated page links to real pages and anchors.
+    # Documentation changes still receive the library build and declaration checks.
     needs: changes
     if: needs.changes.outputs.code == 'false'
     runs-on: ubuntu-latest
@@ -218,7 +204,4 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm --prefix website ci
       - run: npm run build
-      - run: npm run build:website
-      - run: node --test --test-name-pattern='all generated pages' website/site.test.mjs

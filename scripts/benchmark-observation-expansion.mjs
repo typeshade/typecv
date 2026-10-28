@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { generalVideoFixture, renderGeneralVideoFrame } from '../tests/fixtures/general-video.ts';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
-import { alignPoses } from '../website/src/lib/pose-alignment.ts';
+import { alignPoses } from './pose-alignment.ts';
 import { compareSeedGauge } from './geometry-comparison.mjs';
 import { evaluateExpansionCohorts } from './observation-expansion-evaluation.mjs';
 

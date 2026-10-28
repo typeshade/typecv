@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LAB, loadSample, loadPyramid, camerasAt, pyramidRelief } from './measure-focal.mjs';
-import { alignPoses } from '../website/src/lib/pose-alignment.ts';
+import { alignPoses } from './pose-alignment.ts';
 
 const arg = (name, fallback) =>
     process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback,
@@ -178,7 +178,7 @@ const report = {
   benchmarkHashes: hashes(root, [
     'scripts/benchmark-focal-directions-samples.mjs',
     'scripts/measure-focal.mjs',
-    'website/src/lib/pose-alignment.ts',
+    'scripts/pose-alignment.ts',
   ]),
   inputFileHashes: hashes(root, [
     ...sampleNames.flatMap((name) => [

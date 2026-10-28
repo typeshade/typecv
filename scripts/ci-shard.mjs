@@ -1,7 +1,6 @@
 // The test files of one shard of a package.json test script. The CI job `webgpu` of
-// .github/workflows/ci.yml runs `test:webgpu` and `test:website` on several runners at once, one
-// shard each, and the job `webgpu` itself reports the result of every shard (docs/library-structure.md,
-// section 5, the common gate).
+// .github/workflows/ci.yml runs `test:webgpu` in parallel shards, and the job `webgpu` reports
+// the result of every shard (docs/library-structure.md, section 5, the common gate).
 //
 //   node scripts/ci-shard.mjs <script> <shard> <of>
 //
