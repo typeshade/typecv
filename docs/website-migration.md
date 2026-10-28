@@ -13,11 +13,17 @@ site-only deployment scripts moved with the application. The library CI retains 
 `test:webgpu` shards and removes the two website shards.
 
 The lab's underlying computer vision implementation remains in `src/`. Library tests, GPU tests,
-examples, documentation, builds, and npm package settings remain here. The global-descriptor
-research tools also remain library-owned: their catalog and video-manifest inputs are frozen as
-fixtures from `db7216a4d0d763996b677bbf27deb0f3913c930c`, and the serialized 248-frame list is
-identical to the pre-migration result. The app repository reads pinned library sources; it does not
-become a second editable library implementation.
+examples, documentation, builds, and npm package settings remain here. Some of the 56 initially
+removed scripts were library experiments, not site operations. The observation-expansion,
+focal-direction-samples, RGB rotation-tracking and RGB structure-quality benchmarks, plus the
+offline vanishing-point focal probe, remain library-owned. Their pure helpers and tracked image
+inputs use `tests/fixtures`; the general-video experiments still consume their generated data under
+`data/general-video-fixtures`. Lab collection, deployment and browser-run measurement tools move
+with the application. The global-descriptor research tools also remain library-owned: their catalog
+and video-manifest inputs are frozen as fixtures from
+`db7216a4d0d763996b677bbf27deb0f3913c930c`, and the serialized 248-frame list is identical to the
+pre-migration result. The app repository reads pinned library sources; it does not become a second
+editable library implementation.
 
 This change prepares repository ownership only. It does not disable or replace production Workers,
 move records or sample objects, change DNS, or establish a production cutover. See the shared

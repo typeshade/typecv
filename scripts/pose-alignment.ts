@@ -1,6 +1,7 @@
 /**
- * Similarity alignment used by the RGB observation benchmark. Kept with the library benchmark after
- * website ownership moved; follows the same algorithm as the app pose-alignment helper.
+ * Similarity alignment used by the RGB benchmarks. Copied from website/src/lib/pose-alignment.ts at
+ * TypeCV revision 715fd1b694508014315e1a505aa2c970051a7f3a (blob 6dd3222). Kept with the
+ * library experiments after website ownership moved.
  *
  * Similarity alignment of one set of camera poses to a reference set, on their common
  * views. The same method as `scripts/colmap-datasets/colmap_dataset.py` `align`: the
