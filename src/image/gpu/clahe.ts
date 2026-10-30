@@ -100,8 +100,17 @@ export function recordClahe(
   claheHistogram({ claheIn: input, claheHist: hist, clahe }, tileGroups);
   claheMapTiles({ claheHist: hist, claheMap: map, clahe }, tileGroups);
   claheApply(
-    { claheIn: input, claheMapIn: map, claheOut: output, clahe },
-    Math.ceil((plan.width * plan.height) / 64),
+    plan.width,
+    plan.height,
+    plan.tilesX,
+    plan.tilesY,
+    plan.tileWidth,
+    plan.tileHeight,
+    plan.bins,
+    plan.binSize,
+    input,
+    map,
+    output,
   );
 }
 
