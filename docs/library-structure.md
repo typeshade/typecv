@@ -323,6 +323,15 @@ record joins this document by amendment (phase 11).
 
 ### 3.6 Kernels
 
+**Pin integration, 2026-10-30.** TypeShade `49f4f288` replaces `725b2969`.
+The dated classification below retains its audit baseline. Its C7 compiler blocker is now
+resolved by change 0096: probe S2 requires the uniform workgroup return and clamped/masked
+tail. Probe P6 also observes the device-held loop range of 0094. The pin itself converts
+no entries. Eligible phase 9/10 maps may proceed through their family gates in separate
+changes; sparse conversions still wait for R03. Section 7 item 11 remains a physical-device
+follow-up, with no A1 result claimed from this session's approved SwiftShader validation.
+The kernel-author rule in `gpu-sfm.md` now states what the compiler supplies for kernel functions.
+
 The kernel audit answers the owner's third question. **Inference** (audit kernel style, section
 1): most entries are intentional. Four needs force an entry today:
 
