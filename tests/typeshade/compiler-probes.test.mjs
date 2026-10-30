@@ -22,6 +22,9 @@
 // first measured the suite, read every probe again (#246; docs/library-structure.md, amendment 2).
 // No verdict changed. K1 to K6 were measured on 2026-10-27 with the same pin and Node. Their WGSL
 // and their WebGL2 pass programs were read, not run.
+// Renewed on 2026-10-30 at 49f4f288, Node 24.19.0: P6 gains device-held ranges (0094);
+// S2 requires the workgroup-uniform return and clamped/masked tail (0096); K1/K2's
+// WebGL2 helpers access their phase-local list directly (0103), preserving the CPU results.
 //
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
@@ -61,7 +64,7 @@ import { MARK, SOURCES } from './compiler-probes.sources.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 
 /** The typeshade commit whose verdicts the probes hold. */
-const MEASURED_AT = '725b2969a9cac37400980c2c0058680368407602';
+const MEASURED_AT = '49f4f2884c0c38dc6134c837efd5565e5395b721';
 const AT = `typeshade ${MEASURED_AT.slice(0, 8)}`;
 
 /**
@@ -322,9 +325,13 @@ const PROBES = [
     shape: 'the trip count is read from counts[0] before the loop',
     source: 'p6',
     fn: 'boundFromArray',
-    verdict: cpuSilent,
-    signal:
-      'C3 closed for loop bounds: a trip count read from a device array lowers, so phase 10 step C3 may open, and C8 (which shares the lowering) may follow',
+    verdict: gpu('webgpu', 'webgl2'),
+    signal: REGRESSION('the device-held loop range of change 0094 no longer lowers'),
+    more({ face }, say) {
+      const lowered = kernelOf(face, 'boundFromArray').face.gpu;
+      assert.ok(lowered.loops[0].device, say('the loop has no device range entry'));
+      assert.ok(lowered.trips, say('the range no longer writes a GPU trip buffer'));
+    },
   },
   {
     id: 'P7',
@@ -704,9 +711,10 @@ const S2 = {
   id: 'S2',
   row: 'C7',
   shape: "the WGSL of P1's converted map",
-  held: 'the loop entry returns past the trip count before the iteration (kernel-lower.ts:756-767)',
-  signal:
-    'C7 closed: the map scaffold no longer returns early, so phase 10 step "C6 and C7" may open for the entries that phase 9 left (SLIC, mesh, planarFit, the KLT maximum, the Hough vote and collect), with a hardware run while A1 is open, and triangulateTracks may leave the entries of section 3.6',
+  held: 'a whole idle workgroup returns uniformly; tail lanes use a clamped index and masked stores (0096)',
+  signal: REGRESSION(
+    'the clamp-and-mask map scaffold of C7 no longer holds; keep the hardware gate of phase 10',
+  ),
 };
 test(`${S2.id} (${S2.row}) ${S2.shape}: ${S2.held}`, async () => {
   const say = says(S2);
@@ -719,9 +727,20 @@ test(`${S2.id} (${S2.row}) ${S2.shape}: ${S2.held}`, async () => {
   const early = /if\s*\(([^{}]*)\)\s*\{\s*return;\s*\}/.exec(body);
   const store = body.search(/\bgray\s*\[/);
   assert.ok(
-    early !== null && />=/.test(early[1]) && /\b_n\b/.test(early[1]) && early.index < store,
-    say('the entry no longer returns past the trip count before its first store'),
+    early !== null &&
+      />=/.test(early[1]) &&
+      /\b_wid\b/.test(early[1]) &&
+      !/\b_gid\b|\b_k\b/.test(early[1]) &&
+      early.index < store,
+    say('the early return is not uniform for the whole workgroup'),
   );
+  assert.match(body, /let _live = \(_k < [\w.]+\._n\);/, say('the live mask is missing'));
+  assert.match(
+    body,
+    /let _kc = min\(_k, \([\w.]+\._n - 1u\)\);/,
+    say('the tail index is not clamped'),
+  );
+  assert.match(body, /if \(_live\) \{\s*gray\[/, say('the tail store is not masked'));
 });
 
 const S3 = {
@@ -886,14 +905,15 @@ const K1 = {
   shape: 'a helper takes a local array<f32, 32> as @inout',
   source: 'k1',
   fn: 'insertByRef',
-  held: 'compiles; WGSL passes &best to a ptr<function> parameter, the WebGL2 pass program to an inout one, and both CPU tiers write the sums',
+  held: 'compiles; WGSL passes &best to a ptr<function> parameter, the WebGL2 helper writes the phase-local list directly, and both CPU tiers write the sums',
   wgsl: [
     /fn insertSorted\(best: ptr<function, array<f32, 32>>, k: u32, d2: f32\)/,
     /\binsertSorted\(&best, 3u, /,
   ],
   glsl: [
-    /void insertSorted\(inout float\[32\] best, uint k, float d2\)/,
-    /\binsertSorted\(\w+, 3u, /,
+    /void insertSorted_phv\d+_best\(uint k, float d2\)/,
+    /\binsertSorted_phv\d+_best\(3u, /,
+    /_phv\d+_best\[s\] = d2;/,
   ],
   bindings: sumBindings,
   expect: SUMS,
@@ -909,15 +929,16 @@ const K2 = {
   shape: 'a helper takes the list as @inout, reads two bindings by name and hands the list on',
   source: 'k2',
   fn: 'scanByRef',
-  held: 'compiles; both helpers keep a ptr<function> parameter in WGSL and an inout one in GLSL, and both CPU tiers write the sums',
+  held: 'compiles; both helpers keep a ptr<function> parameter in WGSL and access the phase-local list directly in GLSL, and both CPU tiers write the sums',
   wgsl: [
     /fn scanBucket\(best: ptr<function, array<f32, 32>>, k: u32, i: u32, bucket: u32\)/,
     /\binsertSorted\(best, k, /,
     /\bscanBucket\(&best, 3u, /,
   ],
   glsl: [
-    /void scanBucket\(inout float\[32\] best, uint k, uint i, uint bucket\)/,
-    /\binsertSorted\(best, k, /,
+    /void scanBucket_phv\d+_best\(uint k, uint i, uint bucket\)/,
+    /\binsertSorted_phv\d+_best\(k, /,
+    /_phv\d+_best\[s\] = d2;/,
   ],
   bindings: () => ({ ...sumBindings(), bucketStart: Uint32Array.from([0, 2, 5]) }),
   expect: SUMS,

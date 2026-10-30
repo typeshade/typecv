@@ -88,3 +88,21 @@ then the pull request that did the work.
   and the tests keep their explicit flavors. `tshc init` is not used: the build writes and
   removes the host views itself. No kernel calls `console`. The pin stays `725b2969`; the console
   variants and the Apple/Metal validation of 0085 remain open upstream.
+- 0094, compiler pin `49f4f288`: probe P6 now lowers a device-held loop range on WebGPU
+  and WebGL2. It requires the range entry and GPU trip buffer. Existing TypeCV kernels
+  and their dispatch policy are unchanged; the phase 10 C3 conversions remain separate work.
+- 0096, compiler pin `49f4f288`: probe S2 now requires a workgroup-uniform early return,
+  a clamped tail index and masked stores. `docs/gpu-sfm.md` distinguishes authored entries
+  from the compiler's kernel-function scaffold. The phase 9/10 C7 compiler prerequisite
+  is met; this pin changes no kernel into a kernel function. Family conversions keep their
+  gates and sparse conversions still wait for R03. Section 7 item 11 of
+  `docs/library-structure.md` retains its physical-device follow-up; this session validates
+  with SwiftShader, as requested by the owner, and makes no physical-device claim.
+- 0103/0104/0105 and typeshade/typeshade#839, compiler pin `49f4f288`: consume aggregate
+  copy elision, call restructuring and stable storage-load reuse without a source/API migration.
+  K1/K2 still require pointer parameters on WGSL and CPU output parity; their GLSL checks
+  now require direct mutation of the phase-local list. The pin moves from `725b2969`.
+  Renew `tests/digests/kernels.json` for this compiler-wide emission change: 21 modules'
+  WGSL, 11 integer-fp64 variants and 9 GLSL records change; entry/program counts do not.
+  The numerical digest fixtures and expected-change list remain unchanged. The complete
+  sparse-pipeline comparison is recorded in `docs/compiler-performance.md`.

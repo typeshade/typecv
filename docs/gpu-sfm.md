@@ -699,6 +699,15 @@ A kernel that needs a barrier has no early return before it. Other kernels of
 `src/gpu/` still return for an out-of-range lane before a loop. They ran on that
 device without a loss (`docs/hardware-observations.md`, A1, "Open").
 
+For a kernel function, TypeShade supplies this scaffold at pin `49f4f288` (change 0096).
+A workgroup wholly past the trip count returns uniformly. In a partial final workgroup,
+idle lanes use the last valid index and suppress their writes. A lane skips the iteration
+where clamping would create a read/write race; reductions use the operator's identity.
+Probe S2 checks the uniform return, clamped index and live store guard. These checks and
+the compiler's GPU gates use SwiftShader; the physical-device follow-up in
+`library-structure.md`, section 7 item 11, remains open. The rule above still governs
+hand-written entries. This compiler pin converts no TypeCV entry into a kernel function.
+
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and
