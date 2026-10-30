@@ -1,0 +1,3363 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-30T06:39:47.610Z",
+  "sourceRevision": "2761e824144fc1d624a3923684bcf138373c47f2",
+  "sourceTree": "539cde7fe8eca32075113a260ab04c799b1c2e89",
+  "scriptSha256": "5e7d984fa106eb85241d60d28e4956ff058f7f1223e7b7f73f85a267c8ddb343",
+  "node": "v24.19.0",
+  "machine": {
+    "platform": "linux",
+    "release": "6.18.55",
+    "arch": "x64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "cpuQuota": "400000 100000"
+  },
+  "browser": "/home/agent/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell",
+  "controls": {
+    "pairs": 5,
+    "warmups": 1,
+    "reverse": true,
+    "identicalCompilerControl": false,
+    "features": "sift",
+    "initialFocalWidthRatio": 0.8,
+    "mapper": {
+      "ransacIterations": 500,
+      "maxErrorPx": 3,
+      "minInitialAngleDeg": 1,
+      "minTriangulationAngleDeg": 0.5,
+      "bundleIterations": 4,
+      "finalBundleIterations": 8,
+      "refineSharedFocal": true,
+      "seed": 17
+    },
+    "comparison": "exact same-run output hashes and decisions"
+  },
+  "scope": "Committed RGB frames through features, matching and native sparse SfM, including normal uploads/readbacks and a completion fence. Module import/JPEG decode reported separately; diagnostic hashes and disposal excluded. Shared-session first calls are not isolated startup measurements. No whole-video, UI, dense-MVS or hardware-GPU claim.",
+  "runtimes": {
+    "baseline": {
+      "compiler": "https://github.com/typeshade/typeshade/archive/725b2969a9cac37400980c2c0058680368407602.tar.gz",
+      "files": [
+        {
+          "path": "contracts/camera-record.js",
+          "sha256": "92b339f04041bcec0db89bfe767bddf5163dba60a6e4bc50beb96d7a1ce437b3",
+          "bytes": 1161,
+          "gzipBytes": 536
+        },
+        {
+          "path": "contracts/camera.js",
+          "sha256": "96b6c3b79939415233b12bc3961e4411d57a75173ded1fad5ad2d77ff06a3c3d",
+          "bytes": 45,
+          "gzipBytes": 65
+        },
+        {
+          "path": "contracts/keys.js",
+          "sha256": "88360dc1ffebde329ab419c87de06fdabcf97ac64bab69e21165825d5fa46e86",
+          "bytes": 567,
+          "gzipBytes": 348
+        },
+        {
+          "path": "contracts/observation-mask.js",
+          "sha256": "fc9b9c6107906336a4da18ceea00b3caf1f6d8f1c2f67a5e05abbc272068a883",
+          "bytes": 55,
+          "gzipBytes": 75
+        },
+        {
+          "path": "contracts/scene.js",
+          "sha256": "5449db0e238dd621a78ae8c02392f075ba53cb6fbc237d02872eeb95ff8e3063",
+          "bytes": 44,
+          "gzipBytes": 64
+        },
+        {
+          "path": "contracts/triangulation-status.js",
+          "sha256": "56fda63c30a978186dc25f717519c2544c500976a3336cdaa1fd52ad8d286677",
+          "bytes": 497,
+          "gzipBytes": 333
+        },
+        {
+          "path": "contracts/two-view-failures.js",
+          "sha256": "50a8bd403f36fa625d0b4ccfba0ac8a3f9ed9a5903e272098ce1556ee48bcb31",
+          "bytes": 1324,
+          "gzipBytes": 656
+        },
+        {
+          "path": "geometry/camera.js",
+          "sha256": "7a1ee57f1e041a5b4a09abe87f9203e4133eb85f5388f1c88aba16bec3a6ab33",
+          "bytes": 3452,
+          "gzipBytes": 1329
+        },
+        {
+          "path": "geometry/errors.js",
+          "sha256": "14fe63023c53c6cefabf1f06cc53f984900237550b15e934d3c9b4206a113589",
+          "bytes": 276,
+          "gzipBytes": 201
+        },
+        {
+          "path": "geometry/homography.js",
+          "sha256": "93ce4c2f8a4ffbbd7b7aea5027dd36966df65964f710a532faeea9fec2ade5b7",
+          "bytes": 4586,
+          "gzipBytes": 1668
+        },
+        {
+          "path": "geometry/image-pair.js",
+          "sha256": "2fef91af70e42dc1937bf15b27e47c723679070c0a91b396fa2785aae5623b4c",
+          "bytes": 5477,
+          "gzipBytes": 1759
+        },
+        {
+          "path": "geometry/inverse-depth.js",
+          "sha256": "34391bf117a7bd6869046fcbc2be14f66940a8d3ebc5463dce833a6c1f2f2786",
+          "bytes": 8964,
+          "gzipBytes": 2649
+        },
+        {
+          "path": "geometry/linear.js",
+          "sha256": "d1045a5058904e7e120877b5325048715b7858ebb5bec9ea767375bc0b5b4a82",
+          "bytes": 4833,
+          "gzipBytes": 1621
+        },
+        {
+          "path": "geometry/multiview.js",
+          "sha256": "fb89d6818cfa19c8ff1945feb005e84aa3d68c1baffceb02d23ec46e74908301",
+          "bytes": 10848,
+          "gzipBytes": 3294
+        },
+        {
+          "path": "geometry/numerics.js",
+          "sha256": "f816df24d5b87c09f6ea0a1a6ce001a7f3654e1df51c6b4d6ac0e3424a3e99a1",
+          "bytes": 5714,
+          "gzipBytes": 1888
+        },
+        {
+          "path": "geometry/observation-paths.js",
+          "sha256": "62f7d1e17b78b2471ff1c24f4174b9f71a2088afc29dc8685ce0c2599846c42e",
+          "bytes": 2219,
+          "gzipBytes": 982
+        },
+        {
+          "path": "geometry/operator-defaults.js",
+          "sha256": "7b6c3d4b65d4b67fb785d968683e0a45e96caf78ed223bc100ed0b8ae3426489",
+          "bytes": 1353,
+          "gzipBytes": 658
+        },
+        {
+          "path": "geometry/p3p.js",
+          "sha256": "5424de98d1db497230fef2b690879ab80dccb369a51739c521f5e96f7c84fe9d",
+          "bytes": 7385,
+          "gzipBytes": 2408
+        },
+        {
+          "path": "geometry/pnp.js",
+          "sha256": "6b8c9076110f092af39d4334630f1757e86116af69d709d08f1dc68f8bcf7151",
+          "bytes": 10856,
+          "gzipBytes": 3296
+        },
+        {
+          "path": "geometry/pose.js",
+          "sha256": "a6d03329cf25dcefc8be9018fc653461eb6ad307956baa7ceec1cbb3d4b25eb9",
+          "bytes": 2823,
+          "gzipBytes": 1074
+        },
+        {
+          "path": "geometry/refinement.js",
+          "sha256": "b82e4e6b335fc62bb2d589f95e0cf908686c38f04552157985d3c02bc35cb4cb",
+          "bytes": 6935,
+          "gzipBytes": 2220
+        },
+        {
+          "path": "geometry/rotation.js",
+          "sha256": "aa14c221615851b27748598b942f3c2539cb450e5e42a28e07236e2238f2f821",
+          "bytes": 6517,
+          "gzipBytes": 2133
+        },
+        {
+          "path": "geometry/triangulation.js",
+          "sha256": "9f8a04a9e2b2a8c373dd265b50f1080a7472a37d33ee6c9f106913e3c56fd87e",
+          "bytes": 1004,
+          "gzipBytes": 536
+        },
+        {
+          "path": "geometry/two-view.js",
+          "sha256": "bb6826629349ea3ec5c5bc1d610400be61eb2b9b76381fb9be4b3903f969ac48",
+          "bytes": 18368,
+          "gzipBytes": 5288
+        },
+        {
+          "path": "geometry/validation.js",
+          "sha256": "508e316c470f0bb3e62bc4b12cb836ed413cfeaf94005e830988c53b30bb8222",
+          "bytes": 1648,
+          "gzipBytes": 581
+        },
+        {
+          "path": "gpu/fuse-plan-B9d158x-.js",
+          "sha256": "8ba61b47a09e98deb87cbb866bace6d6ec5f63a065643164009999e6b92c829a",
+          "bytes": 371601,
+          "gzipBytes": 96404
+        },
+        {
+          "path": "gpu/index-B812d7Cc.js",
+          "sha256": "2ef935d911c7a21b21bc42f7acb0555bee778c7f7e7d67a6a6a713b7f5479ef2",
+          "bytes": 6540079,
+          "gzipBytes": 1039886
+        },
+        {
+          "path": "gpu/index.js",
+          "sha256": "771d13715bb6bbae075c1c25287e9b344d48de347c48b13def2fee1330a35c87",
+          "bytes": 2499,
+          "gzipBytes": 1100
+        },
+        {
+          "path": "gpu.js",
+          "sha256": "d6b1d9cd3154e5aa9b5191f0259cae6748df9e201340ff1bad3cdf66d8dd173f",
+          "bytes": 32,
+          "gzipBytes": 52
+        },
+        {
+          "path": "index.js",
+          "sha256": "8656e092eac110181e0df2e5284f49f097f1cc63ed08cc146de76254714248ea",
+          "bytes": 1968,
+          "gzipBytes": 685
+        },
+        {
+          "path": "internal/fuse-plan-BLpfLy9w.js",
+          "sha256": "4bb412c97102e5bd1d096839a2e1fa6c094a126222ea3b8c5237e7126a61e5c8",
+          "bytes": 400299,
+          "gzipBytes": 104383
+        },
+        {
+          "path": "internal/gpu.js",
+          "sha256": "8920d3655fe8a398bc3331ffaaaf6eeb629d17f2dac55f3615088e1a6fbf8264",
+          "bytes": 2051,
+          "gzipBytes": 955
+        },
+        {
+          "path": "internal/internal-C1Jp-qKG.js",
+          "sha256": "f8b33905d1223092fa14cfcd1e63c856d6da0e36b194010db874bf5c282ea157",
+          "bytes": 5709014,
+          "gzipBytes": 947279
+        },
+        {
+          "path": "mvs/cloud-clean.js",
+          "sha256": "f8e6c08bdc900568d4475c1a9eebe72832a6db46d0ac92afafffcea2362301a9",
+          "bytes": 26281,
+          "gzipBytes": 7339
+        },
+        {
+          "path": "mvs/dense-label.js",
+          "sha256": "7050a3260439a43b23d48526ac5622df382d3c29cfa2c22b184c121b91e41abb",
+          "bytes": 23611,
+          "gzipBytes": 6096
+        },
+        {
+          "path": "mvs/dense-mesh.js",
+          "sha256": "b0a37793488657fda28b82790aa914fd893102e4928c071d9ef17b0a86def591",
+          "bytes": 17948,
+          "gzipBytes": 5437
+        },
+        {
+          "path": "mvs/dense-score.js",
+          "sha256": "1364ce89a55b1c88f41986fbb45c3fdc6154cd02abb66088518dbaa24058d4ef",
+          "bytes": 14859,
+          "gzipBytes": 4557
+        },
+        {
+          "path": "mvs/marching-cubes-tables.js",
+          "sha256": "ccb82ab7765dbb71b0d7bf1d784de65dc0e3c5993d2acce791089946e85c7926",
+          "bytes": 7769,
+          "gzipBytes": 3052
+        },
+        {
+          "path": "mvs/tsdf.js",
+          "sha256": "489f0d75d522f38b0e5b685f364137bc7ba4604560d180a907b519e08f437888",
+          "bytes": 39010,
+          "gzipBytes": 10726
+        },
+        {
+          "path": "reconstruction/bundle-adjustment.js",
+          "sha256": "6124fdadeec51cdbea23c90d7612aaac6a92ee295d1b3adcabc8b07a4c6d00b6",
+          "bytes": 97,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/bundle-directions.js",
+          "sha256": "42024ac862bb8e9bbfdcc6f09520410c4b01a2f1212a2a762144027679ff824b",
+          "bytes": 97,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/cloud-clean.js",
+          "sha256": "31e9b4d6533b072c361ede775ad3b15fcd2338b77a9cb7f682b2db991e41e5c2",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/component-mapper.js",
+          "sha256": "93f36eac2308109986999c5635ea9dded5a1fdbc41fa4fab7ad8910853d69c1a",
+          "bytes": 98,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/dense-label.js",
+          "sha256": "8f88ef0adf83dd25358015847d57f04ebc3d13faa5c53a6df94be9a0f60a33b1",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/dense-mesh.js",
+          "sha256": "c86a79acf732ea3d83ca3d99704554634dde1f01eba9712dfc8cb873123699e5",
+          "bytes": 76,
+          "gzipBytes": 85
+        },
+        {
+          "path": "reconstruction/dense-score.js",
+          "sha256": "7f4f930b3a7551c68b25b8c864f6aab5a2f8ac1796d0f1d2425268fa04bd3350",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/depth-publication.js",
+          "sha256": "b2b47d55a1a2bf3608a4487044aefcc4472b6812b99d8c8b845d17fd3a3618ee",
+          "bytes": 96,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/depth-record.js",
+          "sha256": "724ce687845700c54961f3538b3a63ad65fa526ab49056cf616ed8ed51c2a654",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/depth-tracks.js",
+          "sha256": "f31daa11b7a53c10baf65b253a4235737d132f403404d73708e53e9ce0c7ac73",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/directional-tracks.js",
+          "sha256": "bb0432d3a04466d6d05d742778a381ef8df4f5af3344479f5f09e5d59321fe1a",
+          "bytes": 99,
+          "gzipBytes": 100
+        },
+        {
+          "path": "reconstruction/focal-pairs.js",
+          "sha256": "df5bdb0465a066747a401b58239569aa4289dce28ba48c1f4f6e1bf0cc8fc4b5",
+          "bytes": 84,
+          "gzipBytes": 87
+        },
+        {
+          "path": "reconstruction/focal-search.js",
+          "sha256": "8c8411fe8b586fcf0a4dc155a5d6314e53310c0de8ed84ba7115deb75225e83b",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/history-refinement.js",
+          "sha256": "8b814283fa97098b1636176019b28fce5522a3177dd7071b075d21ba21055bca",
+          "bytes": 100,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/identity.js",
+          "sha256": "b15c9312b555ef178016ea42fd09c4830945b452d2ee7ac1cab85223a412e3c6",
+          "bytes": 78,
+          "gzipBytes": 89
+        },
+        {
+          "path": "reconstruction/inverse-depth-bundle.js",
+          "sha256": "ad67f3a2cc9b20b26c81697063bcf73a87fa997e48f99c3035c57dd6f9832ff5",
+          "bytes": 102,
+          "gzipBytes": 98
+        },
+        {
+          "path": "reconstruction/inverse-depth-tracker.js",
+          "sha256": "88c7927edada65260296f52a9c669814a4dfe4d9261aa38aa110890a26d235a9",
+          "bytes": 104,
+          "gzipBytes": 99
+        },
+        {
+          "path": "reconstruction/joint-focal.js",
+          "sha256": "9dd2d00db04331974fc235e5c3a58b9f180b022eba0a5657f9a7b4b0b2b65879",
+          "bytes": 85,
+          "gzipBytes": 93
+        },
+        {
+          "path": "reconstruction/local-bundle.js",
+          "sha256": "6e61a603941034ef60650646055efc155dfeb1d5f0dbfeaeb970337c91ac3ffe",
+          "bytes": 87,
+          "gzipBytes": 90
+        },
+        {
+          "path": "reconstruction/map-history.js",
+          "sha256": "315ef36610096f1be2836c8a5f13879b77803f185ad42b1c974722de703c08be",
+          "bytes": 86,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/mapper.js",
+          "sha256": "61cd0cb506ac67e34921feb01efe895c55226a2dc6462a8f6d85b6d334a17fb8",
+          "bytes": 75,
+          "gzipBytes": 82
+        },
+        {
+          "path": "reconstruction/marching-cubes-tables.js",
+          "sha256": "4d3a27fd4b28baefa2587297f66653ebd0450213af23515899f506144b7b23d1",
+          "bytes": 98,
+          "gzipBytes": 96
+        },
+        {
+          "path": "reconstruction/observation-paths.js",
+          "sha256": "e6e6ec398b842a774cf8b3b66dab77d2e21f849c8d1a6ff258280e5a8d62dceb",
+          "bytes": 95,
+          "gzipBytes": 97
+        },
+        {
+          "path": "reconstruction/observation-selection.js",
+          "sha256": "3eb3ee17315442fef6eceaab5accfbde808deadcc9e8f70573e55d916d14ff45",
+          "bytes": 105,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/posed-evidence.js",
+          "sha256": "0c3f36832b64e82a40d6c0480d6ed25c0995550f6bbec3b21162f05465f5b441",
+          "bytes": 91,
+          "gzipBytes": 96
+        },
+        {
+          "path": "reconstruction/scene-mapper.js",
+          "sha256": "cffd0ff01675a28b8acda87ab71c5ea457dee63e9ef69a4ff3b2c059e2879caa",
+          "bytes": 87,
+          "gzipBytes": 90
+        },
+        {
+          "path": "reconstruction/scene.js",
+          "sha256": "f40741a977806940f3c9c75d4ed2e368f38633b7ecfda3b3c95375369e5f0585",
+          "bytes": 72,
+          "gzipBytes": 81
+        },
+        {
+          "path": "reconstruction/sparse-schur.js",
+          "sha256": "da9b11acc1dc39086e899a63d9ee982e7be8300a9f93a99aa9e666c362ce2dc9",
+          "bytes": 86,
+          "gzipBytes": 93
+        },
+        {
+          "path": "reconstruction/tracking.js",
+          "sha256": "70b93982f2799f615722bf0cdaf2207edf2a61697dfa535455f71a4d13891f26",
+          "bytes": 79,
+          "gzipBytes": 85
+        },
+        {
+          "path": "reconstruction/tracks.js",
+          "sha256": "a8330688c16431b0640e20c081a94a2f7c6c700d8e79bd9e02108bd5566dfb6e",
+          "bytes": 75,
+          "gzipBytes": 82
+        },
+        {
+          "path": "reconstruction/tsdf.js",
+          "sha256": "1e0ba72bfa1e2f4e8d25bee1f1e13d5b5a4e6d80dd4f577353290f70ed43bf14",
+          "bytes": 64,
+          "gzipBytes": 79
+        },
+        {
+          "path": "reconstruction/types.js",
+          "sha256": "beeb35504ed6f26bfd4cba6929c6d10022f803380d72472da97fe3bb228ea72b",
+          "bytes": 72,
+          "gzipBytes": 92
+        },
+        {
+          "path": "reconstruction/view-graph.js",
+          "sha256": "990b80c4eb31370e2f1d68e39cf03221f0fea5da1b803f407e83d22e75b81c0c",
+          "bytes": 86,
+          "gzipBytes": 92
+        },
+        {
+          "path": "sfm/bundle/bundle-adjustment.js",
+          "sha256": "2cd445973e5879504e8a0ede5400a5a24e8cdaa7c826759535f0f0af8b42419a",
+          "bytes": 10914,
+          "gzipBytes": 3085
+        },
+        {
+          "path": "sfm/bundle/bundle-directions.js",
+          "sha256": "62585dc1f0c28a6215707b14453430635b4fbf3672d03c8021947174d1659298",
+          "bytes": 4327,
+          "gzipBytes": 1413
+        },
+        {
+          "path": "sfm/bundle/bundle-shared.js",
+          "sha256": "fd0420654043f095934acc63a972fe01dc475f8a8c6d1288061a2fc1f484064a",
+          "bytes": 2221,
+          "gzipBytes": 972
+        },
+        {
+          "path": "sfm/bundle/directional-tracks.js",
+          "sha256": "fdbffa82877516b8eb6881f764241da2426d16a3e700194d121786678beff1e5",
+          "bytes": 4356,
+          "gzipBytes": 1591
+        },
+        {
+          "path": "sfm/bundle/joint-focal.js",
+          "sha256": "212c6610a66ddc671fab9f2904dee14047fbeb87abe16b74e8b5ac3484338c9f",
+          "bytes": 11869,
+          "gzipBytes": 3385
+        },
+        {
+          "path": "sfm/bundle/local-bundle.js",
+          "sha256": "7f03aa3ee4494a56327df1dc030c1a0bee481e952d4db83773e563ce27530094",
+          "bytes": 6621,
+          "gzipBytes": 1909
+        },
+        {
+          "path": "sfm/bundle/validation.js",
+          "sha256": "e6b1c4a0f5811b1048646e315a74fe7f6a11dda08c1c5ab8c41f40f121202e4a",
+          "bytes": 84,
+          "gzipBytes": 93
+        },
+        {
+          "path": "sfm/config/defaults.js",
+          "sha256": "1d8f44470eb730ca48074a0e52eb76db19ab194a35947563d3d78fbdde3baa55",
+          "bytes": 2487,
+          "gzipBytes": 1119
+        },
+        {
+          "path": "sfm/config/incremental-controls.js",
+          "sha256": "4aae44a6494bcb682fe8967dcbb477e0e41c7a1b1feaf882310fe1f237b3e853",
+          "bytes": 5279,
+          "gzipBytes": 1389
+        },
+        {
+          "path": "sfm/config/lab-preset.js",
+          "sha256": "630aed00ec4000ec43200b0ffa307b64342ff7bacb8f50482cf82a270ecd73be",
+          "bytes": 1027,
+          "gzipBytes": 578
+        },
+        {
+          "path": "sfm/depth/depth-publication.js",
+          "sha256": "f9a9458d3a0131da4ac0b14958787392995f3a359900f179d28d6c295d51bfde",
+          "bytes": 2605,
+          "gzipBytes": 886
+        },
+        {
+          "path": "sfm/depth/depth-record.js",
+          "sha256": "b16c0ab2ec590c717649ba9bf7cdc115291305b4729e06ec13c323af2ad6b385",
+          "bytes": 2016,
+          "gzipBytes": 711
+        },
+        {
+          "path": "sfm/depth/depth-tracks.js",
+          "sha256": "75b2169dcacf813bce18aec9e15bdec469809bb2dc45e622b434616ec7148282",
+          "bytes": 4674,
+          "gzipBytes": 1487
+        },
+        {
+          "path": "sfm/depth/inverse-depth-bundle.js",
+          "sha256": "d3c6dd3bb100c4a1b874ea19650c7e66b3f12310c9c215de4e73c8c47120b79d",
+          "bytes": 26459,
+          "gzipBytes": 6716
+        },
+        {
+          "path": "sfm/depth/inverse-depth-tracker.js",
+          "sha256": "13a42ea01583daa95bb3f99d6fa89ca2bf92b1e07678eeb0fd266a467b446092",
+          "bytes": 19443,
+          "gzipBytes": 4911
+        },
+        {
+          "path": "sfm/depth/sparse-schur.js",
+          "sha256": "9fe10df86dcc6cf81e4163be8ff020ebccaa32a4104526f51649225928dc57b4",
+          "bytes": 7761,
+          "gzipBytes": 2084
+        },
+        {
+          "path": "sfm/focal/focal-pairs.js",
+          "sha256": "38d38dd9ed0fd816a5f7198da6af9e6ed2d70457ccc897ab00fec405c02e88e8",
+          "bytes": 3913,
+          "gzipBytes": 1478
+        },
+        {
+          "path": "sfm/focal/focal-search.js",
+          "sha256": "b29fb49bf9d62135437cb165ae61b04ed0434d238142972190540a765700fe2f",
+          "bytes": 28213,
+          "gzipBytes": 8411
+        },
+        {
+          "path": "sfm/linear.js",
+          "sha256": "e4982bc58af281fde4c3a304bbf0989611caeedd97a8cd0229c29725be2bed9e",
+          "bytes": 73,
+          "gzipBytes": 86
+        },
+        {
+          "path": "sfm/mapper/initialization.js",
+          "sha256": "824bc3d0139bd0d21d8b072bba7f7aa230e5f9420e4322903d7ccc85a226614d",
+          "bytes": 3493,
+          "gzipBytes": 1180
+        },
+        {
+          "path": "sfm/mapper/mapper.js",
+          "sha256": "f58ae40635f9aa2133f74cc3122c589181c8876895cfb5af2e8d174cf645b951",
+          "bytes": 34490,
+          "gzipBytes": 8906
+        },
+        {
+          "path": "sfm/mapper/registration.js",
+          "sha256": "e5a2c096ff9379423194a2002ec5f62171187081a7ae1c760dbd66b05534a37f",
+          "bytes": 2192,
+          "gzipBytes": 945
+        },
+        {
+          "path": "sfm/mapper/result.js",
+          "sha256": "d82a522b436a3b601cc136aef69587c10c5e92783401ee113a932e292ff05c50",
+          "bytes": 1254,
+          "gzipBytes": 524
+        },
+        {
+          "path": "sfm/mapper/scene-mapper.js",
+          "sha256": "02a5ed53535484b2f085709d31681dac69c6e90306b0bb5e8a7aed03b9a67954",
+          "bytes": 24489,
+          "gzipBytes": 6069
+        },
+        {
+          "path": "sfm/mapper/track-index.js",
+          "sha256": "39d09a86eb9f7211ad86e92f165714845144d059dd650846f9b26d71fc2ff1c7",
+          "bytes": 2474,
+          "gzipBytes": 914
+        },
+        {
+          "path": "sfm/model/copy.js",
+          "sha256": "63e87fc7ed89aeb1f482cafbdfe99b568cd048bb56785f5f8794f79e124fc12d",
+          "bytes": 658,
+          "gzipBytes": 313
+        },
+        {
+          "path": "sfm/model/identity.js",
+          "sha256": "c5700c291b77f6f61a07a39167220ac40bb25b12dedc801605b489345f69cdc5",
+          "bytes": 3581,
+          "gzipBytes": 1552
+        },
+        {
+          "path": "sfm/multiview/component-mapper.js",
+          "sha256": "8ac4dd81ca4612acd6c24892fafc5345534e7c64b533483ca2d07876ff3989ff",
+          "bytes": 3080,
+          "gzipBytes": 1169
+        },
+        {
+          "path": "sfm/multiview/view-graph.js",
+          "sha256": "d0a09d39103b3512d3e469049cdf80f32239a96b25317dcb3ca7ef9339cfe264",
+          "bytes": 23481,
+          "gzipBytes": 6476
+        },
+        {
+          "path": "sfm/pairs/pair-verdict.js",
+          "sha256": "782a02e4bdf2d572e7fb3acd04b7c9a25f0aefffd69b23badc66801e360f6a42",
+          "bytes": 2322,
+          "gzipBytes": 777
+        },
+        {
+          "path": "sfm/protocol/depth-step.js",
+          "sha256": "040f7d806c98a825d8f10ed95bc42b80ba38b5fb98de80a7a67e8a111d5cc17b",
+          "bytes": 2505,
+          "gzipBytes": 930
+        },
+        {
+          "path": "sfm/protocol/drive.js",
+          "sha256": "634caced7868dff82a268d8b1cf352ed50fa445470f978d6d7f0c3d80deb727a",
+          "bytes": 1510,
+          "gzipBytes": 524
+        },
+        {
+          "path": "sfm/protocol/errors.js",
+          "sha256": "9d05404372411d7750753540a86518727846a7cedb2f3722ebb25c423c89571b",
+          "bytes": 1018,
+          "gzipBytes": 436
+        },
+        {
+          "path": "sfm/refinement.js",
+          "sha256": "6dcccb70a5f1c13e7bffbd0aa8b28cdd44f09b5f5db2b9bd46ee55155a289786",
+          "bytes": 81,
+          "gzipBytes": 90
+        },
+        {
+          "path": "sfm/scene/scene.js",
+          "sha256": "7cbba4f3fe9a898e0279534a85d978bb6ae91a4fba5c6b005329c57fe5998735",
+          "bytes": 15371,
+          "gzipBytes": 3722
+        },
+        {
+          "path": "sfm/session/archive-solve.js",
+          "sha256": "79576b561d44e48fbc387cbc8873037e7f04ddfc0c0473a29f9cffd7d4dcc912",
+          "bytes": 2579,
+          "gzipBytes": 989
+        },
+        {
+          "path": "sfm/session/history-refinement.js",
+          "sha256": "5640b50586aff23bd403bf4fe1074fb5be0455959516b417c9af0f49fc70dc7a",
+          "bytes": 12411,
+          "gzipBytes": 3971
+        },
+        {
+          "path": "sfm/session/map-history.js",
+          "sha256": "11ede3f25ea721781fc034e6a3b6791e5cfeeff7b6764d4731d4185524f207e7",
+          "bytes": 4764,
+          "gzipBytes": 1418
+        },
+        {
+          "path": "sfm/session/window.js",
+          "sha256": "b95bce4da78a3744f5f44762956c5636567fe20db25e4ab8dbb45fb31c363022",
+          "bytes": 4754,
+          "gzipBytes": 1625
+        },
+        {
+          "path": "sfm/tracks/observation-selection.js",
+          "sha256": "f8686d3ae0df093ce93b13b3efd6fb9a6565ab47f3a5215783868ee8134b2155",
+          "bytes": 5048,
+          "gzipBytes": 1692
+        },
+        {
+          "path": "sfm/tracks/posed-evidence.js",
+          "sha256": "bee5a93a7d58274477df7b50a40f6c41962a094964944720a1d0038df10be8a4",
+          "bytes": 9211,
+          "gzipBytes": 2668
+        },
+        {
+          "path": "sfm/tracks/tracking.js",
+          "sha256": "187ea253596b1ee3d39f77e2c2a920ea20759e601246589e17b4917bcdb53b73",
+          "bytes": 3873,
+          "gzipBytes": 1344
+        },
+        {
+          "path": "sfm/tracks/tracks.js",
+          "sha256": "1dc50297657fa7dee1823242444159ba8632fcfd56d0c2bef9eeff022e9fe5b6",
+          "bytes": 4064,
+          "gzipBytes": 1329
+        },
+        {
+          "path": "sfm/triangulation.js",
+          "sha256": "1a9ee2158492333a770a18d3a2e7e8ab5e5e7cf9c2c370e594e4ec04d0e39063",
+          "bytes": 87,
+          "gzipBytes": 93
+        },
+        {
+          "path": "sfm/two-view.js",
+          "sha256": "4dd80f83acb7b7ac470a25c280a37b5db6ebcc45a53f8a6d464d21e81f84d16d",
+          "bytes": 77,
+          "gzipBytes": 88
+        }
+      ],
+      "sha256": "645aeea713dbb7fdcebe9e924dd629407e4e9a818630cddd3029dbd9ccd1228c"
+    },
+    "candidate": {
+      "compiler": "https://github.com/typeshade/typeshade/archive/49f4f2884c0c38dc6134c837efd5565e5395b721.tar.gz",
+      "files": [
+        {
+          "path": "contracts/camera-record.js",
+          "sha256": "92b339f04041bcec0db89bfe767bddf5163dba60a6e4bc50beb96d7a1ce437b3",
+          "bytes": 1161,
+          "gzipBytes": 536
+        },
+        {
+          "path": "contracts/camera.js",
+          "sha256": "96b6c3b79939415233b12bc3961e4411d57a75173ded1fad5ad2d77ff06a3c3d",
+          "bytes": 45,
+          "gzipBytes": 65
+        },
+        {
+          "path": "contracts/keys.js",
+          "sha256": "88360dc1ffebde329ab419c87de06fdabcf97ac64bab69e21165825d5fa46e86",
+          "bytes": 567,
+          "gzipBytes": 348
+        },
+        {
+          "path": "contracts/observation-mask.js",
+          "sha256": "fc9b9c6107906336a4da18ceea00b3caf1f6d8f1c2f67a5e05abbc272068a883",
+          "bytes": 55,
+          "gzipBytes": 75
+        },
+        {
+          "path": "contracts/scene.js",
+          "sha256": "5449db0e238dd621a78ae8c02392f075ba53cb6fbc237d02872eeb95ff8e3063",
+          "bytes": 44,
+          "gzipBytes": 64
+        },
+        {
+          "path": "contracts/triangulation-status.js",
+          "sha256": "56fda63c30a978186dc25f717519c2544c500976a3336cdaa1fd52ad8d286677",
+          "bytes": 497,
+          "gzipBytes": 333
+        },
+        {
+          "path": "contracts/two-view-failures.js",
+          "sha256": "50a8bd403f36fa625d0b4ccfba0ac8a3f9ed9a5903e272098ce1556ee48bcb31",
+          "bytes": 1324,
+          "gzipBytes": 656
+        },
+        {
+          "path": "geometry/camera.js",
+          "sha256": "7a1ee57f1e041a5b4a09abe87f9203e4133eb85f5388f1c88aba16bec3a6ab33",
+          "bytes": 3452,
+          "gzipBytes": 1329
+        },
+        {
+          "path": "geometry/errors.js",
+          "sha256": "14fe63023c53c6cefabf1f06cc53f984900237550b15e934d3c9b4206a113589",
+          "bytes": 276,
+          "gzipBytes": 201
+        },
+        {
+          "path": "geometry/homography.js",
+          "sha256": "93ce4c2f8a4ffbbd7b7aea5027dd36966df65964f710a532faeea9fec2ade5b7",
+          "bytes": 4586,
+          "gzipBytes": 1668
+        },
+        {
+          "path": "geometry/image-pair.js",
+          "sha256": "2fef91af70e42dc1937bf15b27e47c723679070c0a91b396fa2785aae5623b4c",
+          "bytes": 5477,
+          "gzipBytes": 1759
+        },
+        {
+          "path": "geometry/inverse-depth.js",
+          "sha256": "34391bf117a7bd6869046fcbc2be14f66940a8d3ebc5463dce833a6c1f2f2786",
+          "bytes": 8964,
+          "gzipBytes": 2649
+        },
+        {
+          "path": "geometry/linear.js",
+          "sha256": "d1045a5058904e7e120877b5325048715b7858ebb5bec9ea767375bc0b5b4a82",
+          "bytes": 4833,
+          "gzipBytes": 1621
+        },
+        {
+          "path": "geometry/multiview.js",
+          "sha256": "fb89d6818cfa19c8ff1945feb005e84aa3d68c1baffceb02d23ec46e74908301",
+          "bytes": 10848,
+          "gzipBytes": 3294
+        },
+        {
+          "path": "geometry/numerics.js",
+          "sha256": "f816df24d5b87c09f6ea0a1a6ce001a7f3654e1df51c6b4d6ac0e3424a3e99a1",
+          "bytes": 5714,
+          "gzipBytes": 1888
+        },
+        {
+          "path": "geometry/observation-paths.js",
+          "sha256": "62f7d1e17b78b2471ff1c24f4174b9f71a2088afc29dc8685ce0c2599846c42e",
+          "bytes": 2219,
+          "gzipBytes": 982
+        },
+        {
+          "path": "geometry/operator-defaults.js",
+          "sha256": "7b6c3d4b65d4b67fb785d968683e0a45e96caf78ed223bc100ed0b8ae3426489",
+          "bytes": 1353,
+          "gzipBytes": 658
+        },
+        {
+          "path": "geometry/p3p.js",
+          "sha256": "5424de98d1db497230fef2b690879ab80dccb369a51739c521f5e96f7c84fe9d",
+          "bytes": 7385,
+          "gzipBytes": 2408
+        },
+        {
+          "path": "geometry/pnp.js",
+          "sha256": "6b8c9076110f092af39d4334630f1757e86116af69d709d08f1dc68f8bcf7151",
+          "bytes": 10856,
+          "gzipBytes": 3296
+        },
+        {
+          "path": "geometry/pose.js",
+          "sha256": "a6d03329cf25dcefc8be9018fc653461eb6ad307956baa7ceec1cbb3d4b25eb9",
+          "bytes": 2823,
+          "gzipBytes": 1074
+        },
+        {
+          "path": "geometry/refinement.js",
+          "sha256": "b82e4e6b335fc62bb2d589f95e0cf908686c38f04552157985d3c02bc35cb4cb",
+          "bytes": 6935,
+          "gzipBytes": 2220
+        },
+        {
+          "path": "geometry/rotation.js",
+          "sha256": "aa14c221615851b27748598b942f3c2539cb450e5e42a28e07236e2238f2f821",
+          "bytes": 6517,
+          "gzipBytes": 2133
+        },
+        {
+          "path": "geometry/triangulation.js",
+          "sha256": "9f8a04a9e2b2a8c373dd265b50f1080a7472a37d33ee6c9f106913e3c56fd87e",
+          "bytes": 1004,
+          "gzipBytes": 536
+        },
+        {
+          "path": "geometry/two-view.js",
+          "sha256": "bb6826629349ea3ec5c5bc1d610400be61eb2b9b76381fb9be4b3903f969ac48",
+          "bytes": 18368,
+          "gzipBytes": 5288
+        },
+        {
+          "path": "geometry/validation.js",
+          "sha256": "508e316c470f0bb3e62bc4b12cb836ed413cfeaf94005e830988c53b30bb8222",
+          "bytes": 1648,
+          "gzipBytes": 581
+        },
+        {
+          "path": "gpu/fuse-plan-QQQmPgnY.js",
+          "sha256": "586d7b54354a64b18367340e7d57168e1ae651b7a40be125d34e3e998ec039dc",
+          "bytes": 452892,
+          "gzipBytes": 114053
+        },
+        {
+          "path": "gpu/index-wwFhpTV4.js",
+          "sha256": "11b9f792e89854d55ed3ce542ca968b2c88b7532f26b74b28df1dfb054c56d35",
+          "bytes": 6816805,
+          "gzipBytes": 1072541
+        },
+        {
+          "path": "gpu/index.js",
+          "sha256": "98d2a73b7aeb38fdb28137b9d81dc82bb1042532b767cabcf016aad320caa7b8",
+          "bytes": 2501,
+          "gzipBytes": 1100
+        },
+        {
+          "path": "gpu.js",
+          "sha256": "d6b1d9cd3154e5aa9b5191f0259cae6748df9e201340ff1bad3cdf66d8dd173f",
+          "bytes": 32,
+          "gzipBytes": 52
+        },
+        {
+          "path": "index.js",
+          "sha256": "8656e092eac110181e0df2e5284f49f097f1cc63ed08cc146de76254714248ea",
+          "bytes": 1968,
+          "gzipBytes": 685
+        },
+        {
+          "path": "internal/fuse-plan-DEOOTC4B.js",
+          "sha256": "b75024f46a66bc471e6965cbd11e7c3829c55adcd52e2e8f532ea6f84a9256f3",
+          "bytes": 494377,
+          "gzipBytes": 124754
+        },
+        {
+          "path": "internal/gpu.js",
+          "sha256": "40aba20c01290dfdcf8a693e99d6848f450ae9f1faf02ed7871f71ee366a4a16",
+          "bytes": 2057,
+          "gzipBytes": 958
+        },
+        {
+          "path": "internal/internal-BqMqz_5e.js",
+          "sha256": "d08577fccec907ee3eeea70630dda3e81d345ad4e2ff3d9b0f72a3d985918684",
+          "bytes": 5961282,
+          "gzipBytes": 976302
+        },
+        {
+          "path": "mvs/cloud-clean.js",
+          "sha256": "f8e6c08bdc900568d4475c1a9eebe72832a6db46d0ac92afafffcea2362301a9",
+          "bytes": 26281,
+          "gzipBytes": 7339
+        },
+        {
+          "path": "mvs/dense-label.js",
+          "sha256": "7050a3260439a43b23d48526ac5622df382d3c29cfa2c22b184c121b91e41abb",
+          "bytes": 23611,
+          "gzipBytes": 6096
+        },
+        {
+          "path": "mvs/dense-mesh.js",
+          "sha256": "b0a37793488657fda28b82790aa914fd893102e4928c071d9ef17b0a86def591",
+          "bytes": 17948,
+          "gzipBytes": 5437
+        },
+        {
+          "path": "mvs/dense-score.js",
+          "sha256": "1364ce89a55b1c88f41986fbb45c3fdc6154cd02abb66088518dbaa24058d4ef",
+          "bytes": 14859,
+          "gzipBytes": 4557
+        },
+        {
+          "path": "mvs/marching-cubes-tables.js",
+          "sha256": "ccb82ab7765dbb71b0d7bf1d784de65dc0e3c5993d2acce791089946e85c7926",
+          "bytes": 7769,
+          "gzipBytes": 3052
+        },
+        {
+          "path": "mvs/tsdf.js",
+          "sha256": "489f0d75d522f38b0e5b685f364137bc7ba4604560d180a907b519e08f437888",
+          "bytes": 39010,
+          "gzipBytes": 10726
+        },
+        {
+          "path": "reconstruction/bundle-adjustment.js",
+          "sha256": "6124fdadeec51cdbea23c90d7612aaac6a92ee295d1b3adcabc8b07a4c6d00b6",
+          "bytes": 97,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/bundle-directions.js",
+          "sha256": "42024ac862bb8e9bbfdcc6f09520410c4b01a2f1212a2a762144027679ff824b",
+          "bytes": 97,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/cloud-clean.js",
+          "sha256": "31e9b4d6533b072c361ede775ad3b15fcd2338b77a9cb7f682b2db991e41e5c2",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/component-mapper.js",
+          "sha256": "93f36eac2308109986999c5635ea9dded5a1fdbc41fa4fab7ad8910853d69c1a",
+          "bytes": 98,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/dense-label.js",
+          "sha256": "8f88ef0adf83dd25358015847d57f04ebc3d13faa5c53a6df94be9a0f60a33b1",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/dense-mesh.js",
+          "sha256": "c86a79acf732ea3d83ca3d99704554634dde1f01eba9712dfc8cb873123699e5",
+          "bytes": 76,
+          "gzipBytes": 85
+        },
+        {
+          "path": "reconstruction/dense-score.js",
+          "sha256": "7f4f930b3a7551c68b25b8c864f6aab5a2f8ac1796d0f1d2425268fa04bd3350",
+          "bytes": 78,
+          "gzipBytes": 86
+        },
+        {
+          "path": "reconstruction/depth-publication.js",
+          "sha256": "b2b47d55a1a2bf3608a4487044aefcc4472b6812b99d8c8b845d17fd3a3618ee",
+          "bytes": 96,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/depth-record.js",
+          "sha256": "724ce687845700c54961f3538b3a63ad65fa526ab49056cf616ed8ed51c2a654",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/depth-tracks.js",
+          "sha256": "f31daa11b7a53c10baf65b253a4235737d132f403404d73708e53e9ce0c7ac73",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/directional-tracks.js",
+          "sha256": "bb0432d3a04466d6d05d742778a381ef8df4f5af3344479f5f09e5d59321fe1a",
+          "bytes": 99,
+          "gzipBytes": 100
+        },
+        {
+          "path": "reconstruction/focal-pairs.js",
+          "sha256": "df5bdb0465a066747a401b58239569aa4289dce28ba48c1f4f6e1bf0cc8fc4b5",
+          "bytes": 84,
+          "gzipBytes": 87
+        },
+        {
+          "path": "reconstruction/focal-search.js",
+          "sha256": "8c8411fe8b586fcf0a4dc155a5d6314e53310c0de8ed84ba7115deb75225e83b",
+          "bytes": 86,
+          "gzipBytes": 88
+        },
+        {
+          "path": "reconstruction/history-refinement.js",
+          "sha256": "8b814283fa97098b1636176019b28fce5522a3177dd7071b075d21ba21055bca",
+          "bytes": 100,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/identity.js",
+          "sha256": "b15c9312b555ef178016ea42fd09c4830945b452d2ee7ac1cab85223a412e3c6",
+          "bytes": 78,
+          "gzipBytes": 89
+        },
+        {
+          "path": "reconstruction/inverse-depth-bundle.js",
+          "sha256": "ad67f3a2cc9b20b26c81697063bcf73a87fa997e48f99c3035c57dd6f9832ff5",
+          "bytes": 102,
+          "gzipBytes": 98
+        },
+        {
+          "path": "reconstruction/inverse-depth-tracker.js",
+          "sha256": "88c7927edada65260296f52a9c669814a4dfe4d9261aa38aa110890a26d235a9",
+          "bytes": 104,
+          "gzipBytes": 99
+        },
+        {
+          "path": "reconstruction/joint-focal.js",
+          "sha256": "9dd2d00db04331974fc235e5c3a58b9f180b022eba0a5657f9a7b4b0b2b65879",
+          "bytes": 85,
+          "gzipBytes": 93
+        },
+        {
+          "path": "reconstruction/local-bundle.js",
+          "sha256": "6e61a603941034ef60650646055efc155dfeb1d5f0dbfeaeb970337c91ac3ffe",
+          "bytes": 87,
+          "gzipBytes": 90
+        },
+        {
+          "path": "reconstruction/map-history.js",
+          "sha256": "315ef36610096f1be2836c8a5f13879b77803f185ad42b1c974722de703c08be",
+          "bytes": 86,
+          "gzipBytes": 94
+        },
+        {
+          "path": "reconstruction/mapper.js",
+          "sha256": "61cd0cb506ac67e34921feb01efe895c55226a2dc6462a8f6d85b6d334a17fb8",
+          "bytes": 75,
+          "gzipBytes": 82
+        },
+        {
+          "path": "reconstruction/marching-cubes-tables.js",
+          "sha256": "4d3a27fd4b28baefa2587297f66653ebd0450213af23515899f506144b7b23d1",
+          "bytes": 98,
+          "gzipBytes": 96
+        },
+        {
+          "path": "reconstruction/observation-paths.js",
+          "sha256": "e6e6ec398b842a774cf8b3b66dab77d2e21f849c8d1a6ff258280e5a8d62dceb",
+          "bytes": 95,
+          "gzipBytes": 97
+        },
+        {
+          "path": "reconstruction/observation-selection.js",
+          "sha256": "3eb3ee17315442fef6eceaab5accfbde808deadcc9e8f70573e55d916d14ff45",
+          "bytes": 105,
+          "gzipBytes": 101
+        },
+        {
+          "path": "reconstruction/posed-evidence.js",
+          "sha256": "0c3f36832b64e82a40d6c0480d6ed25c0995550f6bbec3b21162f05465f5b441",
+          "bytes": 91,
+          "gzipBytes": 96
+        },
+        {
+          "path": "reconstruction/scene-mapper.js",
+          "sha256": "cffd0ff01675a28b8acda87ab71c5ea457dee63e9ef69a4ff3b2c059e2879caa",
+          "bytes": 87,
+          "gzipBytes": 90
+        },
+        {
+          "path": "reconstruction/scene.js",
+          "sha256": "f40741a977806940f3c9c75d4ed2e368f38633b7ecfda3b3c95375369e5f0585",
+          "bytes": 72,
+          "gzipBytes": 81
+        },
+        {
+          "path": "reconstruction/sparse-schur.js",
+          "sha256": "da9b11acc1dc39086e899a63d9ee982e7be8300a9f93a99aa9e666c362ce2dc9",
+          "bytes": 86,
+          "gzipBytes": 93
+        },
+        {
+          "path": "reconstruction/tracking.js",
+          "sha256": "70b93982f2799f615722bf0cdaf2207edf2a61697dfa535455f71a4d13891f26",
+          "bytes": 79,
+          "gzipBytes": 85
+        },
+        {
+          "path": "reconstruction/tracks.js",
+          "sha256": "a8330688c16431b0640e20c081a94a2f7c6c700d8e79bd9e02108bd5566dfb6e",
+          "bytes": 75,
+          "gzipBytes": 82
+        },
+        {
+          "path": "reconstruction/tsdf.js",
+          "sha256": "1e0ba72bfa1e2f4e8d25bee1f1e13d5b5a4e6d80dd4f577353290f70ed43bf14",
+          "bytes": 64,
+          "gzipBytes": 79
+        },
+        {
+          "path": "reconstruction/types.js",
+          "sha256": "beeb35504ed6f26bfd4cba6929c6d10022f803380d72472da97fe3bb228ea72b",
+          "bytes": 72,
+          "gzipBytes": 92
+        },
+        {
+          "path": "reconstruction/view-graph.js",
+          "sha256": "990b80c4eb31370e2f1d68e39cf03221f0fea5da1b803f407e83d22e75b81c0c",
+          "bytes": 86,
+          "gzipBytes": 92
+        },
+        {
+          "path": "sfm/bundle/bundle-adjustment.js",
+          "sha256": "2cd445973e5879504e8a0ede5400a5a24e8cdaa7c826759535f0f0af8b42419a",
+          "bytes": 10914,
+          "gzipBytes": 3085
+        },
+        {
+          "path": "sfm/bundle/bundle-directions.js",
+          "sha256": "62585dc1f0c28a6215707b14453430635b4fbf3672d03c8021947174d1659298",
+          "bytes": 4327,
+          "gzipBytes": 1413
+        },
+        {
+          "path": "sfm/bundle/bundle-shared.js",
+          "sha256": "fd0420654043f095934acc63a972fe01dc475f8a8c6d1288061a2fc1f484064a",
+          "bytes": 2221,
+          "gzipBytes": 972
+        },
+        {
+          "path": "sfm/bundle/directional-tracks.js",
+          "sha256": "fdbffa82877516b8eb6881f764241da2426d16a3e700194d121786678beff1e5",
+          "bytes": 4356,
+          "gzipBytes": 1591
+        },
+        {
+          "path": "sfm/bundle/joint-focal.js",
+          "sha256": "212c6610a66ddc671fab9f2904dee14047fbeb87abe16b74e8b5ac3484338c9f",
+          "bytes": 11869,
+          "gzipBytes": 3385
+        },
+        {
+          "path": "sfm/bundle/local-bundle.js",
+          "sha256": "7f03aa3ee4494a56327df1dc030c1a0bee481e952d4db83773e563ce27530094",
+          "bytes": 6621,
+          "gzipBytes": 1909
+        },
+        {
+          "path": "sfm/bundle/validation.js",
+          "sha256": "e6b1c4a0f5811b1048646e315a74fe7f6a11dda08c1c5ab8c41f40f121202e4a",
+          "bytes": 84,
+          "gzipBytes": 93
+        },
+        {
+          "path": "sfm/config/defaults.js",
+          "sha256": "1d8f44470eb730ca48074a0e52eb76db19ab194a35947563d3d78fbdde3baa55",
+          "bytes": 2487,
+          "gzipBytes": 1119
+        },
+        {
+          "path": "sfm/config/incremental-controls.js",
+          "sha256": "4aae44a6494bcb682fe8967dcbb477e0e41c7a1b1feaf882310fe1f237b3e853",
+          "bytes": 5279,
+          "gzipBytes": 1389
+        },
+        {
+          "path": "sfm/config/lab-preset.js",
+          "sha256": "630aed00ec4000ec43200b0ffa307b64342ff7bacb8f50482cf82a270ecd73be",
+          "bytes": 1027,
+          "gzipBytes": 578
+        },
+        {
+          "path": "sfm/depth/depth-publication.js",
+          "sha256": "f9a9458d3a0131da4ac0b14958787392995f3a359900f179d28d6c295d51bfde",
+          "bytes": 2605,
+          "gzipBytes": 886
+        },
+        {
+          "path": "sfm/depth/depth-record.js",
+          "sha256": "b16c0ab2ec590c717649ba9bf7cdc115291305b4729e06ec13c323af2ad6b385",
+          "bytes": 2016,
+          "gzipBytes": 711
+        },
+        {
+          "path": "sfm/depth/depth-tracks.js",
+          "sha256": "75b2169dcacf813bce18aec9e15bdec469809bb2dc45e622b434616ec7148282",
+          "bytes": 4674,
+          "gzipBytes": 1487
+        },
+        {
+          "path": "sfm/depth/inverse-depth-bundle.js",
+          "sha256": "d3c6dd3bb100c4a1b874ea19650c7e66b3f12310c9c215de4e73c8c47120b79d",
+          "bytes": 26459,
+          "gzipBytes": 6716
+        },
+        {
+          "path": "sfm/depth/inverse-depth-tracker.js",
+          "sha256": "13a42ea01583daa95bb3f99d6fa89ca2bf92b1e07678eeb0fd266a467b446092",
+          "bytes": 19443,
+          "gzipBytes": 4911
+        },
+        {
+          "path": "sfm/depth/sparse-schur.js",
+          "sha256": "9fe10df86dcc6cf81e4163be8ff020ebccaa32a4104526f51649225928dc57b4",
+          "bytes": 7761,
+          "gzipBytes": 2084
+        },
+        {
+          "path": "sfm/focal/focal-pairs.js",
+          "sha256": "38d38dd9ed0fd816a5f7198da6af9e6ed2d70457ccc897ab00fec405c02e88e8",
+          "bytes": 3913,
+          "gzipBytes": 1478
+        },
+        {
+          "path": "sfm/focal/focal-search.js",
+          "sha256": "b29fb49bf9d62135437cb165ae61b04ed0434d238142972190540a765700fe2f",
+          "bytes": 28213,
+          "gzipBytes": 8411
+        },
+        {
+          "path": "sfm/linear.js",
+          "sha256": "e4982bc58af281fde4c3a304bbf0989611caeedd97a8cd0229c29725be2bed9e",
+          "bytes": 73,
+          "gzipBytes": 86
+        },
+        {
+          "path": "sfm/mapper/initialization.js",
+          "sha256": "824bc3d0139bd0d21d8b072bba7f7aa230e5f9420e4322903d7ccc85a226614d",
+          "bytes": 3493,
+          "gzipBytes": 1180
+        },
+        {
+          "path": "sfm/mapper/mapper.js",
+          "sha256": "f58ae40635f9aa2133f74cc3122c589181c8876895cfb5af2e8d174cf645b951",
+          "bytes": 34490,
+          "gzipBytes": 8906
+        },
+        {
+          "path": "sfm/mapper/registration.js",
+          "sha256": "e5a2c096ff9379423194a2002ec5f62171187081a7ae1c760dbd66b05534a37f",
+          "bytes": 2192,
+          "gzipBytes": 945
+        },
+        {
+          "path": "sfm/mapper/result.js",
+          "sha256": "d82a522b436a3b601cc136aef69587c10c5e92783401ee113a932e292ff05c50",
+          "bytes": 1254,
+          "gzipBytes": 524
+        },
+        {
+          "path": "sfm/mapper/scene-mapper.js",
+          "sha256": "02a5ed53535484b2f085709d31681dac69c6e90306b0bb5e8a7aed03b9a67954",
+          "bytes": 24489,
+          "gzipBytes": 6069
+        },
+        {
+          "path": "sfm/mapper/track-index.js",
+          "sha256": "39d09a86eb9f7211ad86e92f165714845144d059dd650846f9b26d71fc2ff1c7",
+          "bytes": 2474,
+          "gzipBytes": 914
+        },
+        {
+          "path": "sfm/model/copy.js",
+          "sha256": "63e87fc7ed89aeb1f482cafbdfe99b568cd048bb56785f5f8794f79e124fc12d",
+          "bytes": 658,
+          "gzipBytes": 313
+        },
+        {
+          "path": "sfm/model/identity.js",
+          "sha256": "c5700c291b77f6f61a07a39167220ac40bb25b12dedc801605b489345f69cdc5",
+          "bytes": 3581,
+          "gzipBytes": 1552
+        },
+        {
+          "path": "sfm/multiview/component-mapper.js",
+          "sha256": "8ac4dd81ca4612acd6c24892fafc5345534e7c64b533483ca2d07876ff3989ff",
+          "bytes": 3080,
+          "gzipBytes": 1169
+        },
+        {
+          "path": "sfm/multiview/view-graph.js",
+          "sha256": "d0a09d39103b3512d3e469049cdf80f32239a96b25317dcb3ca7ef9339cfe264",
+          "bytes": 23481,
+          "gzipBytes": 6476
+        },
+        {
+          "path": "sfm/pairs/pair-verdict.js",
+          "sha256": "782a02e4bdf2d572e7fb3acd04b7c9a25f0aefffd69b23badc66801e360f6a42",
+          "bytes": 2322,
+          "gzipBytes": 777
+        },
+        {
+          "path": "sfm/protocol/depth-step.js",
+          "sha256": "040f7d806c98a825d8f10ed95bc42b80ba38b5fb98de80a7a67e8a111d5cc17b",
+          "bytes": 2505,
+          "gzipBytes": 930
+        },
+        {
+          "path": "sfm/protocol/drive.js",
+          "sha256": "634caced7868dff82a268d8b1cf352ed50fa445470f978d6d7f0c3d80deb727a",
+          "bytes": 1510,
+          "gzipBytes": 524
+        },
+        {
+          "path": "sfm/protocol/errors.js",
+          "sha256": "9d05404372411d7750753540a86518727846a7cedb2f3722ebb25c423c89571b",
+          "bytes": 1018,
+          "gzipBytes": 436
+        },
+        {
+          "path": "sfm/refinement.js",
+          "sha256": "6dcccb70a5f1c13e7bffbd0aa8b28cdd44f09b5f5db2b9bd46ee55155a289786",
+          "bytes": 81,
+          "gzipBytes": 90
+        },
+        {
+          "path": "sfm/scene/scene.js",
+          "sha256": "7cbba4f3fe9a898e0279534a85d978bb6ae91a4fba5c6b005329c57fe5998735",
+          "bytes": 15371,
+          "gzipBytes": 3722
+        },
+        {
+          "path": "sfm/session/archive-solve.js",
+          "sha256": "79576b561d44e48fbc387cbc8873037e7f04ddfc0c0473a29f9cffd7d4dcc912",
+          "bytes": 2579,
+          "gzipBytes": 989
+        },
+        {
+          "path": "sfm/session/history-refinement.js",
+          "sha256": "5640b50586aff23bd403bf4fe1074fb5be0455959516b417c9af0f49fc70dc7a",
+          "bytes": 12411,
+          "gzipBytes": 3971
+        },
+        {
+          "path": "sfm/session/map-history.js",
+          "sha256": "11ede3f25ea721781fc034e6a3b6791e5cfeeff7b6764d4731d4185524f207e7",
+          "bytes": 4764,
+          "gzipBytes": 1418
+        },
+        {
+          "path": "sfm/session/window.js",
+          "sha256": "b95bce4da78a3744f5f44762956c5636567fe20db25e4ab8dbb45fb31c363022",
+          "bytes": 4754,
+          "gzipBytes": 1625
+        },
+        {
+          "path": "sfm/tracks/observation-selection.js",
+          "sha256": "f8686d3ae0df093ce93b13b3efd6fb9a6565ab47f3a5215783868ee8134b2155",
+          "bytes": 5048,
+          "gzipBytes": 1692
+        },
+        {
+          "path": "sfm/tracks/posed-evidence.js",
+          "sha256": "bee5a93a7d58274477df7b50a40f6c41962a094964944720a1d0038df10be8a4",
+          "bytes": 9211,
+          "gzipBytes": 2668
+        },
+        {
+          "path": "sfm/tracks/tracking.js",
+          "sha256": "187ea253596b1ee3d39f77e2c2a920ea20759e601246589e17b4917bcdb53b73",
+          "bytes": 3873,
+          "gzipBytes": 1344
+        },
+        {
+          "path": "sfm/tracks/tracks.js",
+          "sha256": "1dc50297657fa7dee1823242444159ba8632fcfd56d0c2bef9eeff022e9fe5b6",
+          "bytes": 4064,
+          "gzipBytes": 1329
+        },
+        {
+          "path": "sfm/triangulation.js",
+          "sha256": "1a9ee2158492333a770a18d3a2e7e8ab5e5e7cf9c2c370e594e4ec04d0e39063",
+          "bytes": 87,
+          "gzipBytes": 93
+        },
+        {
+          "path": "sfm/two-view.js",
+          "sha256": "4dd80f83acb7b7ac470a25c280a37b5db6ebcc45a53f8a6d464d21e81f84d16d",
+          "bytes": 77,
+          "gzipBytes": 88
+        }
+      ],
+      "sha256": "b2fc7e6806ac83700f30bceb2816a52b84bf56697f5beee257366e23569755f5"
+    }
+  },
+  "errors": [],
+  "adapter": "google swiftshader",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+  "importMs": 228.09999999776483,
+  "preparationMs": 17.100000001490116,
+  "frames": [
+    {
+      "id": 0,
+      "index": 0,
+      "file": "tests/fixtures/lab-images/pyramid/frame-00.jpg",
+      "sha256": "44fc372bda47ae4328c5c8bafaa2f2639309588a91690961e794e50804d3deda",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "id": 1,
+      "index": 3,
+      "file": "tests/fixtures/lab-images/pyramid/frame-03.jpg",
+      "sha256": "9c822632c8a4e82fe0c6372cf73fa162fc9d053725468b7e7629a59adc67a904",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "id": 2,
+      "index": 7,
+      "file": "tests/fixtures/lab-images/pyramid/frame-07.jpg",
+      "sha256": "e00d319a2c75adce7bb4fdd640e0f36b4b6404e422a78dabb3467c96b45738ee",
+      "width": 640,
+      "height": 360
+    }
+  ],
+  "rows": [
+    {
+      "version": "candidate",
+      "round": -1,
+      "elapsedMs": 50957.900000002235,
+      "featureMs": 9170.000000003725,
+      "matchMs": 7898.89999999851,
+      "mapperMs": 33888.699999999255,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 12651.5,
+          "tier": "webgpu",
+          "dispatches": 163,
+          "submissions": 34
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 49.400000002235174,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 43.400000002235174,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 7249.5,
+          "tier": "webgpu",
+          "dispatches": 6,
+          "submissions": 6
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 2688.2000000029802,
+          "tier": "webgpu",
+          "dispatches": 108,
+          "submissions": 15
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 381.8999999985099,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 7504.699999999255,
+          "tier": "webgpu",
+          "dispatches": 205,
+          "submissions": 21
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 1.8999999985098839,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 14.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 118.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 237,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 3157.800000000745,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.800000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.900000002235174,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": -1,
+      "elapsedMs": 50338.5,
+      "featureMs": 8808.29999999702,
+      "matchMs": 6794.800000000745,
+      "mapperMs": 34735.10000000149,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 12861.300000000745,
+          "tier": "webgpu",
+          "dispatches": 163,
+          "submissions": 34
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 52.30000000074506,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 53.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 7228.39999999851,
+          "tier": "webgpu",
+          "dispatches": 6,
+          "submissions": 6
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 2674.699999999255,
+          "tier": "webgpu",
+          "dispatches": 108,
+          "submissions": 15
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 371.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 7973.10000000149,
+          "tier": "webgpu",
+          "dispatches": 205,
+          "submissions": 21
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 12.5,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 124.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 237,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 2.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 3350.199999999255,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 6.900000002235174,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": 0,
+      "elapsedMs": 16705,
+      "featureMs": 8880.10000000149,
+      "matchMs": 7238,
+      "mapperMs": 586.6999999992549,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 77.60000000149012,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 51.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 52.399999998509884,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 23.5,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 57.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 81.09999999776483,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 9.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 107.60000000149012,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.800000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 76.70000000298023,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 17.099999997764826,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 12.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "candidate",
+      "round": 0,
+      "elapsedMs": 16200.199999999255,
+      "featureMs": 8609.099999997765,
+      "matchMs": 7036.900000002235,
+      "mapperMs": 554.1999999992549,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 73.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 54.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 53.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 22.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 49.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 77.40000000223517,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 11.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 108.10000000149012,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 74.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.900000002235174,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "candidate",
+      "round": 1,
+      "elapsedMs": 15883.300000000745,
+      "featureMs": 8395,
+      "matchMs": 6891.099999997765,
+      "mapperMs": 597.1000000014901,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 77.60000000149012,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 47.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 50.5,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 20.800000000745058,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 49.5,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 102.60000000149012,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 10.699999999254942,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 126.89999999850988,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 78.5,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": 1,
+      "elapsedMs": 16439,
+      "featureMs": 8585.999999996275,
+      "matchMs": 7244.400000002235,
+      "mapperMs": 608.5,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 91.90000000223517,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 49.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 44.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 25.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 56.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.399999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 80.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.400000002235174,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 7.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 123.30000000074506,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 84.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 13,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": 2,
+      "elapsedMs": 15930.300000000745,
+      "featureMs": 8374.300000000745,
+      "matchMs": 6982.400000002235,
+      "mapperMs": 573.5,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 79.5,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 46.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 50.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 22.299999997019768,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 59.900000002235174,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.400000002235174,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 99.89999999850988,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 8.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 100.30000000074506,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 73.10000000149012,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 8.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "candidate",
+      "round": 2,
+      "elapsedMs": 15865.60000000149,
+      "featureMs": 8554.60000000149,
+      "matchMs": 6711.300000000745,
+      "mapperMs": 599.6000000014901,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 76.40000000223517,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 49.5,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 63.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 30.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 51.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 80.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 1.699999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 9.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 127.5,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 82.70000000298023,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.699999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "candidate",
+      "round": 3,
+      "elapsedMs": 16240.39999999851,
+      "featureMs": 8668.099999997765,
+      "matchMs": 6946,
+      "mapperMs": 626.3000000007451,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 87.39999999850988,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 73,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 66.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 24.5,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 59.30000000074506,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 80.09999999776483,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.399999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 8.700000002980232,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 104.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.099999997764826,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 88.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 2.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": 3,
+      "elapsedMs": 15808,
+      "featureMs": 8456.699999999255,
+      "matchMs": 6762.800000000745,
+      "mapperMs": 588.5,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 74.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 54.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 53.599999997764826,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 28.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 56.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 83.5,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.300000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 17.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 118.5,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 73.40000000223517,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.800000000745058,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "baseline",
+      "round": 4,
+      "elapsedMs": 15957.199999999255,
+      "featureMs": 8510.000000003725,
+      "matchMs": 6882.29999999702,
+      "mapperMs": 564.8999999985099,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 74.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 50.5,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 48.400000002235174,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 30.199999999254942,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 58.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 83.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 8.800000000745058,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 112.39999999850988,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.399999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 75.10000000149012,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.5,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 1.8999999985098839,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    },
+    {
+      "version": "candidate",
+      "round": 4,
+      "elapsedMs": 15830.5,
+      "featureMs": 8397.69999999553,
+      "matchMs": 6866.70000000298,
+      "mapperMs": 566.1000000014901,
+      "stages": [
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 66.69999999925494,
+          "tier": "webgpu",
+          "dispatches": 162,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 57.20000000298023,
+          "tier": "webgpu",
+          "dispatches": 141,
+          "submissions": 33
+        },
+        {
+          "operation": "pairVerification",
+          "elapsedMs": 53.19999999925494,
+          "tier": "webgpu",
+          "dispatches": 148,
+          "submissions": 33
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 22.600000001490116,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 52.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 177,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 5.100000001490116,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "pnp",
+          "elapsedMs": 87.80000000074506,
+          "tier": "webgpu",
+          "dispatches": 204,
+          "submissions": 20
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.699999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "triangulation",
+          "elapsedMs": 7.5,
+          "tier": "webgpu",
+          "dispatches": 2,
+          "submissions": 2
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 116.09999999776483,
+          "tier": "webgpu",
+          "dispatches": 303,
+          "submissions": 14
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 4.099999997764826,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "bundle",
+          "elapsedMs": 76.40000000223517,
+          "tier": "webgpu",
+          "dispatches": 196,
+          "submissions": 8
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.899999998509884,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        },
+        {
+          "operation": "observations",
+          "elapsedMs": 3.699999999254942,
+          "tier": "webgpu",
+          "dispatches": 3,
+          "submissions": 1
+        }
+      ],
+      "uploadBytes": 5292144,
+      "readbackBytes": 243988,
+      "output": {
+        "featureHashes": [
+          {
+            "count": 1624,
+            "keypoints": "fc1c1f22b701c8950f6e4d6aeae2bf74176b8705a2539c6d4b90ac434f0039c8",
+            "details": "f5639efeba4f89d28ff226b2e1df650218566c88edab8f63066608d231466d3d",
+            "descriptors": "468daf414954f690b121c160b0909e01798b129f35ab34157609c179d4e36c85"
+          },
+          {
+            "count": 1636,
+            "keypoints": "f6b92fed914acb8d08377048ccf6593b2f1b78316689304d670f409e196e8a0a",
+            "details": "d5842e5657052bb870b91ddbda72de086ea9ac2bb453f2df240360e9c5636072",
+            "descriptors": "cbc1e3a2e30e91b36958a3fdd38d3e697d3bf44863ea47d620206c7c8a408398"
+          },
+          {
+            "count": 1289,
+            "keypoints": "770113e125332fc72b7f94dd55a29190ab7c87b62119db204a1a56247ec9c0a6",
+            "details": "501785b73ebfae3153271bf38897040e9c97e2b2f0e4d42f190bf1ef4223c7a7",
+            "descriptors": "67e07b21fc9180453745494dcf1a4fe519b845810fd1a27d3cc129335772269f"
+          }
+        ],
+        "matchHash": "825ab82b3ce1e4bbeb9d7defcf1b39b63173d7aa8e9ed1c6c279f9a00b6bef96",
+        "modelHash": "34c1c3812c56f4f60739b083594579a83d88dac28060743fbf92e6bd6d32f7c4",
+        "viewIds": [
+          0,
+          1,
+          2
+        ],
+        "landmarks": 535,
+        "observations": 1137,
+        "meanReprojectionErrorPx": 0.21718314039993483,
+        "registrationOrder": [
+          0,
+          1,
+          2
+        ],
+        "initialPair": [
+          0,
+          1
+        ],
+        "gpuBundleAdjustments": 3
+      }
+    }
+  ],
+  "validation": [],
+  "mismatches": [],
+  "summary": {
+    "elapsedMs": {
+      "baseline": 15957.199999999255,
+      "candidate": 15883.300000000745,
+      "medianPairedPercent": -0.7939989471790865,
+      "pairedPercent": [
+        -3.021849745589611,
+        -3.3803759352713403,
+        -0.4061442659538894,
+        2.7353238866302476,
+        -0.7939989471790865
+      ]
+    },
+    "featureMs": {
+      "baseline": 8510.000000003725,
+      "candidate": 8554.60000000149,
+      "medianPairedPercent": -1.3196239718936131,
+      "pairedPercent": [
+        -3.0517674350928448,
+        -2.22455159557835,
+        2.1530157744614975,
+        2.4997930634707233,
+        -1.3196239718936131
+      ]
+    },
+    "matchMs": {
+      "baseline": 6982.400000002235,
+      "candidate": 6891.099999997765,
+      "medianPairedPercent": -2.778391820914128,
+      "pairedPercent": [
+        -2.778391820914128,
+        -4.87687041030812,
+        -3.882619156757039,
+        2.7089371266226125,
+        -0.22666841018331718
+      ]
+    },
+    "mapperMs": {
+      "baseline": 586.6999999992549,
+      "candidate": 597.1000000014901,
+      "medianPairedPercent": 0.21242697875436534,
+      "pairedPercent": [
+        -5.539457985348772,
+        -1.8734593259671084,
+        4.5510026157785655,
+        6.423109600806298,
+        0.21242697875436534
+      ]
+    }
+  }
+}

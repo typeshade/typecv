@@ -36,6 +36,7 @@ identified separately throughout these documents.
 - [Dense multi-view stereo: implemented depth, fusion, cleanup, meshing and quality records](dense-mvs.md)
 - [Pyramidal Lucas–Kanade (KLT) tracking: steps 1 to 6 implemented, physical-device gate open](klt-tracking.md)
 - [GPU throughput: measurements, delivered changes and remaining optimization work](gpu-throughput.md)
+- [Compiler adoption: paired complete sparse-pipeline measurements](compiler-performance.md)
 - [Multi-video reconstruction: implemented Lab pipeline and remaining integration work](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 - [General gameplay/cinematic audit, observability and staged reconstruction plan](general-video-reconstruction.md)

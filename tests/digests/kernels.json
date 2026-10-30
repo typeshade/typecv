@@ -1,16 +1,16 @@
 {
   "update": "node scripts/kernel-digests.mjs --write",
   "configuration": {
-    "node": "v22.22.0",
-    "v8": "12.4.254.21-node.33",
+    "node": "v24.19.0",
+    "v8": "13.6.233.17-node.51",
     "platform": "linux x64",
-    "commit": "78eb471835e5482e4f4ff0e9c7996d6baf78537d"
+    "commit": "2761e824144fc1d624a3923684bcf138373c47f2"
   },
-  "compiler": "725b2969a9cac37400980c2c0058680368407602",
+  "compiler": "49f4f2884c0c38dc6134c837efd5565e5395b721",
   "modules": {
     "bundle.shade.ts": {
-      "wgsl": "7eb332ea74a69b98eb5c72026198f3435f78575f9c5a4602130b02f4f2d9080e",
-      "wgslInteger": "d644c4d2dc04ffb5110f14e880958bd4268ddc5a0a6c4a700f716fa1b39dcff7",
+      "wgsl": "686ddf5bb9b2ffa547b4983ce595cc57cfec6b4ddc24d6afc757b8466252c944",
+      "wgslInteger": "ea1ade2a487a5e559b499e32cf2384b5066481cf4fda1cb371cde210e0eff862",
       "glsl": "94dac7debf31440b89899e624a422cef3126a9d82ac75fecf0a4555729ba4420",
       "entries": 29,
       "kernelFunctions": 0,
@@ -27,7 +27,7 @@
     },
     "cloud-knn.shade.ts": {
       "wgsl": "2178cdad11919998a11ef3b2430857ea7ce48bad96e45d3ea0bec575cd06b727",
-      "glsl": "2ed9f9287591014ebdc2cb7bccb2344af97c21a9646acfd8e37e27f67ee04155",
+      "glsl": "7693bac4e93f4fcb555dde2a55a1368d85fe6969001fb78e0839c883e73cf745",
       "entries": 1,
       "kernelFunctions": 0,
       "glslPrograms": 1,
@@ -42,8 +42,8 @@
       "withoutGlsl": 0
     },
     "consensus.shade.ts": {
-      "wgsl": "78c4d8fd0ee5536773af0a20a4dea8c40a9925a95d7f897479490b7e4088041e",
-      "wgslInteger": "833e05a9613dc8056a468a66e2100e468239291317fa7f93f27c432922c9dabf",
+      "wgsl": "23d791f5024299bb8a3118f3a8e0b33c3f94aba1b932c319ae0568bc2dce1ff4",
+      "wgslInteger": "51f28d05ca32b3a6728999aac37eba772aa379eae4750dbc047fd563bf0584e0",
       "glsl": "25cc78337a71017d29cccc8a329163c289b3af96eb2b11d8aab5b8b1edc1f4a7",
       "entries": 7,
       "kernelFunctions": 0,
@@ -52,14 +52,14 @@
     },
     "dense-mesh.shade.ts": {
       "wgsl": "fe99d315efe1ea791c1af8e3f9f0a0fe7a58881024b084bf56c5c958c1fbca7f",
-      "glsl": "c0333f4ba3703cb571df9b9e36afcefdf49f48ac27be70f037e62c2e45fb69ee",
+      "glsl": "8e96ce76f2ecc6180e5ba3586a2096dbd035960e2c5ec2f1c38b0897deeaf8a8",
       "entries": 4,
       "kernelFunctions": 0,
       "glslPrograms": 4,
       "withoutGlsl": 0
     },
     "epipolar.shade.ts": {
-      "wgsl": "610961a46b070654b611d8fc11fa4dff9dcfc39ea0fba544f5eaca466c16fa5b",
+      "wgsl": "53b0a31988a9cdf04b039a9c46d6cfd6d2095780b31148dd8e78f48ffec0032b",
       "glsl": "e12b159b4ea818365f25442f4ad84eb8c9dfa1850b892c80ea6eff3114fa22a9",
       "entries": 0,
       "kernelFunctions": 8,
@@ -67,8 +67,8 @@
       "withoutGlsl": 1
     },
     "features.shade.ts": {
-      "wgsl": "365dbeb8d70563f33c2e2b0f30398c102390d1c0a843b6b7acb68bdcb3624820",
-      "glsl": "aa2daab94fd130181502309104600c297a46f9efd2312b0f1e2ab76f2b7bdc92",
+      "wgsl": "81c074e76bc891cf4f1daa815cdeaf20172e3de6ee5e31785e9395036e16692a",
+      "glsl": "6f81bd64446c3d318d5e6e3e7d8f0ae9bcf575d105a1f911542eabeccfa8cb7d",
       "entries": 13,
       "kernelFunctions": 0,
       "glslPrograms": 13,
@@ -92,15 +92,15 @@
     },
     "hough.shade.ts": {
       "wgsl": "a796feb4eac06270235ec2ae5884299706a31f89054d51f929e5fd980b19e131",
-      "glsl": "1f9d219660cf0a4d91a5363103667247ed8189afd214924e25fe6f166f98d480",
+      "glsl": "66309a2ad14877af234c1ac493eeaddcab5cdc1385a2b41803489a27da5742b2",
       "entries": 9,
       "kernelFunctions": 0,
       "glslPrograms": 9,
       "withoutGlsl": 0
     },
     "inverse-depth.shade.ts": {
-      "wgsl": "f469f50e4e38a1d14fb20a40eba371f647b05499f842387534547d8859d701f6",
-      "wgslInteger": "684035d84d9e45353a685d71ce2dcc98b609f12915fb1666675adfb5b4c425e7",
+      "wgsl": "ccd2725b92601602fca83edfdffe748c5cfb47f4fa22f5cc030b97dcca6c25e6",
+      "wgslInteger": "6ce8a0955ccc7a6466a872638b89cb60e3cae232b47e35096e87f26efea590e6",
       "glsl": "83e068d766c89a6d92d397ebfb40e3974f9f36444e5f714e27cd046416cab1d9",
       "entries": 1,
       "kernelFunctions": 0,
@@ -108,8 +108,8 @@
       "withoutGlsl": 1
     },
     "joint-focal.shade.ts": {
-      "wgsl": "e248b73dffb2bd79e922c9d0ff4562ce5662b48a5530cc3920c1e21ec7912f77",
-      "wgslInteger": "567de92361af62df695453fdb366278e00a4fab97306b6c3975357bb02695997",
+      "wgsl": "c29c6f54720cba206dbbc0aa26785d77d000cef8b03891f3cbd5ca99d1404520",
+      "wgslInteger": "eb77748ce4ec5845000f7a03553ec21d74436f1b25b0a01f0899760376a23e75",
       "glsl": "dde4c13e70fdb3a061bab294e7a1cd1c8b87a8a0c63180d4242e3d4fe0c87d01",
       "entries": 39,
       "kernelFunctions": 0,
@@ -117,31 +117,31 @@
       "withoutGlsl": 39
     },
     "klt.shade.ts": {
-      "wgsl": "37fadf6f1084bb5c14d93c662fbcae197e41f668e6f2ea535ff3ebd53fc0ee38",
-      "glsl": "6567ff1cd36c94dfff502b06da7d738d00181eb30f28dad759abf2f557139239",
+      "wgsl": "d8fd16e2d4097b3e9ed992188fdf9b245ba6a6abd653a756a73adfcfbc44351b",
+      "glsl": "86b7d7b7343a7a2e08d632260707868e4a23adebc636f48896791305aaa8611f",
       "entries": 10,
       "kernelFunctions": 0,
       "glslPrograms": 10,
       "withoutGlsl": 0
     },
     "mvs.shade.ts": {
-      "wgsl": "e9543d103dbe705375186ab91b919b2caf3e2ee400079e27208c5c2152213c85",
-      "glsl": "62a87f8fd261f324e57be00f2f08b7c22c6e203fd53ade246e1efcb75803a78b",
+      "wgsl": "8dce0cfda991b809a8212cf7fbc433d43b745da9adb8a02695ae68d2c4b331a3",
+      "glsl": "0d9bb9279af833080676b752c029cd174f1001b7159052be3aa8a6f9f221c5e9",
       "entries": 22,
       "kernelFunctions": 0,
       "glslPrograms": 22,
       "withoutGlsl": 0
     },
     "numerics.shade.ts": {
-      "wgsl": "1cdcabfaaafeab8f2517d1a5c11efe07080b592a0b3c84b65654581a84d302b3",
+      "wgsl": "163edac639846d3e85a81e15031287a8d895e68eec1163839c3406e83c93b025",
       "entries": 0,
       "kernelFunctions": 0,
       "glslPrograms": 0,
       "withoutGlsl": 0
     },
     "observation-evaluation.shade.ts": {
-      "wgsl": "65e60b89cfd4b2c29f57f2d9fd8db7b0ca4371e44057f32d5d7ad6d9e0ef05ff",
-      "wgslInteger": "80d6ed8f2c314e43a26bce39106ecd74b8a28cc0fa69071b668332f644ecbb07",
+      "wgsl": "788281f5ca91c9864795304574ab49ab602eb6029246e6596619dd7482b8929c",
+      "wgslInteger": "f1d1308ea458a2b76a26108e40312129691eeb62e3974784d5866ba24e3bb475",
       "glsl": "c291711df5266617935b807bb21b3dd4fb2c19125109c06b93d19e8ca0d94a2e",
       "entries": 4,
       "kernelFunctions": 0,
@@ -149,7 +149,7 @@
       "withoutGlsl": 4
     },
     "orb.shade.ts": {
-      "wgsl": "9697bb71a25278d21038afe02dc9221da13218bbe9575b9ba0a3c51ec1fc8334",
+      "wgsl": "cfaf4aa4791dd96eb1aa622cb6c08ffd8feae749dfd83b270a83499f82aafb23",
       "glsl": "4df4924d360b3111cd0622ed7234d4eb928656472bc784a27a682411824aec99",
       "entries": 12,
       "kernelFunctions": 0,
@@ -157,8 +157,8 @@
       "withoutGlsl": 0
     },
     "p3p.shade.ts": {
-      "wgsl": "63e047ba9d8a928f4dd83a09f53d782a4e2a24b4ca7f75108617829bb9110337",
-      "wgslInteger": "3802dd62dfbdba939b85fb1afe0152927da4d0035132c0bc5480b6dfc60b7732",
+      "wgsl": "8e54056428ee095d64f549cbd4501272c3a3dddc5797ce0b98dcf2f31fa468f4",
+      "wgslInteger": "5d8f9ae2b15b74e972fd110479163641253023eca1ad2b63bb214bf2ae8d00d0",
       "glsl": "09c7f32daa68c80aec4ebdb8a0edc6c85c9206fea4fd2e1bbbd92977d3d06d5e",
       "entries": 1,
       "kernelFunctions": 0,
@@ -166,8 +166,8 @@
       "withoutGlsl": 1
     },
     "pair-models.shade.ts": {
-      "wgsl": "95c3328dee31fcc9a6b086e13378ac9deab1d041f07a2d5025759d2716a260c4",
-      "wgslInteger": "5a3270addb6d0fd2607cba709d6b3b95bde8e9bf24e3391c2c1aed16935eb026",
+      "wgsl": "0410c529898a973a35c1e8a3abdcd46f3b74ff67a44ea4eafde1cbf73da4ed08",
+      "wgslInteger": "90823b55c21400b77f6dc3b4bfc974e1f8e1c1c3cacd10fdb70add87be55f463",
       "glsl": "38c86d8d69a107af69bc86398ad71e6bd6d4b26404f2786d72a84af6912f5a39",
       "entries": 8,
       "kernelFunctions": 0,
@@ -175,8 +175,8 @@
       "withoutGlsl": 5
     },
     "pair-preparation.shade.ts": {
-      "wgsl": "67f10a27b4aead5ca3f05916c61e4bb6fb44b2bc3ff8709bf9fe1ac21bcb043b",
-      "wgslInteger": "749a09a96f4c137b0c9aba7ab4ec046a864a5ca6dfbf164e8668182866f81e91",
+      "wgsl": "4a3f2e5986410d96d69b98bda205ea487c540052386a28e8187d02cadf672cfb",
+      "wgslInteger": "81c64480ce8e7b0cd4fbd9bf4125cc3823c4fcf1a04336cc8fa8ca54ef242c07",
       "glsl": "dec9b0768362736247eb67a58c803290b3d28c37b13f8b2b7da3e5237203017b",
       "entries": 8,
       "kernelFunctions": 0,
@@ -184,16 +184,16 @@
       "withoutGlsl": 2
     },
     "planar-depth.shade.ts": {
-      "wgsl": "e0c9dfd8ffbd20ab0ed693410a9c0e752400880d1c075f656ebcb183eca06392",
-      "glsl": "64fb873730cc990d8deb18069268a5c4ca0162a0c75b6a3398f1e66f511f1241",
+      "wgsl": "9642162210b06d7ed3ff054592647dc9ca2b535a14098a76fa575374098d9ed3",
+      "glsl": "3765f6a1ce78f3bb5d0a7bdff988efe08d02741e5da6b990302e27da99ca93f0",
       "entries": 4,
       "kernelFunctions": 0,
       "glslPrograms": 4,
       "withoutGlsl": 0
     },
     "pnp.shade.ts": {
-      "wgsl": "b9d9ae9d6aec79742829df11fd9371cdf2e28fd90ccbf022ad127ad2cf9b35cb",
-      "wgslInteger": "bc70a0e531d34389c006752b66cd4c1cb2376a8bb31014825bfb6470c516085d",
+      "wgsl": "0d0311458563099b77868e7d4cd516234347650b37629c690316ec61301be06b",
+      "wgslInteger": "095633610f0e284364ad0a88fdd14d78ac1d4efce7516f8686bc44a2b9049ad3",
       "glsl": "538afdbad24edb83b351f0534440e00f56c4e034ef025fd7aacec89359020443",
       "entries": 18,
       "kernelFunctions": 0,
@@ -201,15 +201,15 @@
       "withoutGlsl": 16
     },
     "projective.shade.ts": {
-      "wgsl": "c27b07e194d5d34babd756c1a3a43702026d5c6a44b2008b6eea880d9ebe0909",
+      "wgsl": "c940cc2554fcd74ca20e28fc76c15d4c390cb995b4f49c906577958294dc0fe1",
       "entries": 0,
       "kernelFunctions": 0,
       "glslPrograms": 0,
       "withoutGlsl": 0
     },
     "recovery.shade.ts": {
-      "wgsl": "f9b8066ae4ef6ee618520388abde0a93f0745b94207d319737addcd2bf35a0ce",
-      "wgslInteger": "37e759682ee1927934f2a868fab48717417c3495bfeee7d94a359acbdaf14b69",
+      "wgsl": "a43f4eb6ca276d5f4e11ac4dac91567d61529ef74ba31ee4968de141e5606ed8",
+      "wgslInteger": "c02d3e4941a2446f4c3ecaee706b9821054818a598b18b28503ac0d864022e5e",
       "glsl": "a42ca20019320239147ecff8c60757060cc5ce049ccebcb0f990a7a2d9981e90",
       "entries": 16,
       "kernelFunctions": 0,
@@ -217,7 +217,7 @@
       "withoutGlsl": 16
     },
     "scan.shade.ts": {
-      "wgsl": "88f33e39bc366c2dd036cd3374ac8dc1214b93e1063dc1c4671c8a9ac07ce85e",
+      "wgsl": "af89922869961033c5e0f2dab41675ff0f9ae0def1816a716d4ae5dcf186ea9a",
       "glsl": "1b7d0aa4ec2b97f31c5536df1c98454617e868566b31950fc6d92118e05d7016",
       "entries": 3,
       "kernelFunctions": 0,
@@ -226,7 +226,7 @@
     },
     "sift.shade.ts": {
       "wgsl": "7f0766e177f140a658eac591138cab7bb5631fa73c1c48a3059561c37af7b525",
-      "glsl": "4130881564ddb4f2387c2f6a0b71021a100c27486c18c080419a0198ca51fb1b",
+      "glsl": "79b89e29a34cf49a62d6e80f44a37302213df3c8cc6b4c2da3fd5a1d58475b76",
       "entries": 12,
       "kernelFunctions": 0,
       "glslPrograms": 12,
@@ -241,8 +241,8 @@
       "withoutGlsl": 0
     },
     "triangulation.shade.ts": {
-      "wgsl": "3cfade1c57b1437fb4b4b0de8b7029503f233b66e8080060a7a1144e67207fd4",
-      "wgslInteger": "5e174d12a7cd1fb4206dbec9457693d082e9ec31e9f8d739c72dfa61be4e2a2e",
+      "wgsl": "6ec751effe2e0c83ff2b7344e94159b008032b4193b1a0ef1bf2fb80a63fb746",
+      "wgslInteger": "786f9cc40a1d4b4a84cd2288538848f7b9f52a3dd49bb6a2fed787a52097f9fb",
       "glsl": "d4487e69cb7e112855937d17e504db2c37ba4e54d9ff6761695b44692464ac13",
       "entries": 7,
       "kernelFunctions": 0,
@@ -250,8 +250,8 @@
       "withoutGlsl": 7
     },
     "tsdf.shade.ts": {
-      "wgsl": "2eb2a1d42cca4246c009d99c7521918e50689093e67bced6c45ce0c959d299c1",
-      "glsl": "d7cf246fe3b9531f615fa7d214c7a71a0ce3f3c11303b239b8745b13c216035b",
+      "wgsl": "612bc33854f6874d3d49cdc00180b9d8273ea47f8c24c2e129cf1e14c1d4958e",
+      "glsl": "614cfd70e913dae16f1ecef83306e6c91159429453825c4aed94e067a914f8a1",
       "entries": 7,
       "kernelFunctions": 0,
       "glslPrograms": 7,

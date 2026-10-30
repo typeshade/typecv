@@ -102,3 +102,7 @@ then the pull request that did the work.
   copy elision, call restructuring and stable storage-load reuse without a source/API migration.
   K1/K2 still require pointer parameters on WGSL and CPU output parity; their GLSL checks
   now require direct mutation of the phase-local list. The pin moves from `725b2969`.
+  Renew `tests/digests/kernels.json` for this compiler-wide emission change: 21 modules'
+  WGSL, 11 integer-fp64 variants and 9 GLSL records change; entry/program counts do not.
+  The numerical digest fixtures and expected-change list remain unchanged. The complete
+  sparse-pipeline comparison is recorded in `docs/compiler-performance.md`.
