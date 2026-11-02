@@ -954,7 +954,7 @@ TypeShade `main` is 24 commits after the pin `725b2969`. Since amendment 6:
 the refusals of #792 and #793. It declares the cases whose digests it moves (rule 2), and it ends
 the need for TypeCV's `typecv-fuse-origin` plugin only when the pin also carries the fix of #805.
 
-**The pin bump to `78a9060f`** (pull request #PRNUM, 2026-11-02). **Fact** (TypeShade
+**The pin bump to `78a9060f`** (pull request #278, 2026-11-02). **Fact** (TypeShade
 `78a9060f96857710c17902bb95d0d93d2210c08f`, `main` on 2026-11-02, 153 commits after `725b2969`).
 The pin carries 0096, 0097, 0098, 0099, 0103, 0104 and 0105 (`status: implemented`), stages 1 to 3
 of 0094 (`status: accepted`), and the refusals of #792 and #793. It does not carry the fix of #805,
@@ -1652,7 +1652,7 @@ the pull requests named).
 | Phase 6 Long functions | #270, merged as `3d1d5f6` | done; deviations 1 and 3 closed, 2 and 4 accepted and made part of row 6 by amendment 7; three found items left to later records ("Phase 6" above) |
 | Phase 9 Kernels, no compiler change | #272 (step 9a, a draft at `6e30257`); step 9b on its branch | in progress; it runs beside phases 5 to 7; its device run follows item 11 as amendment 6 disposes it |
 | Phases 7, 8, 10 and 11 | none | no pull request |
-| The pin bump to `78a9060f` | #PRNUM | in progress ("The pin bump to `78a9060f`" above) |
+| The pin bump to `78a9060f` | #278 | in progress ("The pin bump to `78a9060f`" above) |
 
 **Fact** (amendment 5). Since 2026-10-26 the pull requests of the programme merge under the owner's
 standing approval (section 7, item 19). A pull request merges once every required check is green

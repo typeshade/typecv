@@ -88,7 +88,7 @@ then the pull request that did the work.
   and the tests keep their explicit flavors. `tshc init` is not used: the build writes and
   removes the host views itself. No kernel calls `console`. The pin stays `725b2969`; the console
   variants and the Apple/Metal validation of 0085 remain open upstream.
-- 0096, pull request #PRNUM: the pin moves from `725b2969` to `78a9060f`, which carries 0096. A
+- 0096, pull request #278: the pin moves from `725b2969` to `78a9060f`, which carries 0096. A
   kernel function's map entry no longer returns for a lane past the trip count: only a wholly idle
   workgroup returns, and a lane of the last workgroup runs iteration `n - 1` with every write
   masked. Probe S2 is renewed to hold that form; the old assertion read the workgroup's return as
