@@ -24,6 +24,11 @@ automatic fp64 flavor and the compiler's default fusion facts.
 `compiler-changes.md` records what TypeCV adopted and what it keeps explicit.
 This review was not repeated.
 
+2026-11-02: pull request #278 moves TypeCV's pin from `725b2969` to
+`78a9060f96857710c17902bb95d0d93d2210c08f`. `docs/library-structure.md`
+(section 5, "The pin bump to `78a9060f`") lists what the pin carries and the
+probe verdicts that changed. This review was not repeated at that pin.
+
 Primary sources below identify delivered behavior. The probe results establish
 only the small cases executed here; they do not establish completed GPU SfM.
 
