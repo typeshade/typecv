@@ -387,7 +387,10 @@ implementation. **Fact** (amendment 6; typeshade/typeshade#796, merged as `a768a
 2026-10-27). Stage 1 of 0094's implementation, the stores after the loops, is on TypeShade `main`.
 typeshade/typeshade#799 merged stage 2, a push after a held length, as `37e6c6f0`. 0094 stays
 `status: accepted` at `37e6c6f0`, and the pin carries no stage of it. So the list still
-stands as written (section 5, "The next pin", amendment 6).
+stands as written (section 5, "The next pin", amendment 6). **Fact** (the pin bump to `78a9060f`,
+section 5, "The pin bump to `78a9060f`"). That pin carries stages 1 to 3 of 0094, and 0094 is still
+`status: accepted` there. Probe P6 (row C3) now lowers to a GPU loop on WebGPU and WebGL2. No entry
+of the list converts in that pull request.
 
 **Fact** (the kernel audit, sections 2 and 3, and the kernels at `3e2777b`). These entries exist
 only to keep a count or an offset on the device, or to move one:
@@ -950,6 +953,29 @@ TypeShade `main` is 24 commits after the pin `725b2969`. Since amendment 6:
 **Inference** (amendment 7). The next pin bump brings 0096, 0098, 0099, stages 1 to 3 of 0094 and
 the refusals of #792 and #793. It declares the cases whose digests it moves (rule 2), and it ends
 the need for TypeCV's `typecv-fuse-origin` plugin only when the pin also carries the fix of #805.
+
+**The pin bump to `78a9060f`** (pull request #PRNUM, 2026-11-02). **Fact** (TypeShade
+`78a9060f96857710c17902bb95d0d93d2210c08f`, `main` on 2026-11-02, 153 commits after `725b2969`).
+The pin carries 0096, 0097, 0098, 0099, 0103, 0104 and 0105 (`status: implemented`), stages 1 to 3
+of 0094 (`status: accepted`), and the refusals of #792 and #793. It does not carry the fix of #805,
+so the `typecv-fuse-origin` plugin stays. `scripts/downstream-impact.ts` of the compiler lists one
+owed proposal, 0096, recorded in `compiler-changes.md`.
+
+**Fact** (the probe suite at the new pin, Node 22.23.4, the CPU tier). Four held verdicts change:
+
+- P6 (row C3) lowers to a GPU loop on WebGPU and WebGL2 (0094, stage 3). Its signal fires: C3 is
+  closed for loop bounds.
+- S2 (row C7): the map entry no longer returns for a lane past the trip count (0096). Its signal
+  fires: C7 is closed. The old assertion read the new workgroup return as a lane return and still
+  passed, so S2 is renewed to hold the new form.
+- K1 and K2 (no row): the WebGL2 pass program passes the k-NN list as a module place, and the
+  helper is specialized to it (0103). The list is still shared, and both CPU tiers write the same
+  sums. Their regression signal does not apply.
+
+**Decision asked of the owner** (0096, "What it owes downstream"). This pull request converts no
+map, and `triangulateTracks` stays an entry (section 3.6). Each conversion stays phase 10's step
+"C6 and C7", with phase 9's gate and the hardware run of section 7, item 11. `docs/gpu-sfm.md`
+restates the rule for kernel functions.
 
 **Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
 on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
@@ -1626,6 +1652,7 @@ the pull requests named).
 | Phase 6 Long functions | #270, merged as `3d1d5f6` | done; deviations 1 and 3 closed, 2 and 4 accepted and made part of row 6 by amendment 7; three found items left to later records ("Phase 6" above) |
 | Phase 9 Kernels, no compiler change | #272 (step 9a, a draft at `6e30257`); step 9b on its branch | in progress; it runs beside phases 5 to 7; its device run follows item 11 as amendment 6 disposes it |
 | Phases 7, 8, 10 and 11 | none | no pull request |
+| The pin bump to `78a9060f` | #PRNUM | in progress ("The pin bump to `78a9060f`" above) |
 
 **Fact** (amendment 5). Since 2026-10-26 the pull requests of the programme merge under the owner's
 standing approval (section 7, item 19). A pull request merges once every required check is green
@@ -1688,7 +1715,10 @@ unimplemented there. **Fact** (amendment 3; #246, and TypeShade at `725b2969`). 
 the pin carries none of them, and no row changes its state. **Fact** (amendment 5; TypeShade
 `main` at `f0d41b36`, read on 2026-10-27). typeshade/typeshade#782 implemented change 0096 (row C7)
 after the pin. The other proposals of the rows are `accepted` there. The pin carries none of them
-(section 5, "The next pin").
+(section 5, "The next pin"). **Fact** (TypeShade at `78a9060f`; the pin bump of section 5, "The pin
+bump to `78a9060f`"). The pin moves to `78a9060f`. It carries 0096 (row C7, `status: implemented`)
+and stages 1 to 3 of 0094 (rows C3 and C8, `status: accepted`). 0090, 0091, 0092 and 0095 stay
+`status: accepted` and unimplemented there.
 
 | Row | TypeShade record | State on 2026-10-27 |
 | --- | --- | --- |
@@ -1696,9 +1726,9 @@ after the pin. The other proposals of the rows are `accepted` there. The pin car
 | C1 | proposal 0091 (typeshade/typeshade#767) | accepted 2026-10-26 |
 | C2 | proposal 0092 (typeshade/typeshade#768) | accepted 2026-10-26 |
 | C9 | issue typeshade/typeshade#761 | open |
-| C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2). Stage 1 on TypeShade `main` (typeshade/typeshade#796, `a768a04a`, 2026-10-27); stage 2 on TypeShade `main` (typeshade/typeshade#799, `37e6c6f0`, 2026-10-27); stage 3 on TypeShade `main` (typeshade/typeshade#804, `63131c8a`, 2026-10-27); not at the pin (amendment 7) |
+| C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2). Stage 1 on TypeShade `main` (typeshade/typeshade#796, `a768a04a`, 2026-10-27); stage 2 on TypeShade `main` (typeshade/typeshade#799, `37e6c6f0`, 2026-10-27); stage 3 on TypeShade `main` (typeshade/typeshade#804, `63131c8a`, 2026-10-27); not at the pin (amendment 7). Stages 1 to 3 at the pin `78a9060f` since its bump; probe P6 lowers |
 | C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2) |
-| C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11). Implemented on TypeShade `main` by typeshade/typeshade#782 (`a21f7024`, 2026-10-27), with that run open by the owner's decision; not at the pin (amendment 5). The `kernel-functions` case of the hardware check is D5's run at a pin that carries 0096 (amendment 6) |
+| C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11). Implemented on TypeShade `main` by typeshade/typeshade#782 (`a21f7024`, 2026-10-27), with that run open by the owner's decision; not at the pin (amendment 5). The `kernel-functions` case of the hardware check is D5's run at a pin that carries 0096 (amendment 6). At the pin `78a9060f` since its bump; probe S2 renewed; D5's run still open |
 | C4, C5, C10 to C13 | none | not opened (section 7, item 7) |
 | C15 | none: #257 recommends no proposal now (amendment 5) | not opened |
 

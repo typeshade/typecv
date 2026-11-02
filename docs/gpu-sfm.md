@@ -699,6 +699,13 @@ A kernel that needs a barrier has no early return before it. Other kernels of
 `src/gpu/` still return for an out-of-range lane before a loop. They ran on that
 device without a loss (`docs/hardware-observations.md`, A1, "Open").
 
+The rule applies to an entry that an author writes. For a kernel function, the
+compiler writes the entry and applies the rule itself, from TypeShade
+`78a9060f` on (change 0096). Only a workgroup wholly past the trip count
+returns. A lane past the trip count in the last workgroup runs iteration
+`n - 1` with every write masked. Probe S2 of
+`tests/typeshade/compiler-probes.test.mjs` holds that form.
+
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and

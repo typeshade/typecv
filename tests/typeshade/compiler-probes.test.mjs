@@ -23,6 +23,20 @@
 // No verdict changed. K1 to K6 were measured on 2026-10-27 with the same pin and Node. Their WGSL
 // and their WebGL2 pass programs were read, not run.
 //
+// The pin bump from 725b2969 to 78a9060f (2026-11-02, Node 22.23.4, the CPU tier) read every probe
+// again. Four held verdicts changed, each by a compiler change the pin now carries:
+// - P6 (row C3): a trip count read from counts[0] lowers to a GPU loop on WebGPU and WebGL2
+//   (TypeShade change 0094, stage 3, typeshade/typeshade#804). Its signal fired: C3 is closed for
+//   loop bounds.
+// - S2 (row C7): the map entry no longer returns for a lane past the trip count. A wholly idle
+//   workgroup returns; a lane of the last workgroup runs iteration n - 1 with its writes masked
+//   (change 0096, typeshade/typeshade#782). Its signal fired: C7 is closed. The old assertion read
+//   the workgroup's return as the lane's, so it is renewed to the new form.
+// - K1 and K2 (no row): the WebGL2 pass program passes the list as a module place, not an inout
+//   parameter. The helper is specialized to the place (insertSorted_phv1_best) and writes it
+//   (change 0103, typeshade/typeshade#827). The list is still shared by reference, and both CPU
+//   tiers still write the sums, so their REGRESSION signal does not apply.
+//
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
 // bump, a failure is a signal, not a TypeCV defect. Read the compiler change, then open the
@@ -61,7 +75,7 @@ import { MARK, SOURCES } from './compiler-probes.sources.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 
 /** The typeshade commit whose verdicts the probes hold. */
-const MEASURED_AT = '725b2969a9cac37400980c2c0058680368407602';
+const MEASURED_AT = '78a9060f96857710c17902bb95d0d93d2210c08f';
 const AT = `typeshade ${MEASURED_AT.slice(0, 8)}`;
 
 /**
@@ -322,7 +336,7 @@ const PROBES = [
     shape: 'the trip count is read from counts[0] before the loop',
     source: 'p6',
     fn: 'boundFromArray',
-    verdict: cpuSilent,
+    verdict: gpu('webgpu', 'webgl2'),
     signal:
       'C3 closed for loop bounds: a trip count read from a device array lowers, so phase 10 step C3 may open, and C8 (which shares the lowering) may follow',
   },
@@ -704,9 +718,10 @@ const S2 = {
   id: 'S2',
   row: 'C7',
   shape: "the WGSL of P1's converted map",
-  held: 'the loop entry returns past the trip count before the iteration (kernel-lower.ts:756-767)',
-  signal:
-    'C7 closed: the map scaffold no longer returns early, so phase 10 step "C6 and C7" may open for the entries that phase 9 left (SLIC, mesh, planarFit, the KLT maximum, the Hough vote and collect), with a hardware run while A1 is open, and triangulateTracks may leave the entries of section 3.6',
+  held: 'a wholly idle workgroup returns; a lane past the trip count runs iteration n - 1 with every write masked, and does not return before the store (change 0096)',
+  signal: REGRESSION(
+    'the map entry returns again for a lane past the trip count, the form A1 forbids, so phase 10 step "C6 and C7" closes again',
+  ),
 };
 test(`${S2.id} (${S2.row}) ${S2.shape}: ${S2.held}`, async () => {
   const say = says(S2);
@@ -716,11 +731,18 @@ test(`${S2.id} (${S2.row}) ${S2.shape}: ${S2.held}`, async () => {
   const [loop] = lowered.loops;
   const body = entryBody(lowered.wgsl, loop.entry);
   assert.ok(body, say(`the WGSL has no entry ${loop.entry}`));
-  const early = /if\s*\(([^{}]*)\)\s*\{\s*return;\s*\}/.exec(body);
   const store = body.search(/\bgray\s*\[/);
-  assert.ok(
-    early !== null && />=/.test(early[1]) && /\b_n\b/.test(early[1]) && early.index < store,
-    say('the entry no longer returns past the trip count before its first store'),
+  // Every return before the store tests the workgroup, never the lane's own index _k.
+  for (const early of body.slice(0, store).matchAll(/if\s*\(([^{}]*)\)\s*\{\s*return;\s*\}/g))
+    assert.ok(
+      /\b_wid\b/.test(early[1]) && !/\b_k\b/.test(early[1]),
+      say(`a return before the store reads the lane: if (${early[1]})`),
+    );
+  assert.match(body, /\blet _kc = min\(_k, /, say('the lane index is not clamped to n - 1'));
+  assert.match(
+    body.slice(0, store),
+    /if\s*\(_live\)\s*\{\s*$/,
+    say("the store is not masked by the lane's live flag"),
   );
 });
 
@@ -886,14 +908,14 @@ const K1 = {
   shape: 'a helper takes a local array<f32, 32> as @inout',
   source: 'k1',
   fn: 'insertByRef',
-  held: 'compiles; WGSL passes &best to a ptr<function> parameter, the WebGL2 pass program to an inout one, and both CPU tiers write the sums',
+  held: "compiles; WGSL passes &best to a ptr<function> parameter, the WebGL2 pass program specializes the helper to the list's place (change 0103), and both CPU tiers write the sums",
   wgsl: [
     /fn insertSorted\(best: ptr<function, array<f32, 32>>, k: u32, d2: f32\)/,
     /\binsertSorted\(&best, 3u, /,
   ],
   glsl: [
-    /void insertSorted\(inout float\[32\] best, uint k, float d2\)/,
-    /\binsertSorted\(\w+, 3u, /,
+    /void insertSorted(_\w+)\(uint k, float d2\)[^]*\1\[s\] = d2;/,
+    /\binsertSorted_\w+\(3u, /,
   ],
   bindings: sumBindings,
   expect: SUMS,
@@ -909,16 +931,13 @@ const K2 = {
   shape: 'a helper takes the list as @inout, reads two bindings by name and hands the list on',
   source: 'k2',
   fn: 'scanByRef',
-  held: 'compiles; both helpers keep a ptr<function> parameter in WGSL and an inout one in GLSL, and both CPU tiers write the sums',
+  held: "compiles; both helpers keep a ptr<function> parameter in WGSL, GLSL specializes both to the list's place (change 0103), and both CPU tiers write the sums",
   wgsl: [
     /fn scanBucket\(best: ptr<function, array<f32, 32>>, k: u32, i: u32, bucket: u32\)/,
     /\binsertSorted\(best, k, /,
     /\bscanBucket\(&best, 3u, /,
   ],
-  glsl: [
-    /void scanBucket\(inout float\[32\] best, uint k, uint i, uint bucket\)/,
-    /\binsertSorted\(best, k, /,
-  ],
+  glsl: [/void scanBucket_(\w+)\(uint k, uint i, uint bucket\)/, /\binsertSorted_\w+\(k, /],
   bindings: () => ({ ...sumBindings(), bucketStart: Uint32Array.from([0, 2, 5]) }),
   expect: SUMS,
   signal: REGRESSION(
