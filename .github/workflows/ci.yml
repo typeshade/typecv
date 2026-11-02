@@ -79,7 +79,9 @@ jobs:
     # checked by tests/ci-shard.test.ts. `audit:typeshade` runs with the first shard.
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 has no Chromium build for ubuntu-26.04, the image of ubuntu-latest
+    # seen on 2026-11-02 (20261025.179.1). Pinned until Playwright supports it.
+    runs-on: ubuntu-24.04
     name: webgpu shard (${{ matrix.shard }}/${{ matrix.of }})
     strategy:
       fail-fast: false
@@ -136,7 +138,9 @@ jobs:
     # (docs/library-structure.md, section 4, rule 2, amendment 6). The job runs for pull requests.
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 has no Chromium build for ubuntu-26.04, the image of ubuntu-latest
+    # seen on 2026-11-02 (20261025.179.1). Pinned until Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
