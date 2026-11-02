@@ -972,6 +972,11 @@ owed proposal, 0096, recorded in `compiler-changes.md`.
   helper is specialized to it (0103). The list is still shared, and both CPU tiers write the same
   sums. Their regression signal does not apply.
 
+**Fact** (rule 2; CI of #278 on `7f13f9c`). The shader text of every kernel module changes with the
+pin: `tests/digests/kernels.json` is re-recorded at `78a9060f` (`node scripts/kernel-digests.mjs
+--write`). All 30 modules change: the WGSL of 23, the integer-flavour WGSL of 11 and the GLSL of 19.
+No digest of a scene changes: the `digests (22)` and `digests (24)` jobs pass against the merge base.
+
 **Decision** (the owner, 2026-11-02, in the session of #278; 0096, "What it owes downstream"). This
 pull request converts no map, and `triangulateTracks` stays an entry (section 3.6). Each conversion
 stays phase 10's step "C6 and C7", with phase 9's gate and the hardware run of section 7, item 11.
