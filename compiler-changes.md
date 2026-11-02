@@ -93,8 +93,8 @@ then the pull request that did the work.
   workgroup returns, and a lane of the last workgroup runs iteration `n - 1` with every write
   masked. Probe S2 is renewed to hold that form; the old assertion read the workgroup's return as
   the lane's and still passed. `docs/gpu-sfm.md` restates the rule for kernel authors: it holds for
-  an entry an author writes, and the compiler applies it to a kernel function. No map converts and
-  `triangulateTracks` stays an entry in this pull request: each conversion is phase 10's step "C6
-  and C7" of `docs/library-structure.md`, with phase 9's gate and the hardware run of section 7,
-  item 11, which stays open. The pin also carries 0103: the WebGL2 pass program passes the k-NN
+  an entry an author writes, and the compiler applies it to a kernel function. The owner decided on
+  2026-11-02 that no map converts and `triangulateTracks` stays an entry in this pull request: each
+  conversion is phase 10's step "C6 and C7" of `docs/library-structure.md`, with phase 9's gate
+  and the hardware run of section 7, item 11, which stays open. The pin also carries 0103: the WebGL2 pass program passes the k-NN
   list as a module place, so probes K1 and K2 hold the new GLSL form.

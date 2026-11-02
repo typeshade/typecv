@@ -972,10 +972,10 @@ owed proposal, 0096, recorded in `compiler-changes.md`.
   helper is specialized to it (0103). The list is still shared, and both CPU tiers write the same
   sums. Their regression signal does not apply.
 
-**Decision asked of the owner** (0096, "What it owes downstream"). This pull request converts no
-map, and `triangulateTracks` stays an entry (section 3.6). Each conversion stays phase 10's step
-"C6 and C7", with phase 9's gate and the hardware run of section 7, item 11. `docs/gpu-sfm.md`
-restates the rule for kernel functions.
+**Decision** (the owner, 2026-11-02, in the session of #278; 0096, "What it owes downstream"). This
+pull request converts no map, and `triangulateTracks` stays an entry (section 3.6). Each conversion
+stays phase 10's step "C6 and C7", with phase 9's gate and the hardware run of section 7, item 11.
+`docs/gpu-sfm.md` restates the rule for kernel functions.
 
 **Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
 on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
