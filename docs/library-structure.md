@@ -1665,7 +1665,10 @@ and no review thread is open.
 
 ## 6. Compiler changes this programme asks for
 
-Each is a proposal in TypeShade's `changes/`, by Rule 3.3, or an issue where the row says so. C13
+Each row before amendment 8 is a proposal in TypeShade's `changes/`, or an issue where the row
+says so, and stays as recorded. **Amendment 8.** From 2026-11-09 a new row is an issue on
+`typeshade/typeshade` that asks for compiler work (Rule 3.3 as typeshade/typecv#280 rewrites it);
+the compiler side decides, and a proposal that changes the TypeShade language is the last resort. C13
 may instead be a change of TypeCV's device (audit lab, L8). The line counts are the kernel
 audit's estimates (**Inference**) of what each change removes from TypeCV.
 
@@ -2179,3 +2182,6 @@ recorded here by amendment.
   changes of #268 in force, typeshade/typeshade#798 and #804 merged, the drafts 0101 and 0102, the
   owner's decision on the first question of item 20, the next pin, the status of the programme),
   pull request #273.
+- 2026-11-09: amendment 8 (section 6: a new compiler ask is an issue for compiler work, and a
+  language proposal is the last resort, after the owner's direction of 2026-11-09 and Rule 3.3 as
+  typeshade/typecv#280 rewrites it; the rows before it stay as recorded), this pull request.
