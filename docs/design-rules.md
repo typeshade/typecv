@@ -71,9 +71,19 @@ disposed by TypeCV.
 image, a `Resident` for an array. On one device a crossing makes no copy. TypeCV adds no device
 layer and no resource type of its own at that boundary.
 
-**Rule 3.3.** What TypeShade cannot do yet becomes a proposal in TypeShade's `changes/`, not a
-workaround inside TypeCV. TypeShade change 0077 (a kernel function that writes a texture) is the
-first one.
+**Rule 3.3.** What TypeShade cannot do yet becomes an issue on `typeshade/typeshade` that asks
+for compiler work, not a workaround inside TypeCV. The issue states the need and the evidence.
+The compiler side decides how to meet it. A change to the TypeShade language (a proposal in its
+`changes/` that adds an author-facing name, rule, code or form) is the last resort, and nothing
+domain-shaped is asked of the language (TypeShade `docs/dx.md`, principle 7).
+
+- Rationale: on 2026-11-09 the owner found that the TypeShade language kept widening, and that
+  downstream asks written as proposals were one channel of that growth. What the compiler can
+  decide (an optimization, a lowering, a tuning parameter) is compiler work, and an author does
+  not learn a construct for it (TypeShade draft proposal 0130, typeshade/typeshade#1094; the
+  compiler's rule for downstream needs, typeshade/typeshade#1096).
+- History: TypeShade change 0077 (a kernel function that writes a texture) was the first ask. It
+  and the asks before 2026-11-09 were made as proposals, and their records stay as written.
 
 ## 4. The front end (proposed)
 
