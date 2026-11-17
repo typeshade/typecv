@@ -157,7 +157,7 @@ identity, a fixture hash, cold/warm samples, output quality and TypeShade execut
 counts. Compare like cache conditions and keep proxy dimensions explicit.
 
 `applicationReadbackBytes` counts requested application elements, while
-`residentSnapshotBytes` counts full arrays returned by TypeShade `Resident.read()`.
+`residentSnapshotBytes` counts full arrays returned by TypeShade `Buffer.read()`.
 The installed TypeShade API reads an entire resident snapshot, including unused
 capacity; neither field is a physical memory-bus counter. A WebGPU backend label
 does not establish GPU utilization or a speedup by itself.

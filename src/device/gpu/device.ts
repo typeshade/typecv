@@ -974,8 +974,11 @@ export class ShadeDevice {
   }
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
   read(buffer: Buffer<f32>, length: number): Promise<Float32Array>;
+  /** @internal */
   read(buffer: Buffer<f64>, length: number): Promise<Float64Array>;
+  /** @internal */
   read(buffer: Buffer<u32>, length: number): Promise<Uint32Array>;
+  /** @internal */
   read(buffer: ScalarBuffer, length: number): Promise<ScalarArray>;
   async read(buffer: ScalarBuffer, length: number): Promise<ScalarArray> {
     this.reads++;

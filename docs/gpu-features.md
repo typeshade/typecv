@@ -473,14 +473,14 @@ import {
   type GpuFloatImageFeatures,
   type ShadeDevice,
 } from 'typecv/gpu';
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32 } from 'typeshade/runtime';
 
 async function reconstructLearnedPair(
   device: ShadeDevice,
   first: Omit<GpuFloatImageFeatures, 'descriptors'>,
   second: Omit<GpuFloatImageFeatures, 'descriptors'>,
-  firstBuffer: Resident<Float32Array>,
-  secondBuffer: Resident<Float32Array>,
+  firstBuffer: Buffer<f32>,
+  secondBuffer: Buffer<f32>,
   dimensions: number,
 ) {
   const images = [first, second].map((image, index) => {
