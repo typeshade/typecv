@@ -563,7 +563,13 @@ export async function createKltTracker(
           throw new RangeError('The frame must hold width x height values');
         const padded = new Float32Array(layout.total);
         for (let i = 0; i < pixels; i++) padded[i] = frame.gray[i]!;
-        slot.gray.set(padded);
+        // A new gray array, made with the frame: the slot's array holds the pyramid that the
+        // kernels wrote, and a `Buffer` that a call wrote refuses `set` until `read()` (TypeShade
+        // change 0138, Amendment A11, Q1). The old array goes back first, as for a SIFT frame.
+        device.recycle(slot.gray);
+        owned.delete(slot.gray);
+        slot.gray = device.allocate(layout.total, padded);
+        owned.add(slot.gray);
       } else {
         if (frame.rgba.length !== 4 * pixels)
           throw new RangeError('The frame must hold width x height RGBA bytes');

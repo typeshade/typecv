@@ -67,7 +67,9 @@ test('compatible cache victims reuse buffers with exact measurements and honest 
       assert.equal(stats.bufferReuses, 6);
       assert.equal(stats.pyramidBuilds, 5);
       assert.equal(stats.evictions, 3);
-      assert.equal(device.statistics.allocations - before.allocations, 4 + 4 * pairs.length);
+      // Each of the 3 reuses takes a new gray array made with its frame, in place of a write to
+      // the old one (TypeShade change 0138, Amendment A11, Q1): one allocation more for each.
+      assert.equal(device.statistics.allocations - before.allocations, 4 + 4 * pairs.length + 3);
       assert.equal(
         device.statistics.applicationUploadBytes - before.applicationUploadBytes,
         5 * layout.total * 4 + 2 * layout.total * 8 + (points.length / 2) * 16 * pairs.length,
@@ -226,15 +228,18 @@ test('a failed accepted in-place write drops dirty buffers before queued cache d
   await withDevice(async (device) => {
     const cache = createKltPairCache(device, { capacity: 2 }),
       sentinel = device.allocate(17, new Float32Array(17).fill(0.25)),
-      write = device.writeF32.bind(device),
+      allocate = device.allocate.bind(device),
       drop = device.drop.bind(device),
       failure = new Error('injected write failure'),
       dropped = [];
     try {
       await cache.track(frames[0], frames[1], points, tracking);
-      device.writeF32 = (buffer, values) => {
-        write(buffer, values);
-        throw failure;
+      // A reused slot takes a new gray array made with the new frame (TypeShade change 0138,
+      // Amendment A11, Q1), so the failure is injected at that allocation, after the old gray
+      // went back.
+      device.allocate = (length, values) => {
+        if (values !== undefined && length === layout.total) throw failure;
+        return allocate(length, values);
       };
       device.drop = (buffer) => {
         dropped.push(buffer);
@@ -249,7 +254,7 @@ test('a failed accepted in-place write drops dirty buffers before queued cache d
       assert.equal(activeBytes(device), 68);
       assert.deepEqual(Array.from(await device.read(sentinel, 17)), Array(17).fill(0.25));
     } finally {
-      device.writeF32 = write;
+      device.allocate = allocate;
       device.drop = drop;
       await cache.dispose();
       device.recycle(sentinel);

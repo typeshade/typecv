@@ -49,6 +49,8 @@ export interface KltPairCache {
   dispose(): Promise<void>;
 }
 interface Slot extends KltResidentPyramid {
+  /** A reused slot takes a new gray array for its new frame. */
+  gray: KltResidentPyramid['gray'];
   id: number;
   pixels: Float32Array;
   ready: boolean;
@@ -147,7 +149,15 @@ export function createKltPairCache(
               candidate.used = ++clock;
               candidate.ready = false;
               slots.set(candidate.id, candidate);
-              device.writeF32(candidate.gray, paddedKltGray(frame.gray, prepared.layout));
+              // The new frame takes a new gray array, made with its values: the old one holds
+              // the pyramid that the kernels wrote, and a `Buffer` that a call wrote refuses
+              // `set` until `read()` (TypeShade change 0138, Amendment A11, Q1). The old array goes
+              // back first, so the pool can give it again and the peak stays two pyramids.
+              device.recycle(candidate.gray);
+              candidate.gray = device.allocate(
+                prepared.layout.total,
+                paddedKltGray(frame.gray, prepared.layout),
+              );
               bufferReuses += 2;
               return candidate;
             };
