@@ -404,6 +404,18 @@ function ownArrays(device: ShadeDevice) {
       owned.push(r);
       return r;
     },
+    /**
+     * A new f32 array of `values` in place of `old`, which goes back first, so the pool can give
+     * it again and the peak does not grow. A `Buffer` that a call wrote refuses `set` until
+     * `read()` (TypeShade change 0138, Amendment A11, Q1): an upload into an array that a kernel
+     * wrote takes a new array, and the device never writes an array after the host gave it.
+     */
+    renewF32(old: Buffer<f32>, values: Float32Array) {
+      const at = owned.indexOf(old);
+      if (at >= 0) owned.splice(at, 1);
+      device.recycle(old);
+      return this.f32(values.length, values);
+    },
     release(successful: boolean) {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
       owned.length = 0;
@@ -782,6 +794,8 @@ function allocateDepthArrays(
     stageU32: owner.u32(counts.stageU32!),
     stageF32: owner.f32(counts.stageF32!),
     mvsPartial: counts.mvsPartial ? owner.f32(counts.mvsPartial) : undefined,
+    // The owner, which renews `stageF32` for an upload after `rgbaToGray` wrote it.
+    owner,
   };
 }
 type MvsDepthArrays = ReturnType<typeof allocateDepthArrays>;
@@ -840,7 +854,8 @@ async function loadDepthView(
     ],
   ]);
   if (view.image.observationMask) {
-    A.stageF32.set(Float32Array.from(view.image.observationMask.values));
+    // `rgbaToGray` wrote the stage above, so the mask takes a new one.
+    A.stageF32 = A.owner.renewF32(A.stageF32, Float32Array.from(view.image.observationMask.values));
     await steps(job, [
       [
         'mvsApplyObservationMask',
@@ -869,7 +884,8 @@ async function loadDepthView(
     ]);
   }
   if (!depth) return;
-  A.stageF32.set(depth);
+  // `rgbaToGray` wrote the stage above, so the depth map takes a new one.
+  A.stageF32 = A.owner.renewF32(A.stageF32, depth);
   await steps(job, [
     [
       'mvsCopyF32',
