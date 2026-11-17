@@ -280,7 +280,7 @@ const PROBES = [
     signal: REGRESSION('the form of the phase 9 map conversions no longer lowers'),
     more({ face }, say) {
       const c8 =
-        'C8 closed: a kernel call may take its trip count from a Resident, so the 12 indirect pair-model and PnP entries could become kernel functions after an amendment of section 3.6';
+        'C8 closed: a kernel call may take its trip count from a Buffer, so the 12 indirect pair-model and PnP entries could become kernel functions after an amendment of section 3.6';
       const k = kernelOf(face, 'rgbaToGrayK');
       assert.deepEqual(
         k.face.params.map((q) => q.name),
