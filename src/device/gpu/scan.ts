@@ -1,14 +1,14 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, u32 } from 'typeshade/runtime';
 import type { ShadeDevice } from './device.ts';
 import { scanFlags, scanFlagsOracle, scanFlagBlocks } from './scan.shade.ts';
 
 export interface FlagScanBindings {
   /** One flag per element, `scanBlockCount(count) * 64` or exactly `count` long; rewritten in place. */
-  readonly flags: Resident<Uint32Array>;
+  readonly flags: Buffer<u32>;
   /** `2 * scanBlockCount(count)` words. */
-  readonly blockSums: Resident<Uint32Array>;
+  readonly blockSums: Buffer<u32>;
   /** Two words: selected total, issue total. */
-  readonly totals: Resident<Uint32Array>;
+  readonly totals: Buffer<u32>;
 }
 
 /** Blocks of 64 elements covering `count` elements; at least one. */

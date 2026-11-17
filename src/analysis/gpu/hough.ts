@@ -6,7 +6,7 @@
  */
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 
-type Resident<T extends Float32Array | Uint32Array> = T extends Float32Array
+type DeviceArray<T extends Float32Array | Uint32Array> = T extends Float32Array
   ? ReturnType<ShadeDevice['allocate']>
   : ReturnType<ShadeDevice['allocateU32']>;
 import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
@@ -273,7 +273,7 @@ export function resolveThresholds(
 
 interface CannyRun {
   /** The state array: 0 none, 1 weak, 2 edge. The caller recycles it. */
-  readonly state: Resident<Uint32Array>;
+  readonly state: DeviceArray<Uint32Array>;
   readonly passes: number;
   readonly low: number;
   readonly high: number;
@@ -436,7 +436,7 @@ export function houghLinesGpu(
     cells = plan.thetaBins * plan.rhoCount;
   return device.enqueue(async () => {
     const run = await cannyStages(device, rgba, plan),
-      owned: Resident<Float32Array | Uint32Array>[] = [run.state];
+      owned: DeviceArray<Float32Array | Uint32Array>[] = [run.state];
     try {
       const base = {
         width,

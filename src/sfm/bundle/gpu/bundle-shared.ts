@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64 } from 'typeshade/runtime';
 import type { ShadeDevice } from '../../../device/gpu/device.ts';
 import type { GpuGeometryExecution } from '../../../geometry/gpu/execution.ts';
 import type { BundleAdjustmentOptions, BundleAdjustmentResult } from '../bundle-adjustment.ts';
@@ -82,7 +82,7 @@ export function cooperativeBundleSchur(
  */
 export function bundleStallMonitor(
   device: ShadeDevice,
-  state: Resident<Float64Array>,
+  state: Buffer<f64>,
   options: BundleAdjustmentOptions,
 ): {
   start(): Promise<void>;

@@ -6,7 +6,7 @@ export interface TsdfUploadWindowReport {
 }
 
 /**
- * Bound view uploads before their synchronous Resident.write snapshots are made. An oversized
+ * Bound view uploads before their synchronous Buffer.set snapshots are made. An oversized
  * single view expands the effective limit rather than splitting its pixels or dropping data.
  * Calls must be sequential; the helper never queues write callbacks or retains view arrays.
  */

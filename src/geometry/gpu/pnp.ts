@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import { GeometryEstimationError } from '../errors.ts';
 import type { Camera } from '../../contracts/camera.ts';
 import type { PnPOptions, PnPResult } from '../pnp.ts';
@@ -81,7 +81,7 @@ export function estimatePosePnPGpu(
   } = pnpRequest(device, worldPoints, pixels, camera, options);
   return device.enqueue(async () => {
     const before = device.statistics;
-    const owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     const wide = (length: number, values?: Float64Array) => {
       const b = device.allocateF64(length, values);
@@ -264,26 +264,26 @@ function pnpRequest(
 
 /** The buffers of one PnP search that its steps bind. */
 interface PnPBuffers {
-  xyz: Resident<Float64Array>;
-  pixels: Resident<Float64Array>;
-  observations: Resident<Float64Array>;
-  problems: Resident<Float64Array>;
-  poses: Resident<Float64Array>;
-  valid: Resident<Uint32Array>;
-  counts: Resident<Uint32Array>;
-  status: Resident<Uint32Array>;
-  partials: Resident<Float64Array>;
-  state: Resident<Uint32Array>;
-  best: Resident<Float64Array>;
-  working: Resident<Float64Array>;
-  candidate: Resident<Float64Array>;
-  activity: Resident<Uint32Array>;
-  mask: Resident<Uint32Array>;
-  lm: Resident<Float64Array>;
-  normalBlocks: Resident<Float64Array>;
-  trialCosts: Resident<Float64Array>;
-  progress: Resident<Uint32Array>;
-  batchCounts: Resident<Uint32Array>;
+  xyz: Buffer<f64>;
+  pixels: Buffer<f64>;
+  observations: Buffer<f64>;
+  problems: Buffer<f64>;
+  poses: Buffer<f64>;
+  valid: Buffer<u32>;
+  counts: Buffer<u32>;
+  status: Buffer<u32>;
+  partials: Buffer<f64>;
+  state: Buffer<u32>;
+  best: Buffer<f64>;
+  working: Buffer<f64>;
+  candidate: Buffer<f64>;
+  activity: Buffer<u32>;
+  mask: Buffer<u32>;
+  lm: Buffer<f64>;
+  normalBlocks: Buffer<f64>;
+  trialCosts: Buffer<f64>;
+  progress: Buffer<u32>;
+  batchCounts: Buffer<u32>;
 }
 
 /** The base control of a PnP search; each batch sets its own `start` and `trials`. */

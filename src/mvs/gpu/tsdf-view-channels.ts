@@ -2,7 +2,7 @@ import type { TsdfView } from '../tsdf.ts';
 
 /**
  * Borrow complete input channels instead of interleaving and retaining a copy of every view.
- * Resident.write snapshots its argument before returning. These views never escape to callers,
+ * Buffer.set snapshots its argument before returning. These views never escape to callers,
  * and no input bytes are changed. The uncommon short-channel padding preserves the old packer's
  * undefined-to-NaN (float) / undefined-to-zero (u32) behavior in bounded, reusable scratch arrays.
  */

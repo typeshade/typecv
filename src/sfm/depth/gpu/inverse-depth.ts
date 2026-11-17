@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64 } from 'typeshade/runtime';
 import { radialLimitSquared } from '../../../geometry/camera.ts';
 import { cameraRecord, poseRecord } from '../../../contracts/camera-record.ts';
 import type { InverseDepthLinearization } from '../../../geometry/inverse-depth.ts';
@@ -37,7 +37,7 @@ async function linearizeBatches(
       throw new RangeError('Inverse-depth measurement budget cannot fit one observation');
     device.reserveWorkingBytes(8 * 57 * batch);
     const measurements = device.allocateF64(batch * 34);
-    let output: Resident<Float64Array> | undefined,
+    let output: Buffer<f64> | undefined,
       successful = false,
       batches = 0;
     const rows: (InverseDepthLinearization | undefined)[] = [],
@@ -60,7 +60,7 @@ async function linearizeBatches(
             at + 27,
           );
         }
-        measurements.write(input);
+        measurements.set(input);
         await device.planSteps([
           [
             'linearizeInverseDepth',

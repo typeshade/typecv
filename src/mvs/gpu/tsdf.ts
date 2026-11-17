@@ -7,7 +7,7 @@
  * the next box. A box extracts only its own blocks, so no point repeats, and its margin holds the
  * neighbours its voxels read. The budget changes the speed and not the points.
  */
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { readTogether } from '../../device/gpu/readback.ts';
 import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 import { tsdfBoxTable } from './tsdf-box-table.ts';
@@ -300,11 +300,11 @@ export async function fuseTsdfGpu(
     resetVotes,
   });
   // The arrays of the fusion with their lengths: the bytes held now and at most.
-  const owned = new Map<Resident<Uint32Array> | Resident<Float32Array>, number>();
+  const owned = new Map<Buffer<u32> | Buffer<f32>, number>();
   let live = 0,
     peakBytes = 0,
     uploadBytes = 0;
-  const hold = <T extends Resident<Uint32Array> | Resident<Float32Array>>(r: T, n: number) => {
+  const hold = <T extends Buffer<u32> | Buffer<f32>>(r: T, n: number) => {
     owned.set(r, n);
     live += 4 * n;
     peakBytes = Math.max(peakBytes, live);
@@ -312,7 +312,7 @@ export async function fuseTsdfGpu(
   };
   const allocU32 = (n: number, values?: Uint32Array) => hold(device.allocateU32(n, values), n);
   const allocF32 = (n: number) => hold(device.allocate(n), n);
-  const free = (r: Resident<Uint32Array> | Resident<Float32Array>) => {
+  const free = (r: Buffer<u32> | Buffer<f32>) => {
     live -= 4 * (owned.get(r) ?? 0);
     owned.delete(r);
     device.recycle(r);
@@ -393,15 +393,15 @@ export async function fuseTsdfGpu(
       uploadWindow.run((color ? 16 : 12) * P, () => {
         const start = performance.now();
         const source = channels.of(input.views[v]!);
-        tsdfDepth.write(source.tsdfDepth);
-        tsdfNormal.write(source.tsdfNormal);
-        tsdfConfidence.write(source.tsdfConfidence);
-        if (color) tsdfColor.write(source.tsdfColor);
+        tsdfDepth.set(source.tsdfDepth);
+        tsdfNormal.set(source.tsdfNormal);
+        tsdfConfidence.set(source.tsdfConfidence);
+        if (color) tsdfColor.set(source.tsdfColor);
         uploadBytes += (color ? 16 : 12) * P;
         hostTimings.viewUploadMs += performance.now() - start;
       });
     /** Claim the blocks of `box` from every view into `table` of `T` slots. */
-    const claim = async (table: Resident<Uint32Array>, T: number, box: TsdfBox) => {
+    const claim = async (table: Buffer<u32>, T: number, box: TsdfBox) => {
       allocationPixels += N * P;
       for (let v = 0; v < N; v++) {
         await upload(v);
@@ -437,7 +437,7 @@ export async function fuseTsdfGpu(
     };
     // The dry run: the blocks of every view, in a table that grows until it holds them at half load.
     let T = nextPow2(Math.max(4096, (2 * volume.samples) / 16));
-    let table: Resident<Uint32Array>;
+    let table: Buffer<u32>;
     let words: Uint32Array;
     for (;;) {
       table = tableOf(T);
@@ -474,7 +474,7 @@ export async function fuseTsdfGpu(
     const parts: { positions: Float32Array; data: Uint32Array }[] = [];
     for (const box of boxes) {
       pass++;
-      let passTable: Resident<Uint32Array>, passT: number, blocks: number;
+      let passTable: Buffer<u32>, passT: number, blocks: number;
       if (boxes.length === 1) {
         passTable = table!;
         passT = T;

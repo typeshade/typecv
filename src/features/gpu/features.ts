@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { packRgba } from '../../image/gpu/pack-rgba.ts';
@@ -27,7 +27,7 @@ export interface GpuFeatureOptions {
 export interface GpuFeatureExecution {
   readonly applicationUploadBytes: number;
   readonly applicationReadbackBytes: number;
-  /** Full Resident.read snapshots, including unused output capacity; not a bus traffic counter. */
+  /** Full Buffer.read snapshots, including unused output capacity; not a bus traffic counter. */
   readonly residentSnapshotBytes?: number;
 }
 export interface GpuFeatures {
@@ -63,8 +63,8 @@ export interface GpuFeatureMatches {
 
 type ResidentInput = {
   readonly count: number;
-  readonly points: Resident<Float32Array>;
-  readonly descriptors: Resident<Uint32Array>;
+  readonly points: Buffer<f32>;
+  readonly descriptors: Buffer<u32>;
 };
 type ResidentState = ResidentInput & {
   readonly device: ShadeDevice;
@@ -111,8 +111,8 @@ export function registerResidentFeatures(
   device: ShadeDevice,
   count: number,
   capacity: number,
-  points: Resident<Float32Array>,
-  descriptors: Resident<Uint32Array>,
+  points: Buffer<f32>,
+  descriptors: Buffer<u32>,
   report: ShadePlanReport,
   execution: GpuFeatureExecution,
   before: DeviceStatistics = device.statistics,
@@ -300,7 +300,7 @@ export async function extractFeaturesGpuPyramidResident(
     device.reserveWorkingBytes(estimatedPeakBytes);
     const before = device.statistics,
       fullInput = device.allocateU32(fullPixels, packed);
-    let downsample: Resident<Uint32Array> | undefined,
+    let downsample: Buffer<u32> | undefined,
       fine: GpuResidentFeatures | undefined,
       coarse: GpuResidentFeatures | undefined,
       success = false;
@@ -337,8 +337,7 @@ export async function extractFeaturesGpuPyramidResident(
       );
       const capacity = fine.capacity + coarse.capacity,
         count = fine.count + coarse.count;
-      let points: Resident<Float32Array> | undefined,
-        descriptors: Resident<Uint32Array> | undefined;
+      let points: Buffer<f32> | undefined, descriptors: Buffer<u32> | undefined;
       try {
         points = device.allocate(capacity * 4);
         descriptors = device.allocateU32(capacity * 8);
@@ -402,7 +401,7 @@ export async function extractFeaturesGpuPyramidResident(
 
 async function extractFeaturesFromPackedResident(
   device: ShadeDevice,
-  input: Resident<Uint32Array>,
+  input: Buffer<u32>,
   width: number,
   height: number,
   options: GpuFeatureOptions,
@@ -437,8 +436,8 @@ async function extractFeaturesFromPackedResident(
   if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > device.maxKernelElements)
     throw new RangeError('Feature count exceeds TypeShade working budget');
   device.reserveWorkingBytes(capacity * 96 + pixelCount * (options.smoothDescriptors ? 12 : 8) + 4);
-  const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
-  const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+  const owned: (Buffer<f32> | Buffer<u32>)[] = [];
+  const retained = new Set<Buffer<f32> | Buffer<u32>>();
   let success = false;
   const u32 = (length: number, input?: Uint32Array) => {
     const value = device.allocateU32(length, input);
@@ -622,7 +621,7 @@ export async function matchFeaturesGpu(
     b = pointArray(second);
   return device.enqueue(async () => {
     const before = device.statistics;
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
     let success = false;
     const f32 = (length: number, values: Float32Array) => {
       const value = device.allocate(length, values);
@@ -685,7 +684,7 @@ async function runResidentMatch(
   maxDistance: number,
 ): Promise<GpuFeatureMatches> {
   const before = device.statistics;
-  const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+  const owned: (Buffer<f32> | Buffer<u32>)[] = [];
   let success = false;
   const u32 = (length: number) => {
     const value = device.allocateU32(length);

@@ -233,7 +233,10 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
                 async () => {
                   await step[2]?.();
                   if (!cameraScratch) throw new Error('Camera scratch was not captured');
-                  await cameraScratch.write(new Float64Array(36 * 4));
+                  // A Buffer refuses set() while a kernel's values are on the device; read first
+                  // (TypeShade change 0138, Amendment A11, Q1).
+                  await cameraScratch.read();
+                  cameraScratch.set(new Float64Array(36 * 4));
                 },
               ];
             }

@@ -101,7 +101,10 @@ async function runRows(device, f, kernel, { samples = 0 } = {}) {
         gpuNs = [],
         longestDispatchNs = [];
       for (let sample = 0; sample < samples; sample++) {
-        b.modelWork.write(f.modelWork);
+        // A Buffer refuses set() while a kernel's values are on the device; read first, outside
+        // the measured sample (TypeShade change 0138, Amendment A11, Q1).
+        await b.modelWork.read();
+        b.modelWork.set(f.modelWork);
         await device.plan(() => kernel(b, 0));
         const start = performance.now();
         const measured = await device.planSteps(steps());
@@ -175,7 +178,10 @@ export async function measurePairRows({ samples = 5 } = {}) {
       }));
       for (const v of variants) await device.plan(() => v.kernel(v.b, 0));
       const execute = async (v, timed) => {
-        v.b.modelWork.write(f.modelWork);
+        // A Buffer refuses set() while a kernel's values are on the device; read first, outside
+        // the measured sample (TypeShade change 0138, Amendment A11, Q1).
+        await v.b.modelWork.read();
+        v.b.modelWork.set(f.modelWork);
         await device.plan(() => v.kernel(v.b, 0));
         const steps = [];
         const limit = f.refit ? f.rows : f.control.kind === 0 ? 8 : 4;

@@ -3,7 +3,7 @@
 /**
  * A TypeShade kernel in the same style as TypeNN's src/kernels/*.shade.ts.
  * Padded 4-tuples: [x1, y1, x2, y2] in *normalized* camera coordinates.
- * E is a row-major 3x3 Essential matrix in a Resident<Float32Array>.
+ * E is a row-major 3x3 Essential matrix in a Buffer<f32>.
  * Each iteration writes out[i], and can be independently dispatched.
  */
 export function epipolarSampsonSquared(

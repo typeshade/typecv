@@ -156,7 +156,10 @@ export async function checkCameraProductFlavors({
                     input.blocks.subarray(24 * M + obsBase * stride, 24 * M + obsEnd * stride),
                     24 * M,
                   );
-                  await bindings.blocks.write(packed);
+                  // A Buffer refuses set() while a dispatch's values are on the device; read first
+                  // (TypeShade change 0138, Amendment A11, Q1).
+                  await bindings.blocks.read();
+                  bindings.blocks.set(packed);
                 }
                 bindings.control = {
                   ...input.control,

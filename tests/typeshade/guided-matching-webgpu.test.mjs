@@ -156,7 +156,7 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
           device.read(second.descriptors.descriptors, second.descriptors.elements),
         ]),
       );
-      // Resident.read returns the full allocation; only the descriptor's live prefix is input.
+      // Buffer.read returns the full allocation; only the descriptor's live prefix is input.
       const da = firstSnapshot.subarray(0, first.descriptors.elements),
         db = secondSnapshot.subarray(0, second.descriptors.elements);
       const sift = [];

@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import type { TrackTriangulation, TriangulationObservation } from '../multiview.ts';
 import { depthSensitivityControls, type DepthSensitivityOptions } from '../multiview.ts';
 import { validatePose } from '../pose.ts';
@@ -158,7 +158,7 @@ async function triangulateChunk(
   const trackCount = offsets.length - 1,
     count = offsets[trackCount]!;
   {
-    const owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     const wide = (n: number, values?: Float64Array) => {
       const r = device.allocateF64(n, values);
@@ -205,12 +205,12 @@ async function triangulateChunk(
 /** The buffers of one chunk of tracks that the steps bind. */
 interface TriangulationBuffers {
   control: TriangulationControl;
-  raw: Resident<Float64Array>;
-  offsets: Resident<Uint32Array>;
-  geometry: Resident<Float64Array>;
-  result: Resident<Float64Array>;
-  flags: Resident<Uint32Array>;
-  statuses: Resident<Uint32Array>;
+  raw: Buffer<f64>;
+  offsets: Buffer<u32>;
+  geometry: Buffer<f64>;
+  result: Buffer<f64>;
+  flags: Buffer<u32>;
+  statuses: Buffer<u32>;
 }
 
 // Named steps, so the device reports each kernel before it starts (a lost device names it).

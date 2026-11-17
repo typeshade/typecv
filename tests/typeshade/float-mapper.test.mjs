@@ -91,7 +91,7 @@ test('float adapter rejects malformed graphs and row metadata before any device 
     const images = fixture.images.map((image) => ({
       ...image,
       descriptors: {
-        descriptors: { read() {}, write() {} },
+        descriptors: { read() {}, set() {} },
         count: 40,
         dimensions: 40,
         elements: 1600,

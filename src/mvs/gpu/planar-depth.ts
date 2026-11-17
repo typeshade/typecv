@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import type { ShadeDevice, GpuStep, ShadePlanReport } from '../../device/gpu/device.ts';
 import type { TsdfInput, TsdfView } from '../tsdf.ts';
 import { tsdfVisibilityGroups } from '../tsdf.ts';
@@ -168,7 +168,7 @@ async function completePlanarDepthsImpl(
   for (const reference of order) {
     const view = lifetime ? lifetime.original(reference) : input.views[reference]!;
     options.signal?.throwIfAborted();
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
     const f32 = (n: number, values?: Float32Array) => {
       const r = device.allocate(n, values);
       owned.push(r);
@@ -274,8 +274,8 @@ async function completePlanarDepthsImpl(
       for (const [group, indices] of groups.entries())
         for (const index of indices) {
           const source = lifetime ? lifetime.original(index) : input.views[index]!;
-          sourceDepth.write(source.depth);
-          sourceConfidence.write(confidenceOf(source));
+          sourceDepth.set(source.depth);
+          sourceConfidence.set(confidenceOf(source));
           const planarSource = { ...camera(source), group: group + 1 };
           await run(
             chunkedPass(

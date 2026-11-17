@@ -2027,7 +2027,7 @@ interface GpuResidentFeatures {
 
 -- GpuResidentFloatDescriptors
 interface GpuResidentFloatDescriptors {
-    readonly descriptors: Resident<Float32Array>;
+    readonly descriptors: Buffer<f32>;
     readonly count: number;
     readonly dimensions: number;
     readonly elements: number;
@@ -2066,8 +2066,8 @@ interface GpuSiftGray {
     readonly levels: number;
     readonly width: number;
     readonly height: number;
-    readonly buffer: Resident<Float32Array>;
-    take(): Resident<Float32Array>;
+    readonly buffer: Buffer<f32>;
+    take(): Buffer<f32>;
 }
 
 -- GpuSiftOptions
@@ -2755,7 +2755,6 @@ class ShadeDevice {
     private readonly shade;
     private readonly diagnosticTracker;
     private readonly active;
-    private readonly activeF32Lengths;
     private readonly workingReclaimers;
     private reclaimingWorking;
     private readonly history;

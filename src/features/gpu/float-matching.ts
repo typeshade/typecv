@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import {
@@ -15,10 +15,10 @@ import {
  * Borrowed row-major descriptors. The caller declares public shape metadata,
  * keeps the buffer alive through the returned promise, and uses the same
  * TypeShade runtime/compiler as this ShadeDevice. Opaque storage is never inspected.
- * Source and target must use distinct Resident handles, even for identical data.
+ * Source and target must use distinct Buffers, even for identical data.
  */
 export interface GpuResidentFloatDescriptors {
-  readonly descriptors: Resident<Float32Array>;
+  readonly descriptors: Buffer<f32>;
   readonly count: number;
   readonly dimensions: number;
   /** Exact live array length; must equal count * dimensions. */
@@ -62,7 +62,7 @@ export interface GpuFloatMatches {
   readonly execution: {
     readonly applicationUploadBytes: number;
     readonly applicationReadbackBytes: number;
-    /** Full public Resident.read snapshots, including unused output capacity. */
+    /** Full public Buffer.read snapshots, including unused output capacity. */
     readonly residentSnapshotBytes: number;
   };
 }
@@ -94,7 +94,7 @@ export function matchFloatDescriptorsGpu(
       input.elements !== input.count * input.dimensions ||
       !input.descriptors ||
       typeof input.descriptors.read !== 'function' ||
-      typeof input.descriptors.write !== 'function'
+      typeof input.descriptors.set !== 'function'
     )
       throw new RangeError('Invalid resident float descriptor shape');
   }
@@ -137,7 +137,7 @@ export function matchFloatDescriptorsGpu(
   )
     throw new RangeError('Float descriptor matching exceeds working/storage/dispatch budget');
   if (first.descriptors === second.descriptors)
-    throw new TypeError('Float matching requires distinct source and target Resident buffers');
+    throw new TypeError('Float matching requires distinct source and target Buffers');
   if (!first.count || !second.count)
     return Promise.resolve({
       matches: new Uint32Array(0),
@@ -149,7 +149,7 @@ export function matchFloatDescriptorsGpu(
         residentSnapshotBytes: 0,
       },
     });
-  // Snapshot caller metadata before enqueuing. Resident contents remain borrowed.
+  // Snapshot caller metadata before enqueuing. Buffer contents remain borrowed.
   const left = { ...first },
     right = { ...second };
   // The guide's matrices for the two directions: F maps first-image points to lines in the
@@ -162,7 +162,7 @@ export function matchFloatDescriptorsGpu(
   };
   return device.enqueue(async () => {
     const before = device.statistics;
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
     let success = false;
     const u32 = (length: number) => {
       const buffer = device.allocateU32(length);

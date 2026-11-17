@@ -9,6 +9,7 @@ import {
   type KltResidentPyramid,
 } from './klt-device.ts';
 import type { KltOptions } from './klt.ts';
+import type { Buffer, f32 } from 'typeshade/runtime';
 
 /** Original image evidence must stay immutable while the cache owns its resident copy. */
 export interface KltCacheFrame {
@@ -28,7 +29,8 @@ export interface KltPairCacheStatistics {
   readonly pyramidBuilds: number;
   /** Complete gray/gradient pairs allocated, including pairs later evicted or dropped. */
   readonly pyramidAllocations: number;
-  /** Gray and gradient resident handles retained for compatible replacement (two per pyramid). */
+  /** Gradient arrays retained for a compatible replacement, one per reuse. The gray array of a
+   *  reused slot is given back and made again with the new frame (TypeShade change 0138). */
   readonly bufferReuses: number;
   readonly frames: number;
   /** Gray and gradient storage only; point scratch, pooling and driver memory are excluded. */
@@ -49,6 +51,8 @@ export interface KltPairCache {
   dispose(): Promise<void>;
 }
 interface Slot extends KltResidentPyramid {
+  /** A reused slot takes a new gray array for its new frame. */
+  gray: KltResidentPyramid['gray'];
   id: number;
   pixels: Float32Array;
   ready: boolean;
@@ -142,13 +146,31 @@ export function createKltPairCache(
               candidate.layout.levels === prepared.layout.levels,
             reuse = (candidate: Slot): Slot => {
               slots.delete(candidate.id);
+              // The new frame takes a new gray array, made with its values: the old one holds
+              // the pyramid that the kernels wrote, and a `Buffer` that a call wrote refuses
+              // `set` until `read()` (TypeShade change 0138, Amendment A11, Q1). The old array goes
+              // back first, so the pool can give it again and the peak stays two pyramids. If the
+              // new array cannot be made, the slot is gone: its gradient is destroyed, and no slot
+              // keeps the array that went back.
+              device.recycle(candidate.gray);
+              let gray: Buffer<f32>;
+              try {
+                gray = device.allocate(
+                  prepared.layout.total,
+                  paddedKltGray(frame.gray, prepared.layout),
+                );
+              } catch (error) {
+                device.drop(candidate.grad);
+                throw error;
+              }
+              candidate.gray = gray;
               candidate.id = frame.id;
               candidate.pixels = frame.gray;
               candidate.used = ++clock;
               candidate.ready = false;
               slots.set(candidate.id, candidate);
-              device.writeF32(candidate.gray, paddedKltGray(frame.gray, prepared.layout));
-              bufferReuses += 2;
+              // The gradient array is kept; the gray array is a new one.
+              bufferReuses += 1;
               return candidate;
             };
           if (

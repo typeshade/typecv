@@ -152,7 +152,7 @@ export function captureSchurSystems(device, input, { corruptCache = false } = {}
                 };
                 if (step[0] === 'cacheBundleSchurRows') {
                   system.schur = [...(await device.read(buffers.schur, lengths.schur))];
-                  if (corruptCache) await buffers.schur.write(new Float64Array(lengths.schur));
+                  if (corruptCache) buffers.schur.set(new Float64Array(lengths.schur));
                 }
                 systems.push(system);
               } else {

@@ -64,10 +64,13 @@ test('compatible cache victims reuse buffers with exact measurements and honest 
       }
       const stats = cache.statistics();
       assert.equal(stats.pyramidAllocations, 2);
-      assert.equal(stats.bufferReuses, 6);
+      // One retained gradient for each reuse; the gray array is made again (change 0138).
+      assert.equal(stats.bufferReuses, 3);
       assert.equal(stats.pyramidBuilds, 5);
       assert.equal(stats.evictions, 3);
-      assert.equal(device.statistics.allocations - before.allocations, 4 + 4 * pairs.length);
+      // Each of the 3 reuses takes a new gray array made with its frame, in place of a write to
+      // the old one (TypeShade change 0138, Amendment A11, Q1): one allocation more for each.
+      assert.equal(device.statistics.allocations - before.allocations, 4 + 4 * pairs.length + 3);
       assert.equal(
         device.statistics.applicationUploadBytes - before.applicationUploadBytes,
         5 * layout.total * 4 + 2 * layout.total * 8 + (points.length / 2) * 16 * pairs.length,
@@ -101,7 +104,7 @@ test('replacing same-id image evidence reuses compatible storage and recomputes 
       for (const key of ['records', 'forward', 'back'])
         assert.deepEqual(actual[key], expected[key]);
       assert.equal(after.pyramidAllocations, before.pyramidAllocations);
-      assert.equal(after.bufferReuses, before.bufferReuses + 2);
+      assert.equal(after.bufferReuses, before.bufferReuses + 1);
       assert.equal(after.pyramidBuilds, before.pyramidBuilds + 1);
       assert.equal(after.evictions, before.evictions);
     } finally {
@@ -133,7 +136,7 @@ test('each retained gradient starts with one materialized host mirror rather tha
       assert.ok(gradients.every((entry) => entry.initiallyZero));
       assert.notEqual(gradients[0].values, gradients[1].values);
       assert.equal(cache.statistics().pyramidAllocations, 2);
-      assert.equal(cache.statistics().bufferReuses, 4);
+      assert.equal(cache.statistics().bufferReuses, 2);
     } finally {
       device.allocate = allocate;
       await cache.dispose();
@@ -226,15 +229,18 @@ test('a failed accepted in-place write drops dirty buffers before queued cache d
   await withDevice(async (device) => {
     const cache = createKltPairCache(device, { capacity: 2 }),
       sentinel = device.allocate(17, new Float32Array(17).fill(0.25)),
-      write = device.writeF32.bind(device),
+      allocate = device.allocate.bind(device),
       drop = device.drop.bind(device),
       failure = new Error('injected write failure'),
       dropped = [];
     try {
       await cache.track(frames[0], frames[1], points, tracking);
-      device.writeF32 = (buffer, values) => {
-        write(buffer, values);
-        throw failure;
+      // A reused slot takes a new gray array made with the new frame (TypeShade change 0138,
+      // Amendment A11, Q1), so the failure is injected at that allocation, after the old gray
+      // went back.
+      device.allocate = (length, values) => {
+        if (values !== undefined && length === layout.total) throw failure;
+        return allocate(length, values);
       };
       device.drop = (buffer) => {
         dropped.push(buffer);
@@ -244,12 +250,18 @@ test('a failed accepted in-place write drops dirty buffers before queued cache d
         disposed = cache.dispose();
       await assert.rejects(failed, (error) => error === failure);
       await disposed;
-      assert.equal(dropped.length, 2, 'dirty gray and gradient are destroyed rather than pooled');
+      // The old gray array went back before the failed allocation, so only the gradient of the
+      // lost slot is destroyed rather than pooled.
+      assert.equal(
+        dropped.length,
+        1,
+        'the gradient of the lost slot is destroyed rather than pooled',
+      );
       assert.equal(cache.statistics().frames, 0);
       assert.equal(activeBytes(device), 68);
       assert.deepEqual(Array.from(await device.read(sentinel, 17)), Array(17).fill(0.25));
     } finally {
-      device.writeF32 = write;
+      device.allocate = allocate;
       device.drop = drop;
       await cache.dispose();
       device.recycle(sentinel);
@@ -286,23 +298,10 @@ test('failed pyramid preparation invalidates reused storage before successful re
   });
 });
 
-test('owned f32 write accounting validates type/length and disposed caches unregister reclamation', async () => {
+// `ShadeDevice.writeF32` is removed: the pair cache, its one caller, takes a new gray array in place
+// of a write to the old one (TypeShade change 0138, Amendment A11, Q1).
+test('disposed caches unregister reclamation', async () => {
   await withDevice(async (device) => {
-    const values = Float32Array.of(1, 2, 3, 4),
-      f32 = device.allocate(4, values),
-      u32 = device.allocateU32(4, Uint32Array.of(1, 2, 3, 4)),
-      before = device.statistics.applicationUploadBytes;
-    device.writeF32(f32, Float32Array.of(4, 3, 2, 1));
-    assert.equal(device.statistics.applicationUploadBytes - before, 16);
-    assert.deepEqual(Array.from(await device.read(f32, 4)), [4, 3, 2, 1]);
-    const after = device.statistics.applicationUploadBytes;
-    for (const wrong of [new Float32Array(3), new Float64Array(4), [1, 2, 3, 4]])
-      assert.throws(() => device.writeF32(f32, wrong), /active owned buffer/);
-    assert.throws(() => device.writeF32(u32, new Float32Array(4)), /active owned buffer/);
-    assert.equal(device.statistics.applicationUploadBytes, after);
-    device.recycle(f32);
-    assert.throws(() => device.writeF32(f32, values), /active owned buffer/);
-    device.recycle(u32);
     const register = device.registerWorkingReclaimer.bind(device);
     let invoked = 0;
     device.registerWorkingReclaimer = (reclaim) =>

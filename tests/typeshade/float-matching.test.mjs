@@ -98,12 +98,12 @@ test('float matcher rejects metadata/options/budgets and nonfinite or overflowin
       RangeError,
     );
     for (const value of [NaN, Infinity, -Infinity, 3e38]) {
-      a.write(Float32Array.of(value, 0));
-      b.write(Float32Array.of(value, 0));
+      a.set(Float32Array.of(value, 0));
+      b.set(Float32Array.of(value, 0));
       await assert.rejects(matchFloatDescriptorsGpu(device, shape, other), /Nonfinite|overflow/);
     }
-    a.write(Float32Array.of(0, 1));
-    b.write(Float32Array.of(0, 1));
+    a.set(Float32Array.of(0, 1));
+    b.set(Float32Array.of(0, 1));
     const result = await matchFloatDescriptorsGpu(device, shape, other);
     assert.deepEqual([...result.matches], [0, 0, 1, 1]); // Failed jobs do not poison subsequent work.
   } finally {
