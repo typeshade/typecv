@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { ShadeDevice } from '../../device/gpu/device.ts';
 import {
   registerResidentFeatures,
@@ -165,8 +165,8 @@ export function extractOrbGpuResident(
   return device.enqueue(async () => {
     device.reserveWorkingBytes(estimatedPeakBytes);
     const before = device.statistics;
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
-    const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
+    const retained = new Set<Buffer<f32> | Buffer<u32>>();
     let success = false;
     const u32 = (length: number, input?: Uint32Array) => {
       const value = device.allocateU32(Math.max(1, length), input);

@@ -1,7 +1,7 @@
 'use typeshade';
 
 export function normalizeMatches(
-  out: array<f32>,
+  @inout out: array<f32>,
   pixels: array<f32>,
   fx1: f32,
   fy1: f32,
@@ -25,7 +25,7 @@ export function normalizeMatches(
 
 // One invocation per (hypothesis, match). Models are unit-Frobenius E matrices.
 export function sampsonBatch(
-  out: array<f32>,
+  @inout out: array<f32>,
   xy: array<f32>,
   models: array<f32>,
   count: u32,
@@ -50,13 +50,13 @@ export function sampsonBatch(
   }
 }
 
-export function inlierFlags(out: array<f32>, errors: array<f32>, thresholdSquared: f32): void {
+export function inlierFlags(@inout out: array<f32>, errors: array<f32>, thresholdSquared: f32): void {
   for (let i: u32 = 0; i < out.length; i++) {
     out[i] = select(0, 1, errors[i] <= thresholdSquared);
   }
 }
 
-export function msacCosts(out: array<f32>, errors: array<f32>, thresholdSquared: f32): void {
+export function msacCosts(@inout out: array<f32>, errors: array<f32>, thresholdSquared: f32): void {
   for (let i: u32 = 0; i < out.length; i++) {
     out[i] = min(errors[i], thresholdSquared) / thresholdSquared;
   }
@@ -65,7 +65,7 @@ export function msacCosts(out: array<f32>, errors: array<f32>, thresholdSquared:
 // Hierarchical reduction keeps long observations off a single serial invocation.
 // [count partials for all models, cost partials for all models].
 export function blockStats(
-  out: array<f32>,
+  @inout out: array<f32>,
   flags: array<f32>,
   costs: array<f32>,
   count: u32,
@@ -91,7 +91,7 @@ export function blockStats(
   }
 }
 
-export function modelStats(out: array<f32>, partial: array<f32>, blocks: u32): void {
+export function modelStats(@inout out: array<f32>, partial: array<f32>, blocks: u32): void {
   for (let i: u32 = 0; i < out.length; i++) {
     let total: f32 = 0;
     for (let k: u32 = 0; k < blocks; k++) total += partial[i * blocks + k];
@@ -100,7 +100,7 @@ export function modelStats(out: array<f32>, partial: array<f32>, blocks: u32): v
 }
 
 // Summary remains resident. Only three floats need cross the host boundary.
-export function selectBest(out: array<f32>, stats: array<f32>, models: u32): void {
+export function selectBest(@inout out: array<f32>, stats: array<f32>, models: u32): void {
   for (let i: u32 = 0; i < out.length; i++) {
     let winner: u32 = 0;
     let count: f32 = stats[0];
@@ -122,7 +122,7 @@ export function selectBest(out: array<f32>, stats: array<f32>, models: u32): voi
 }
 
 export function winningMask(
-  out: array<f32>,
+  @inout out: array<f32>,
   flags: array<f32>,
   best: array<f32>,
   count: u32,

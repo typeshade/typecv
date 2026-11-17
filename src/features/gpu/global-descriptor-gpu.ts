@@ -3,7 +3,7 @@
  * CPU reference are in `global-descriptor.ts`; this file holds the part that needs a TypeShade
  * device, so that the reference loads in plain Node.
  */
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { globalAssign } from './global-descriptor.shade.ts';
@@ -63,7 +63,7 @@ export function assignWordsGpu(
     throw new RangeError('The word assignment exceeds the storage or working budget');
   if (count === 0) return Promise.resolve(new Uint32Array(0));
   return device.enqueue(async () => {
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
     let success = false;
     try {
       const source = host ? device.allocate(host.length, host) : resident!.descriptors;

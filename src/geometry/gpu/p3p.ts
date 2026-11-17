@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { solveP3p } from './p3p.shade.ts';
 
@@ -20,10 +20,10 @@ export interface GpuP3pResult {
   readonly status: Uint32Array;
 }
 type Outputs = {
-  poses: Resident<Float64Array>;
-  valid: Resident<Uint32Array>;
-  counts: Resident<Uint32Array>;
-  status: Resident<Uint32Array>;
+  poses: Buffer<f64>;
+  valid: Buffer<u32>;
+  counts: Buffer<u32>;
+  status: Buffer<u32>;
 };
 
 /** GPU-generated P3P candidates retained on the device until read() or dispose(). */
@@ -56,7 +56,7 @@ export class GpuP3pBatch {
       );
     const snapshot = packed.slice();
     return device.enqueue(async () => {
-      const owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      const owned: (Buffer<f64> | Buffer<u32>)[] = [];
       let successful = false;
       try {
         const input = device.allocateF64(snapshot.length, snapshot);

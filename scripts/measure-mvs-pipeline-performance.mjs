@@ -354,7 +354,7 @@ const summary = {
   timingMeaning:
     'wallMs ends when the complete Dense result returns; hash/surface comparison and device disposal are excluded. Phase boundaries use completed-reference progress; fusionAndFinalize also includes geometric-stage cleanup, map snapshot callback and final result assembly. onDepthMaps clones existing host maps equally and causes no extra GPU readbacks.',
   transferMeaning:
-    'Runtime upload/read bytes include Resident.write/read for managed arrays. Application-tracked uploads alone omit direct Resident.write. Resident snapshot bytes may exceed requested prefixes. These counters exclude driver staging, textures and physical VRAM.',
+    'Runtime upload/read bytes include Buffer.set/read for managed arrays. Application-tracked uploads alone omit direct Buffer.set. Buffer snapshot bytes may exceed requested prefixes. These counters exclude driver staging, textures and physical VRAM.',
   scope:
     'Synthetic supplied geometry/RGB, not a source-video SfM/Dense reconstruction or native-hardware performance claim. Software adapter identity is reported and --hardware rejects software/fallback.',
   ...result,

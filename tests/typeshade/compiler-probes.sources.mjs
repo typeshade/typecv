@@ -11,7 +11,7 @@ export const MARK = '// probe';
 
 export const SOURCES = {
   p1: `"use typeshade";
-export function rgbaToGrayK(offset: u32, count: u32, rgba: array<u32>, gray: array<f32>): void {
+export function rgbaToGrayK(offset: u32, count: u32, rgba: array<u32>, @inout gray: array<f32>): void {
   for (let i: u32 = offset; i < offset + count; i++) {
     const pixel: u32 = rgba[i];
     const r: f32 = f32(pixel & 255);
@@ -27,7 +27,7 @@ declare const lut: storage<array<f32>>;
 function lookup(k: u32): f32 {
   return lut[k];
 }
-export function mapK(xs: array<u32>, out: array<f32>): void {
+export function mapK(xs: array<u32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < xs.length; i++) {
     out[i] = lookup(xs[i]);
   }
@@ -35,7 +35,7 @@ export function mapK(xs: array<u32>, out: array<f32>): void {
 `,
 
   p3: `"use typeshade";
-export function blurK(w: u32, h: u32, src: array<f32>, out: array<f32>): void {
+export function blurK(w: u32, h: u32, src: array<f32>, @inout out: array<f32>): void {
   const at = (x: i32, y: i32): f32 => {
     const xx: u32 = u32(clamp(x, 0, i32(w) - 1));
     const yy: u32 = u32(clamp(y, 0, i32(h) - 1));
@@ -53,7 +53,7 @@ export function blurK(w: u32, h: u32, src: array<f32>, out: array<f32>): void {
 function at(src: array<f32>, k: u32): f32 { // probe
   return src[k];
 }
-export function copyK(src: array<f32>, out: array<f32>): void {
+export function copyK(src: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < out.length; i++) {
     out[i] = at(src, i);
   }
@@ -61,7 +61,7 @@ export function copyK(src: array<f32>, out: array<f32>): void {
 `,
 
   p5: `"use typeshade";
-export function acceptA(state: array<f32>, costs: array<f32>): void {
+export function acceptA(@inout state: array<f32>, costs: array<f32>): void {
   for (let i: u32 = 0; i < 1; i++) { // probe
     if (costs[0] < state[0]) {
       state[0] = costs[0];
@@ -72,7 +72,7 @@ export function acceptA(state: array<f32>, costs: array<f32>): void {
 `,
 
   p5b: `"use typeshade";
-export function acceptB(state: array<f32>, costs: array<f32>): void {
+export function acceptB(@inout state: array<f32>, costs: array<f32>): void {
   for (let i: u32 = 0; i < 1; i++) {
     if (costs[0] < state[i * 2]) {
       state[i * 2] = costs[0];
@@ -83,7 +83,7 @@ export function acceptB(state: array<f32>, costs: array<f32>): void {
 `,
 
   p6: `"use typeshade";
-export function boundFromArray(counts: array<u32>, xs: array<f32>, out: array<f32>): void {
+export function boundFromArray(counts: array<u32>, xs: array<f32>, @inout out: array<f32>): void {
   const n: u32 = counts[0];
   for (let i: u32 = 0; i < n; i++) {
     out[i] = xs[i] * 2.;
@@ -92,7 +92,7 @@ export function boundFromArray(counts: array<u32>, xs: array<f32>, out: array<f3
 `,
 
   p7: `"use typeshade";
-export function guardInLoop(counts: array<u32>, xs: array<f32>, out: array<f32>): void {
+export function guardInLoop(counts: array<u32>, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < out.length; i++) {
     if (i >= counts[0]) continue;
     out[i] = xs[i] * 2.;
@@ -102,7 +102,7 @@ export function guardInLoop(counts: array<u32>, xs: array<f32>, out: array<f32>)
 
   p8: `"use typeshade";
 let tile: workgroup<array<f32, 64>>;
-export function tiled(xs: array<f32>, out: array<f32>): void {
+export function tiled(xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < xs.length; i++) { // probe
     tile[i % 64] = xs[i];
     workgroupBarrier();
@@ -112,7 +112,7 @@ export function tiled(xs: array<f32>, out: array<f32>): void {
 `,
 
   p9: `"use typeshade";
-export function strong(xs: array<f32>, t: f32, out: array<u32>): u32 {
+export function strong(xs: array<f32>, t: f32, @inout out: array<u32>): u32 {
   for (let i: u32 = 0; i < xs.length; i++) {
     if (xs[i] > t) out.push(i);
   }
@@ -121,7 +121,7 @@ export function strong(xs: array<f32>, t: f32, out: array<u32>): u32 {
 `,
 
   p10: `"use typeshade";
-export function grid(w: u32, h: u32, out: array<f32>): void {
+export function grid(w: u32, h: u32, @inout out: array<f32>): void {
   for (let y: u32 = 0; y < h; y++) {
     for (let x: u32 = 0; x < w; x++) {
       out[y * w + x] = f32(x + y);
@@ -131,7 +131,7 @@ export function grid(w: u32, h: u32, out: array<f32>): void {
 `,
 
   p16: `"use typeshade";
-export function records(n: u32, xs: array<f32>, out: array<f32>): void {
+export function records(n: u32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) {
     for (let k: u32 = 0; k < 4; k++) {
       out[i * 4 + k] = xs[i] + f32(k);
@@ -141,7 +141,7 @@ export function records(n: u32, xs: array<f32>, out: array<f32>): void {
 `,
 
   p9b: `"use typeshade";
-export function records2(n: u32, slots: u32, xs: array<f32>, out: array<f32>): void {
+export function records2(n: u32, slots: u32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) { // probe
     for (let s: u32 = 0; s < slots; s++) {
       const o: u32 = i * slots + s;
@@ -153,7 +153,7 @@ export function records2(n: u32, slots: u32, xs: array<f32>, out: array<f32>): v
 `,
 
   p11: `"use typeshade";
-export function scaleD(k: f64, xs: array<f64>, out: array<f64>): void {
+export function scaleD(k: f64, xs: array<f64>, @inout out: array<f64>): void {
   for (let i: u32 = 0; i < xs.length; i++) {
     out[i] = xs[i] * k;
   }
@@ -161,7 +161,7 @@ export function scaleD(k: f64, xs: array<f64>, out: array<f64>): void {
 `,
 
   p18: `"use typeshade";
-export function minScatter(keys: array<u32>, vals: array<u32>, best: array<u32>): void {
+export function minScatter(keys: array<u32>, vals: array<u32>, @inout best: array<u32>): void {
   for (let i: u32 = 0; i < keys.length; i++) { // probe
     best[keys[i]] = min(best[keys[i]], vals[i]);
   }
@@ -169,7 +169,7 @@ export function minScatter(keys: array<u32>, vals: array<u32>, best: array<u32>)
 `,
 
   p19: `"use typeshade";
-export function addScatter(keys: array<u32>, vals: array<f32>, sums: array<f32>): void {
+export function addScatter(keys: array<u32>, vals: array<f32>, @inout sums: array<f32>): void {
   for (let i: u32 = 0; i < keys.length; i++) { // probe
     sums[keys[i]] += vals[i];
   }
@@ -177,19 +177,19 @@ export function addScatter(keys: array<u32>, vals: array<f32>, sums: array<f32>)
 `,
 
   p13: `"use typeshade";
-export function first(xs: array<f32>, out: array<f32>): void {
+export function first(xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < xs.length; i++) {
     out[i] = xs[i] * 2.;
   }
 }
-export function second(xs: array<f32>, out: array<f32>): void {
+export function second(xs: array<f32>, @inout out: array<f32>): void {
   first(xs, out); // probe
 }
 `,
 
   p14: `"use typeshade";
 @workgroup_size([16])
-export function scaled(n: u32, gain: f32, xs: array<f32>, out: array<f32>): void {
+export function scaled(n: u32, gain: f32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) {
     out[i] = xs[i] * gain;
   }
@@ -202,7 +202,7 @@ class Control {
   height: u32;
   gain: f32;
 }
-export function gainK(c: Control, xs: array<f32>, out: array<f32>): void {
+export function gainK(c: Control, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < c.width * c.height; i++) {
     out[i] = xs[i] * c.gain;
   }
@@ -210,7 +210,7 @@ export function gainK(c: Control, xs: array<f32>, out: array<f32>): void {
 `,
 
   p20a: `"use typeshade";
-export function countScatter(keys: array<u32>, bins: array<u32>): void {
+export function countScatter(keys: array<u32>, @inout bins: array<u32>): void {
   for (let i: u32 = 0; i < keys.length; i++) {
     bins[keys[i]] += 1;
   }
@@ -218,7 +218,7 @@ export function countScatter(keys: array<u32>, bins: array<u32>): void {
 `,
 
   p20b: `"use typeshade";
-export function strided(n: u32, stride: u32, xs: array<f32>, out: array<f32>): void {
+export function strided(n: u32, stride: u32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) {
     out[stride * i] = xs[i];
   }
@@ -226,7 +226,7 @@ export function strided(n: u32, stride: u32, xs: array<f32>, out: array<f32>): v
 `,
 
   p20c: `"use typeshade";
-export function stridedPlus(n: u32, stride: u32, xs: array<f32>, out: array<f32>): void {
+export function stridedPlus(n: u32, stride: u32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) { // probe
     out[stride * i] = xs[i];
     out[stride * i + 1] = xs[i] + 1.;
@@ -235,7 +235,7 @@ export function stridedPlus(n: u32, stride: u32, xs: array<f32>, out: array<f32>
 `,
 
   p20d: `"use typeshade";
-export function offsetWrite(n: u32, base: u32, xs: array<f32>, out: array<f32>): void {
+export function offsetWrite(n: u32, base: u32, xs: array<f32>, @inout out: array<f32>): void {
   for (let i: u32 = 0; i < n; i++) { // probe
     out[base + i] = xs[i];
   }
@@ -255,7 +255,7 @@ export function sumSq(xs: array<f32>): f32 {
 `,
 
   p20g: `"use typeshade";
-export function minScatter2(keys: array<u32>, vals: array<u32>, best: array<u32>): void {
+export function minScatter2(keys: array<u32>, vals: array<u32>, @inout best: array<u32>): void {
   for (let i: u32 = 0; i < keys.length; i++) { // probe
     const k: u32 = keys[i];
     best[k] = min(best[k], vals[i]);
@@ -275,7 +275,7 @@ class Linearization {
   u: f64;
   v: f64;
 }
-export function linearizeK(ms: array<Measurement>, out: array<Linearization>): void {
+export function linearizeK(ms: array<Measurement>, @inout out: array<Linearization>): void {
   for (let i: u32 = 0; i < ms.length; i++) {
     const m: Measurement = ms[i];
     out[i] = { ok: 0., u: 0., v: 0. };
@@ -286,7 +286,7 @@ export function linearizeK(ms: array<Measurement>, out: array<Linearization>): v
 `,
 
   p30b: `"use typeshade";
-export function recordWrites(n: u32, xs: array<f64>, out: array<f64>): void {
+export function recordWrites(n: u32, xs: array<f64>, @inout out: array<f64>): void {
   for (let i: u32 = 0; i < n; i++) { // probe
     for (let k: u32 = 0; k < 23; k++) out[i * 23 + k] = 0.;
     for (let row: u32 = 0; row < 2; row++) {
@@ -304,8 +304,8 @@ declare const sums: storage<array<f32>, 'read_write'>;
 let tile: workgroup<array<f32, 64>>;
 @compute([64])
 export function blockSum(
-  @builtin('local_invocation_id') lid: vec3u,
-  @builtin('workgroup_id') wid: vec3u,
+  lid: builtin<'local_invocation_id'>,
+  wid: builtin<'workgroup_id'>,
 ): void {
   const i: u32 = wid.x * 64 + lid.x;
   tile[lid.x] = 0.;
@@ -318,7 +318,7 @@ export function blockSum(
   if (lid.x == 0) sums[wid.x] = tile[0];
 }
 @compute([1])
-export function blockSumOracle(@builtin('global_invocation_id') gid: vec3u): void {
+export function blockSumOracle(gid: builtin<'global_invocation_id'>): void {
   let s: f32 = 0.;
   for (let j: u32 = 0; j < 64; j++) {
     const i: u32 = gid.x * 64 + j;
@@ -329,7 +329,7 @@ export function blockSumOracle(@builtin('global_invocation_id') gid: vec3u): voi
 `,
 
   s3: `"use typeshade";
-export function maxScatter(keys: array<u32>, vals: array<u32>, best: array<u32>): void {
+export function maxScatter(keys: array<u32>, vals: array<u32>, @inout best: array<u32>): void {
   for (let i: u32 = 0; i < keys.length; i++) { // probe
     const k: u32 = keys[i];
     best[k] = max(best[k], vals[i]);
@@ -346,6 +346,15 @@ export const EMPTY: u32 = 0xffffffff;
 `,
 
   // S6: the KLT maximum (kltEigenMax with kltEigenMaxFinal) as one kernel reduction.
+  // S5: a kernel function that writes every element of an array, to open the window of a Buffer.
+  s5: `"use typeshade";
+export function fill(@inout out: array<f32>, v: f32): void {
+  for (let i: u32 = 0; i < out.length; i++) {
+    out[i] = v;
+  }
+}
+`,
+
   s6: `"use typeshade";
 export function maxReduce(xs: array<f32>): f32 {
   let best: f32 = 0.;
@@ -374,7 +383,7 @@ function insertSorted(@inout best: array<f32, 32>, k: u32, d2: f32): void {
   best[s] = d2;
 }
 @compute([64])
-export function insertByRef(@builtin('global_invocation_id') gid: vec3u): void {
+export function insertByRef(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   let best: array<f32, 32> = fill<f32, 32>(1e30);
   for (let j: u32 = 0; j < xs.length; j++) {
@@ -407,7 +416,7 @@ function scanBucket(@inout best: array<f32, 32>, k: u32, i: u32, bucket: u32): v
   }
 }
 @compute([64])
-export function scanByRef(@builtin('global_invocation_id') gid: vec3u): void {
+export function scanByRef(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   let best: array<f32, 32> = fill<f32, 32>(1e30);
   for (let b: u32 = 0; b < bucketStart.length - 1; b++) scanBucket(best, 3, i, b);
@@ -419,7 +428,7 @@ export function scanByRef(@builtin('global_invocation_id') gid: vec3u): void {
 declare const xs: storage<array<f32>>;
 declare const out: storage<array<u32>, 'read_write'>;
 @compute([64])
-export function ringBreak(@builtin('global_invocation_id') gid: vec3u): void {
+export function ringBreak(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   let found: bool = false;
   let ring: u32 = 0;
@@ -443,7 +452,7 @@ export function ringBreak(@builtin('global_invocation_id') gid: vec3u): void {
 declare const xs: storage<array<f32>>;
 declare const out: storage<array<u32>, 'read_write'>;
 @compute([64])
-export function ringLabel(@builtin('global_invocation_id') gid: vec3u): void {
+export function ringLabel(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   let ring: u32 = 0;
   let at: u32 = 0;
@@ -464,7 +473,7 @@ export function ringLabel(@builtin('global_invocation_id') gid: vec3u): void {
 declare const xs: storage<array<f32>>;
 declare const out: storage<array<f32>, 'read_write'>;
 @compute([64])
-export function insertWhile(@builtin('global_invocation_id') gid: vec3u): void {
+export function insertWhile(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   const k: u32 = 3;
   let best: array<f32, 32> = fill<f32, 32>(1e30);
@@ -488,7 +497,7 @@ export function insertWhile(@builtin('global_invocation_id') gid: vec3u): void {
 declare const xs: storage<array<f32>>;
 declare const out: storage<array<u32>, 'read_write'>;
 @compute([64])
-export function ringReturn(@builtin('global_invocation_id') gid: vec3u): void {
+export function ringReturn(gid: builtin<'global_invocation_id'>): void {
   const i: u32 = min(gid.x, xs.length - 1);
   for (let r: u32 = 1; r <= 4; r++) {
     for (let j: u32 = 0; j < xs.length; j++) {
@@ -505,7 +514,7 @@ export function ringReturn(@builtin('global_invocation_id') gid: vec3u): void {
   // K6 and K6b: the sum of K1 as a kernel function over the lanes of a visit order, written
   // through the order (K6) or at the lane (K6b).
   k6: `"use typeshade";
-export function knnPermuted(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, sums: array<f32>): void {
+export function knnPermuted(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, @inout sums: array<f32>): void {
   for (let lane: u32 = 0; lane < visitOrder.length; lane++) { // probe
     const i: u32 = visitOrder[lane];
     let best: array<f32, 32> = fill<f32, 32>(1e30);
@@ -531,7 +540,7 @@ export function knnPermuted(k: u32, n: u32, xs: array<f32>, visitOrder: array<u3
 `,
 
   k6b: `"use typeshade";
-export function knnByLane(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, sums: array<f32>): void {
+export function knnByLane(k: u32, n: u32, xs: array<f32>, visitOrder: array<u32>, @inout sums: array<f32>): void {
   for (let lane: u32 = 0; lane < visitOrder.length; lane++) {
     const i: u32 = visitOrder[lane];
     let best: array<f32, 32> = fill<f32, 32>(1e30);

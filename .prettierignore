@@ -3,9 +3,9 @@
 # kernel file under src/: in src/gpu/ and in the gpu/ subdirectories (docs/library-structure.md,
 # section 3.1).
 src/**/*.shade.ts
-# These three kernel files hold no decorator, and format:check checks them (the same document,
-# section 2, "The glob", and section 4, rule 1). The lines name no directory, so the three stay
-# checked when they move.
-!src/**/epipolar.shade.ts
+# These two kernel files hold no decorator, and format:check checks them (the same document,
+# section 2, "The glob", and section 4, rule 1). The lines name no directory, so the two stay
+# checked when they move. epipolar.shade.ts holds `@inout` parameters since the pin f149b403
+# (section 5, "The pin bump to `f149b403`"), so the glob leaves it out.
 !src/**/numerics.shade.ts
 !src/**/projective.shade.ts

@@ -126,7 +126,7 @@ export interface ObservationExpansionResult {
     readonly hostValidationMs: number;
     readonly uploadBytes: number;
     readonly readbackBytes: number;
-    /** Complete Resident.read snapshots, including affine tails; not physical bus traffic. */
+    /** Complete Buffer.read snapshots, including affine tails; not physical bus traffic. */
     readonly residentSnapshotBytes: number;
     readonly reads: number;
     readonly surfaceProposals: number;

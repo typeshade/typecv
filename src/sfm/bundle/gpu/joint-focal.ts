@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
@@ -180,7 +180,7 @@ export function bundleAdjustJointFocalGpu(
   const cachedCgWork = (6 * C + 1) ** 2;
   return device.enqueue(async () => {
     const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     // The residency plan (docs/gpu-budget.md, section 3.3): the whole problem when it fits the
     // budget, else windows of whole points. The budget is what the device holds free now. The

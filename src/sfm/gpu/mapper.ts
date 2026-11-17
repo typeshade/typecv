@@ -211,7 +211,7 @@ export async function reconstructIncrementalFloatGpu(
       elements !== count * dimensions ||
       !view.descriptors.descriptors ||
       typeof view.descriptors.descriptors.read !== 'function' ||
-      typeof view.descriptors.descriptors.write !== 'function'
+      typeof view.descriptors.descriptors.set !== 'function'
     )
       throw new RangeError('Float descriptor rows must correspond to keypoints');
   }

@@ -98,3 +98,58 @@ then the pull request that did the work.
   conversion is phase 10's step "C6 and C7" of `docs/library-structure.md`, with phase 9's gate
   and the hardware run of section 7, item 11, which stays open. The pin also carries 0103: the WebGL2 pass program passes the k-NN
   list as a module place, so probes K1 and K2 hold the new GLSL form.
+- 0138, pull request #283 (stacked on #282, which moves the pin from `78a9060f` to `f149b403`):
+  milestone 4 slice 1 only. The host code moves from `Resident` to `Buffer` (Amendments A10 and
+  A11): `Buffer<f32>`, `Buffer<f64>` and `Buffer<u32>`, `set` in place of `write`, `dispose` in
+  place of `destroy`, and typed-array reads. `ShadeDevice.read` returns the typed array of its
+  `Buffer` by overload. The public declarations change type only: `GpuResidentFloatDescriptors`
+  `descriptors`, and `GpuSiftGray` `buffer` and `take()`, are `Buffer<f32>` in place of
+  `Resident<Float32Array>`. No name changes. A `Buffer` refuses `set` while a call's values are
+  on the device (A11, Q1), so the probes that restore a device-written `Buffer` read it first.
+  The library overwrote device-written arrays with `write`, which queued after the calls before
+  it, and `set` refuses that. The owner kept the rule on 2026-11-17 ("staging 재설계"): no
+  `Buffer` is both written by the device and set by the host. The KLT pair cache's reused slot
+  and the KLT tracker's gray frame give the old gray array back and take a new one made with the
+  frame. The Dense depth stage gives `stageF32` back, after `rgbaToGray` wrote it, and takes a
+  new one made with the observation mask or the depth map. Each old array goes back first, so the
+  pool can give it again and the active peak does not grow. No readback and no GPU wait is added.
+  The owner accepted this design on 2026-11-17 ("반납 후 새 할당 수용"). If the new array cannot be
+  made, the cache drops the lost slot's gradient and the tracker fails every later call.
+  `ShadeDevice.writeF32` lost its one caller and is removed.
+  The audit host passes its plain-object quartic problems as plain data (A11, Q4). The
+  `fuse(fn)` graphs, the legacy `device.fuse` scope and the other milestones of 0138 are not
+  migrated: TypeCV still uses `device.fuse()` and `scope`, which the pin keeps. Rule 3.2 of
+  `docs/design-rules.md` names a `Buffer` for an array since #282 (the owner's decision of
+  2026-11-17, "`Buffer`로 용어만 교체").
+- 0108, pull request #283: nothing must change. The host views that the build generates (not
+  committed) carry the JSDoc of the shader modules.
+- 0109, pull request #283: nothing must change. The host code imports no class of a shader
+  module.
+- 0110, pull request #283: nothing must change.
+- 0116, pull request #283: the host views spell the shader's own types. The host code
+  type-checks at `f149b403` after the `Buffer` migration of 0138, with no annotation added for
+  0116.
+- 0118, pull request #283: nothing must change in what runs. TypeCV builds no `FuseReport`
+  literal. Its report literals are its own `ShadePlanReport`, whose groups do not carry `tier`.
+- 0119, pull request #283: no source change. Which integer reductions of TypeCV get the subgroup
+  variant is not audited in this pull request; gap G2 of `docs/gpu-throughput.md` stays open
+  until it is.
+- 0121, pull request #283: no report literal must change: `ShadePlanReport` groups do not carry
+  `dispatches`, and the hand-built groups of the tests are of that shape. The kernel statistics still
+  count `workgroupShapes` and do not read a group's `dispatches` yet. That is a follow-up.
+- 0122, open: the plugin `typecv-fuse-origin` of `vite.gpu.config.ts` stays. Its retirement,
+  after the origins of the new pin are checked equal, is a follow-up pull request.
+- 0126, pull request #283: seven kernel modules are pure aliases (`export * from` one target):
+  `src/gpu/{bundle,joint-focal,pair-models,triangulation}.shade.ts`,
+  `src/geometry/gpu/{numerics,projective}.shade.ts` and `src/sfm/bundle/gpu/numerics.shade.ts`.
+  `npm run test:surface` holds each alias to its target's WGSL and GLSL at `f149b403`. No alias
+  is extended.
+- 0128, pull request #283: nothing must change. `ShadePlanReport` and the kernel statistics do
+  not read the scratch counts, and no fixture holds a full report.
+- 0129, open: no test of a failed producer and its dependent image plans is added yet. The test
+  is a follow-up.
+- 0130, open: the 224 `@builtin` parameter decorators of `src/` move to types with `tshc migrate`
+  of a compiler at or after `f149b403`, in a follow-up pull request. The pin still accepts them.
+  The 18 `@inout` parameters stay (0137).
+- 0137, pull request #283: nothing must change. The 18 `@inout` parameters of `src/` (10, and the
+  8 that #282 adds to `epipolar.shade.ts`) are the language's form.

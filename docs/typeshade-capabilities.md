@@ -29,6 +29,12 @@ This review was not repeated.
 (section 5, "The pin bump to `78a9060f`") lists what the pin carries and the
 probe verdicts that changed. This review was not repeated at that pin.
 
+2026-11-17: pull requests #282 and #283 move TypeCV's pin from `78a9060f` to
+`f149b4039e061b2a925fe33aaaad6da3d7f372c9` and move the host code from
+`Resident` to `Buffer` (TypeShade change 0138). `docs/library-structure.md`
+(section 5, "The pin bump to `f149b403`") lists what the pin carries and the
+probe verdicts that changed. This review was not repeated at that pin.
+
 Primary sources below identify delivered behavior. The probe results establish
 only the small cases executed here; they do not establish completed GPU SfM.
 

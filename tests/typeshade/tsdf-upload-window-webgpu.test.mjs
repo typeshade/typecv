@@ -153,8 +153,8 @@ test('TSDF view upload admission cleans up when its queue wait fails or is abort
         const handle = allocate(length, values);
         // The first four allocations are the only per-view input channels.
         if (arrays++ < 4) {
-          const write = handle.write.bind(handle);
-          handle.write = (source) => {
+          const write = handle.set.bind(handle);
+          handle.set = (source) => {
             writes++;
             write(source);
           };

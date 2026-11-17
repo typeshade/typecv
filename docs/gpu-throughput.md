@@ -346,7 +346,7 @@ complete four-iteration BA or two-iteration photometric stages, including alloca
 submissions and terminal readback. Pipeline warm-up is excluded. GPU time is the sum of pass
 timestamps only when every group has one. It is not an isolated camera-product time, full SfM
 time or full Dense time. Transfer counters cover `ShadeDevice` hooks, not direct
-`Resident.write` uploads; Dense's zero tracked upload bytes do not mean it uploads no images.
+`Resident.write` uploads (`Buffer.set` since TypeShade change 0138); Dense's zero tracked upload bytes do not mean it uploads no images.
 Raw samples, adapter identity, input hashes, shader/fixture hashes and
 TypeShade pin: [ba-dense-invariants-software.json](experiments/gpu/ba-dense-invariants-software.json).
 Base `6cdd70e` plus this implementation, shared container, Chromium/SwiftShader:

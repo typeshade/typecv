@@ -1,5 +1,5 @@
 // Browser-side consumer of precompiled manifests. No parser or compiler is bundled here.
-import { createRuntime, configure, resident } from 'typeshade/runtime';
+import { createRuntime, configure, array } from 'typeshade/runtime';
 
 export async function runAudit({ packs, at, problems, flavors }) {
   const adapter = await navigator.gpu.requestAdapter();
@@ -11,7 +11,7 @@ export async function runAudit({ packs, at, problems, flavors }) {
   configure({ runtime: rt, prefer: ['webgpu'] });
   const owned = [];
   const keep = (values) => {
-    const r = resident(values);
+    const r = array(values);
     owned.push(r);
     return r;
   };
@@ -48,7 +48,9 @@ export async function runAudit({ packs, at, problems, flavors }) {
       };
       const roots = keep(new Float64Array(problems.length)),
         valid = keep(new Uint32Array(problems.length));
-      const data = keep(problems);
+      // An array of plain objects of a struct that is not a class is plain data, packed at each
+      // dispatch (TypeShade change 0138, Amendment A11, Q4).
+      const data = problems;
       const solve = await rt.load(packs[`quartic_${flavor}`]).compute('bisect');
       console.debug(`audit: quartic ${flavor}`);
       const solving = rt.frame();
@@ -99,7 +101,7 @@ export async function runAudit({ packs, at, problems, flavors }) {
   } finally {
     GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
     GPUQueue.prototype.submit = originalSubmit;
-    for (const r of owned) r.destroy();
+    for (const r of owned) r.dispose();
     rt.destroy();
     configure({ runtime: null });
     configure({});

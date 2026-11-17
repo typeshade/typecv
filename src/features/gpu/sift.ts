@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import {
   claheScratchLength,
@@ -81,12 +81,12 @@ export interface GpuSiftGray {
   readonly width: number;
   readonly height: number;
   /** Level 0 is the first `width x height` values. The buffer is `kltLayout(...).total` long. */
-  readonly buffer: Resident<Float32Array>;
+  readonly buffer: Buffer<f32>;
   /**
    * Hand the buffer to the caller, which frees it. After this the result's `dispose()` leaves it
    * alone. Throws when the buffer was taken before or the result is disposed.
    */
-  take(): Resident<Float32Array>;
+  take(): Buffer<f32>;
 }
 export interface GpuSiftExecution {
   readonly applicationUploadBytes: number;
@@ -193,8 +193,8 @@ export function extractSiftGpuResident(
   return device.enqueue(async () => {
     device.reserveWorkingBytes(estimatedPeakBytes);
     const before = device.statistics;
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
-    const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
+    const retained = new Set<Buffer<f32> | Buffer<u32>>();
     let success = false;
     const u32 = (length: number, input?: Uint32Array) => {
       const value = device.allocateU32(length, input);
@@ -249,12 +249,7 @@ export function extractSiftGpuResident(
             scale = 2 ** o / up,
             image = { width: w, height: h };
           // Level i of this octave lives at element offset i * basePixels of `gaussians`.
-          const blur = (
-            from: Resident<Float32Array>,
-            inOffset: number,
-            outOffset: number,
-            s: number,
-          ) => {
+          const blur = (from: Buffer<f32>, inOffset: number, outOffset: number, s: number) => {
             const radius = Math.min(16, Math.max(1, Math.ceil(3 * s)));
             siftBlurH(
               {

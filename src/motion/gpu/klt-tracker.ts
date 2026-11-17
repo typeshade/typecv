@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import { rgbaToGray } from '../../features/gpu/features.shade.ts';
 import {
@@ -229,8 +229,8 @@ export function kltResidentBytes(width: number, height: number, options: KltOpti
 }
 
 interface Slot {
-  gray: Resident<Float32Array>;
-  grad: Resident<Float32Array>;
+  gray: Buffer<f32>;
+  grad: Buffer<f32>;
 }
 
 const FILL_IN = 0xffffffff;
@@ -276,7 +276,7 @@ export async function createKltTracker(
     },
     residentBytes = kltResidentBytes(width, height, options);
 
-  const owned = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+  const owned = new Set<Buffer<f32> | Buffer<u32>>();
   const f32 = (length: number) => {
     const buffer = device.allocate(length);
     owned.add(buffer);
@@ -336,6 +336,16 @@ export async function createKltTracker(
     previous: Slot | undefined,
     lastFrameId = -1,
     disposed = false;
+  // The error of a gray frame's allocation that failed after the slot gave its old array back: the
+  // slot then holds no array, so every later push and join throws.
+  let broken: unknown;
+  const assertUsable = (): void => {
+    if (disposed) throw new Error('The KLT tracker is disposed');
+    if (broken !== undefined)
+      throw new Error('The KLT tracker lost a frame array to a failed allocation', {
+        cause: broken,
+      });
+  };
   let disposal: Promise<void> | undefined;
   const totals = {
     pushes: 0,
@@ -485,7 +495,7 @@ export async function createKltTracker(
     keypoints?: ArrayLike<number>,
     taken?: Uint8Array,
   ) {
-    buffers.occupied.write(
+    buffers.occupied.set(
       kltOccupancy(table.x, table.y, table.n, width, height, options.minDistancePx),
     );
     await device.planSteps(pickSteps());
@@ -534,13 +544,13 @@ export async function createKltTracker(
   }
 
   async function push(frame: KltFrame, pushOptions: KltPushOptions = {}): Promise<KltStep> {
-    if (disposed) throw new Error('The KLT tracker is disposed');
+    assertUsable();
     return device.enqueue(async () => {
-      if (disposed) throw new Error('The KLT tracker is disposed');
+      assertUsable();
       const index = frames,
         slot = slots[index % 2]!,
         n = table.n;
-      let rgba: Resident<Uint32Array> | undefined;
+      let rgba: Buffer<u32> | undefined;
       if ('sift' in frame) {
         const kept = frame.sift.gray;
         if (
@@ -563,7 +573,18 @@ export async function createKltTracker(
           throw new RangeError('The frame must hold width x height values');
         const padded = new Float32Array(layout.total);
         for (let i = 0; i < pixels; i++) padded[i] = frame.gray[i]!;
-        slot.gray.write(padded);
+        // A new gray array, made with the frame: the slot's array holds the pyramid that the
+        // kernels wrote, and a `Buffer` that a call wrote refuses `set` until `read()` (TypeShade
+        // change 0138, Amendment A11, Q1). The old array goes back first, as for a SIFT frame.
+        device.recycle(slot.gray);
+        owned.delete(slot.gray);
+        try {
+          slot.gray = device.allocate(layout.total, padded);
+        } catch (error) {
+          broken = error;
+          throw error;
+        }
+        owned.add(slot.gray);
       } else {
         if (frame.rgba.length !== 4 * pixels)
           throw new RangeError('The frame must hold width x height RGBA bytes');
@@ -581,7 +602,7 @@ export async function createKltTracker(
           padded[4 * k + 1] = table.y[k]!;
           padded[4 * k + 3] = 1;
         }
-        start.write(padded);
+        start.set(padded);
       }
       const prev = previous;
       function* tracking1() {
@@ -705,9 +726,9 @@ export async function createKltTracker(
   const MAX_ANCHORS = 8;
 
   async function join(keyframe: KltJoinInput): Promise<KltJoin> {
-    if (disposed) throw new Error('The KLT tracker is disposed');
+    assertUsable();
     return device.enqueue(async () => {
-      if (disposed) throw new Error('The KLT tracker is disposed');
+      assertUsable();
       if (!previous || lastFrameId !== keyframe.frameId)
         throw new RangeError('join() takes the keypoints of the frame of the last push()');
       const started = performance.now(),

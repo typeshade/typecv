@@ -195,7 +195,7 @@ console.log(
   JSON.stringify(
     {
       methodology:
-        'Complete BA / photometric stage after pipeline warmup, including resident allocation, uploads, kernel dispatches and terminal readback; variant order rotates and reverses. GPU time is null unless every group has a timestamp. Transfer counters cover ShadeDevice hooks; direct Resident.write uploads are not counted. Synthetic fixtures, not full SfM or full Dense reconstruction.',
+        'Complete BA / photometric stage after pipeline warmup, including resident allocation, uploads, kernel dispatches and terminal readback; variant order rotates and reverses. GPU time is null unless every group has a timestamp. Transfer counters cover ShadeDevice hooks; direct Buffer.set uploads are not counted. Synthetic fixtures, not full SfM or full Dense reconstruction.',
       samples,
       warmup,
       typeshade: pkg.devDependencies.typeshade,

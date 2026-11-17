@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import type { SparseReconstruction } from '../../../contracts/scene.ts';
@@ -177,7 +177,7 @@ function bundleAdjustGpuFixed(
   const cgWork = M + 6 * C;
   return device.enqueue(async () => {
     const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      owned: (Buffer<f64> | Buffer<u32>)[] = [];
     const activityWords = device.backend === 'webgpu' && !device.boundedSubmissions ? 3 : 2;
     const cgSchedule = new BundleCgSchedule(activityWords === 3);
     let successful = false;

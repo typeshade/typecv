@@ -36,11 +36,11 @@ declare const slicLabels: storage<array<u32>, 'read_write'>;
 declare const slicLabelsRead: storage<array<u32>>;
 
 function srgbToLinear(c: f32): f32 {
-  return select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c <= 0.04045);
+  return select(((c + 0.055) / 1.055) ** 2.4, c / 12.92, c <= 0.04045);
 }
 
 function labF(t: f32): f32 {
-  return select(7.787037037037037 * t + 0.13793103448275862, pow(t, 0.3333333333333333), t > 0.008856451679035631);
+  return select(7.787037037037037 * t + 0.13793103448275862, t ** 0.3333333333333333, t > 0.008856451679035631);
 }
 
 /** One invocation per pixel: sRGB bytes to CIELAB (D65, L in [0, 100]). */

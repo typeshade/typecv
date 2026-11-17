@@ -297,7 +297,7 @@ export function siftScatterExtrema(@builtin('global_invocation_id') gid: vec3u):
   const row: u32 = keyCount[0] + candOffsets[(i / 64) * 2] + candFlags[i] - 1;
   if (row >= extrema.capacity) return;
   const s: f32 = f32(extrema.interval) + r.z;
-  const sigmaOctave: f32 = extrema.sigma0 * pow(extrema.k, s);
+  const sigmaOctave: f32 = extrema.sigma0 * extrema.k ** s;
   candidates[row * 8] = (f32(x) + r.x) * extrema.scale;
   candidates[row * 8 + 1] = (f32(y) + r.y) * extrema.scale;
   candidates[row * 8 + 2] = sigmaOctave * extrema.scale;

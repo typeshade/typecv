@@ -33,12 +33,16 @@ internal cache still supports its previous bounded capacities and budget evictio
 Keeping two images retains the same number of full-image pyramids as one stateless
 pair. Original grayscale must remain immutable until the call settles.
 
-A compatible LRU slot changes its logical frame identity and writes the new
-padded gray image into its existing allocation. All pyramid levels and gradients
+A compatible LRU slot changes its logical frame identity. It gives its gray array
+back and takes a new one made with the new padded gray image; the pool can give
+the same allocation again, so the peak stays two pyramids. A `Buffer` that the
+pyramid kernels wrote refuses `set` until `read()` (TypeShade change 0138), so
+the slot no longer writes into its old array, and `ShadeDevice.writeF32` is
+removed. The slot keeps its gradient array. All pyramid levels and gradients
 are rebuilt before tracking. An unchanged frame keeps its already computed image
-evidence. Point ownership/admission order never changes. Tracked `writeF32` keeps
-uploads visible in application counters and rejects a wrong owner, kind or size;
-buffer reuse does not mean a new image had zero upload cost.
+evidence. Point ownership/admission order never changes. The new gray array's
+values count as application uploads; buffer reuse does not mean a new image had
+zero upload cost.
 
 Resident caching must cooperate with other work using the same device. The existing
 working-budget check could reject another queued job while an idle cache retained

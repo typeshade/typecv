@@ -68,7 +68,7 @@ TypeCV, TypeNN and Radiance can share one device. A device that the host hands i
 disposed by TypeCV.
 
 **Rule 3.2.** Data crosses between the libraries as TypeShade's own values: a `Texture` for an
-image, a `Resident` for an array. On one device a crossing makes no copy. TypeCV adds no device
+image, a `Buffer` for an array. On one device a crossing makes no copy. TypeCV adds no device
 layer and no resource type of its own at that boundary.
 
 **Rule 3.3.** What TypeShade cannot do yet becomes an issue on `typeshade/typeshade` that asks

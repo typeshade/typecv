@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32 } from 'typeshade/runtime';
 import { descriptorStoreEvidence, type StoredView } from '../view-graph.ts';
 import type { ShadeDevice } from '../../../device/gpu/device.ts';
 
@@ -20,7 +20,7 @@ export interface ViewGraphDescriptorStatistics {
 
 interface Slot {
   readonly key: object;
-  readonly buffer: Resident<Float32Array>;
+  readonly buffer: Buffer<f32>;
   readonly elements: number;
   readonly bytes: number;
   leases: number;
@@ -30,7 +30,7 @@ interface Slot {
 }
 
 export interface DescriptorLease {
-  readonly buffer: Resident<Float32Array>;
+  readonly buffer: Buffer<f32>;
   readonly elements: number;
   release(success: boolean): void;
 }
