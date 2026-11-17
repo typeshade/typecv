@@ -121,7 +121,9 @@ glob takes those three out of `format:check`", does not hold for the delivered f
 lines keep the three files checked. **Disposition.** Accepted by this amendment. The delivered form
 keeps the checked files as they were, which rule 1 (structure only) prefers to a change of
 coverage. **Inference** (#247). A line without a directory keeps each file checked when phase 1b
-moves it into a `gpu/` subdirectory.
+moves it into a `gpu/` subdirectory. **Fact** (the pin bump to `f149b403`, section 5). Since
+that pin, `.prettierignore` negates two of the three lines: `epipolar.shade.ts` holds parameter
+attributes, which Prettier cannot parse, so the glob leaves it out.
 
 **Where the programme stands.** **Fact.** `reconstruction-status.md`, a dated snapshot of
 2026-10-22 at `3d33c257`, orders the remaining work. R01 (complete the verification of #199) and
@@ -377,7 +379,7 @@ they wait for are in section 6.
 
 **What 0094 asks of this list** (amendment 3). **Fact** (TypeShade change 0094, `status:
 accepted`, "What changes"). 0094 gives a kernel function three forms. They are a trip count held
-on the device, a `push` after a length that a `Resident` holds, and stores after the loops.
+on the device, a `push` after a length that a `Resident` (a `Buffer` since TypeShade change 0138) holds, and stores after the loops.
 **Inference** (0094, "What it owes downstream"). For those forms it removes two needs of the list
 above: a device-side count read by a later dispatch, and indirect dispatch. An entry that also needs
 workgroup memory or a specific invocation-to-work mapping stays an entry. **Fact** (the same
@@ -981,6 +983,42 @@ No digest of a scene changes: the `digests (22)` and `digests (24)` jobs pass ag
 pull request converts no map, and `triangulateTracks` stays an entry (section 3.6). Each conversion
 stays phase 10's step "C6 and C7", with phase 9's gate and the hardware run of section 7, item 11.
 `docs/gpu-sfm.md` restates the rule for kernel functions.
+
+**The pin bump to `f149b403`** (pull request #282, with #283, 2026-11-17). **Fact** (TypeShade
+`f149b4039e061b2a925fe33aaaad6da3d7f372c9`, `main` on 2026-11-17, the merge of
+typeshade/typeshade#1322). `scripts/downstream-impact.ts` of the compiler lists 13 owed proposals:
+0108, 0109, 0110, 0116, 0118, 0119, 0121, 0122, 0126, 0128, 0129, 0130 and 0137. 0138
+(`status: accepted`, milestone 4 slice 1 at the pin) names TypeCV as well. `compiler-changes.md`
+records each one. The pin removes `Resident` and `resident()`. #283 moves the host code to `Buffer`.
+
+**Fact** (the kernel files at the new pin). The eight kernel functions of
+`src/geometry/gpu/epipolar.shade.ts` write `@inout out` (TS8080, 0138 Amendment A15). Prettier
+cannot parse a parameter attribute, so `.prettierignore` no longer negates `epipolar.shade.ts`.
+Two kernel files stay checked: `numerics.shade.ts` and `projective.shade.ts`. Three `pow(a, b)` calls
+of `sift.shade.ts` and `slic.shade.ts` are `a ** b` (TS8004, change 0112).
+
+**Fact** (the probe suite at the new pin, Node 22.23.4, the CPU tier). Every probe source that
+writes an array parameter writes it `@inout`, and the entries take `gid: builtin<'...'>` (TS8028,
+change 0111). Compiled at `78a9060f`, the sources below keep their old verdicts without `@inout`.
+Four held verdicts change:
+
+- P18, P20g and S3 (row C9) lower to a GPU loop on WebGPU, not WebGL2 (typeshade/typeshade#1045).
+  Their signal fires: C9 is closed.
+- P20d (row C6) lowers to a GPU loop on WebGPU, not WebGL2 (typeshade/typeshade#994). Its signal
+  fires: C6 is closed for an injective offset. P9b, P20c and P30b keep their verdicts.
+
+S5 (row C5) is renewed. `Buffer.set(data)` takes no offset, so the old shape could not fail. S5
+holds the element write `at(i).set(v)`: it lands outside the window, and is refused from a call
+that writes the `Buffer` until `read()`. C5 stays open.
+
+**Fact** (rule 2). `tests/digests/kernels.json` is re-recorded at `f149b403`. The WGSL of all 30
+modules is unchanged. The GLSL of 12 modules changes: 128 entries and kernel functions that had no
+WebGL2 program now have one. In the 11 modules that emulate f64, typeshade/typeshade#1003 (issue
+#966) runs an entry that emulates f64 on WebGL2, and typeshade/typeshade#1046 (issue #1021) keeps
+its storage words. In `epipolar.shade.ts`, `blockStats` was refused because "arrayLength has no
+GLSL ES 3.00 spelling"; typeshade/typeshade#1069 (issue #689) gives WebGL2 kernels checked array
+lengths. TypeCV dispatches on WebGPU and the CPU tier only. No digest of a scene changes: the
+`digests (22)` and `digests (24)` jobs pass against the merge base.
 
 **Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
 on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
@@ -1658,6 +1696,7 @@ the pull requests named).
 | Phase 9 Kernels, no compiler change | #272 (step 9a, a draft at `6e30257`); step 9b on its branch | in progress; it runs beside phases 5 to 7; its device run follows item 11 as amendment 6 disposes it |
 | Phases 7, 8, 10 and 11 | none | no pull request |
 | The pin bump to `78a9060f` | #278 | in progress ("The pin bump to `78a9060f`" above) |
+| The pin bump to `f149b403` | #282, with the 0138 migration of #283 | in progress ("The pin bump to `f149b403`" above) |
 
 **Fact** (amendment 5). Since 2026-10-26 the pull requests of the programme merge under the owner's
 standing approval (section 7, item 19). A pull request merges once every required check is green
@@ -1686,12 +1725,12 @@ probe the loops of `src/mvs/gpu/cloud-knn.shade.ts` ("The k-NN probes", below).
 | --- | --- | --- | --- | --- |
 | C1 | `TS8020`: a storage array cannot be a helper's parameter, so a helper that reads a binding belongs to the file that declares it | the fixed and shared-focal BA kernels repeat about 900 of their lines with different record sizes | a helper that takes a storage array by reference, or a module parameterized by constants that a file instantiates twice; without a compiler change, a shared bindings module with one control struct (a layout change), within the 8 storage buffers per stage that WebGPU guarantees (audit sparse, L4) | ~900 |
 | C2 | the CPU tier runs one invocation per call and cannot run a barrier (Rule 8.24), although the compiler's own oracle `dispatch` can | 18 `...Oracle` twins, the MVS splits and 29 backend branches; the oracle proves the twin, not the tiled entry, and 10 twins add in another order than the GPU's tree | the host CPU tier of an entry runs barrier entries in passes, as `dispatch` does; it then gives the GPU's bits for integer and `f32` folds, but not for `f64` folds (amendment 1) | ~250 |
-| C3 | a kernel function's trip count is computed on the host, and a reduction result or a `push` count reaches only the host | `scan.shade.ts`, its copy, and about 25 flag, scatter, advance and mark entries keep counts on the device by hand | a `push` that appends after a count held in a `Resident` and leaves the new count there; a reduction into a `Resident`; a loop bound read from a `Resident`, lowered to an indirect dispatch | 300–400 |
+| C3 | a kernel function's trip count is computed on the host, and a reduction result or a `push` count reaches only the host | `scan.shade.ts`, its copy, and about 25 flag, scatter, advance and mark entries keep counts on the device by hand | a `push` that appends after a count held in a `Buffer` and leaves the new count there; a reduction into a `Buffer`; a loop bound read from a `Buffer`, lowered to an indirect dispatch | 300–400 |
 | C4 | the compiler does not cut a loop into timed chunks (change 0074) | `chunkedPass` three times, `cappedPass`, and per-module chunk generators | a kernel call that splits a proved loop into chunks under `timeBudgetMs` | ~100 |
-| C5 | `write(value)` replaces a whole `Resident` | `mvsCopyF32`, `mvsCopyU32` and their staging buffers copy a view into a slot | `write(value, { offset })` on the queue | ~40 |
+| C5 | `set(data)` replaces a whole `Buffer`, and its element write `at(i).set(v)` is refused from a call that writes the `Buffer` until `read()` (TypeShade change 0138; `write(value)` of a `Resident` before it) | `mvsCopyF32`, `mvsCopyU32` and their staging buffers copy a view into a slot | a partial write at an offset on the queue | ~40 |
 | C6 | the proof refuses `out[base + i]` with a loop-invariant `base`, several fields at a runtime stride, a nested affine record and two record forms in one loop (rule R3 of 8.22) | several maps cannot convert as written | accept an injective offset, offsets `c < s` checked at the call as `a·i + c` is, and nested affine records | enabler |
 | C7 | the map lowering starts every invocation with an early return past the trip count; A1 (`hardware-observations.md`, TypeShade #703) forbids that return on the RTX 5060 Ti | loop-heavy maps must stay entries written clamp-and-mask | an iteration scaffold that clamps the index and masks the writes | enabler |
-| C8 | a kernel call takes no workgroup argument and no indirect count | 12 entries dispatch indirectly and cannot become kernel functions | a kernel call whose trip count is read from a `Resident` (shares C3's lowering) | enabler |
+| C8 | a kernel call takes no workgroup argument and no indirect count | 12 entries dispatch indirectly and cannot become kernel functions | a kernel call whose trip count is read from a `Buffer` (shares C3's lowering) | enabler |
 | C9 | surface §65 lists `min` and `max` among the scatter forms; the compiler refuses `a[k] = min(a[k], e)` | a conversion that needs it fails; no step of section 5 needs it (amendment 1: `kltEigenMax` is a `max` reduction and `houghVote` an `atomicAdd` scatter, both accepted today) | a TypeShade issue: the form the surface states, or a surface correction | bug |
 | C10 | timestamp profiling is fixed when a device is created | the worker swaps the device for the dense stage and merges statistics across devices | a per-plan or per-scope switch for timestamp writes | lab |
 | C11 | a device loss names no in-flight work | the lab tracks the last kernel itself | a loss record that names the plan or kernel submitted and not completed | lab |
@@ -1726,16 +1765,19 @@ after the pin. The other proposals of the rows are `accepted` there. The pin car
 (section 5, "The next pin"). **Fact** (TypeShade at `78a9060f`; the pin bump of section 5, "The pin
 bump to `78a9060f`"). The pin moves to `78a9060f`. It carries 0096 (row C7, `status: implemented`)
 and stages 1 to 3 of 0094 (rows C3 and C8, `status: accepted`). 0090, 0091, 0092 and 0095 stay
-`status: accepted` and unimplemented there.
+`status: accepted` and unimplemented there. **Fact** (TypeShade at `f149b403`; section 5, "The pin
+bump to `f149b403`"). The pin moves to `f149b403`. It carries typeshade/typeshade#1045, which
+closes issue #761 (row C9), and typeshade/typeshade#994, which accepts the injective offset of row
+C6. 0095 itself stays unimplemented there.
 
 | Row | TypeShade record | State on 2026-10-27 |
 | --- | --- | --- |
 | C14 | proposal 0090 (typeshade/typeshade#763) | accepted 2026-10-26 |
 | C1 | proposal 0091 (typeshade/typeshade#767) | accepted 2026-10-26 |
 | C2 | proposal 0092 (typeshade/typeshade#768) | accepted 2026-10-26 |
-| C9 | issue typeshade/typeshade#761 | open |
+| C9 | issue typeshade/typeshade#761 | open on 2026-10-27; closed by typeshade/typeshade#1045 (integer `min` and `max` scatter combines lower). At the pin `f149b403` since its bump; probes P18, P20g and S3 lower to a GPU loop on WebGPU, not WebGL2 |
 | C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2). Stage 1 on TypeShade `main` (typeshade/typeshade#796, `a768a04a`, 2026-10-27); stage 2 on TypeShade `main` (typeshade/typeshade#799, `37e6c6f0`, 2026-10-27); stage 3 on TypeShade `main` (typeshade/typeshade#804, `63131c8a`, 2026-10-27); not at the pin (amendment 7). Stages 1 to 3 at the pin `78a9060f` since its bump; probe P6 lowers |
-| C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2) |
+| C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2). The injective offset `out[base + i]` lowers since typeshade/typeshade#994 (issue #983): at the pin `f149b403` since its bump, probe P20d lowers to a GPU loop on WebGPU, not WebGL2. The other forms of the row (probes P9b, P20c and P30b) stay refused |
 | C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11). Implemented on TypeShade `main` by typeshade/typeshade#782 (`a21f7024`, 2026-10-27), with that run open by the owner's decision; not at the pin (amendment 5). The `kernel-functions` case of the hardware check is D5's run at a pin that carries 0096 (amendment 6). At the pin `78a9060f` since its bump; probe S2 renewed; D5's run still open |
 | C4, C5, C10 to C13 | none | not opened (section 7, item 7) |
 | C15 | none: #257 recommends no proposal now (amendment 5) | not opened |
