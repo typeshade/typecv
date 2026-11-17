@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import type { SparseReconstruction } from '../../contracts/scene.ts';
 import { depthSensitivityControls, type DepthSensitivityOptions } from '../multiview.ts';
 import { validateReconstruction } from '../validation.ts';
@@ -67,7 +67,7 @@ function evaluateSceneObservationsGpu(
     observationRequest(device, model, maxErrorPx, options, lastOnly);
   return device.enqueue(async () => {
     const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     const wide = (n: number, v?: Float64Array) => {
       const r = device.allocateF64(n, v);
@@ -219,21 +219,21 @@ interface ObservationScene {
     pixelNoiseStdDevPx: number;
     observations: number;
   };
-  cameras: Resident<Float64Array>;
-  coordinates: Resident<Float64Array>;
-  indices: Resident<Uint32Array>;
-  errors: Resident<Float64Array>;
-  flags: Resident<Uint32Array>;
+  cameras: Buffer<f64>;
+  coordinates: Buffer<f64>;
+  indices: Buffer<u32>;
+  errors: Buffer<f64>;
+  flags: Buffer<u32>;
 }
 
 // Named steps, so the device reports each kernel before it starts (a lost device names it).
 function observationSteps(
   device: ShadeDevice,
   scene: ObservationScene,
-  measurements: Resident<Float64Array>,
-  offsets: Resident<Uint32Array> | undefined,
-  partials: Resident<Float64Array>,
-  summary: Resident<Float64Array>,
+  measurements: Buffer<f64>,
+  offsets: Buffer<u32> | undefined,
+  partials: Buffer<f64>,
+  summary: Buffer<f64>,
   sizes: { count: number; tracks: number; blocks: number },
 ) {
   const { control, flags, errors } = scene,

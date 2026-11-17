@@ -3,7 +3,10 @@ import {
   type ChunkRate,
   type Device,
   type DeviceInfo,
-  type Resident,
+  type Buffer,
+  type f32,
+  type f64,
+  type u32,
 } from 'typeshade/runtime';
 // Types only: `device.fuse()` holds its recorder and loads the planner itself (TypeShade change
 // 0085), so no registration import of `typeshade/fuse` is needed.
@@ -172,7 +175,8 @@ export interface KernelStatistic {
 /** The most call lists the per-kernel collector keeps. A list beyond it is counted in `kernelsDropped`. */
 export const MAX_KERNEL_STATISTICS = 160;
 type ScalarArray = Float32Array | Float64Array | Uint32Array;
-type Buffer = Resident<ScalarArray>;
+/** A scalar array this device gives out: of `f32`, `f64` or `u32`. */
+type ScalarBuffer = Buffer<f32> | Buffer<f64> | Buffer<u32>;
 /** Consumer report without a dependency on TypeShade's build-time package. */
 export interface ShadePlanReport {
   readonly tier: 'cpu' | 'webgl2' | 'webgpu';
@@ -267,8 +271,8 @@ export class ShadeDevice {
   private readonly diagnosticTracker: DeviceDiagnosticTracker;
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
-  private readonly active = new Set<Buffer>();
-  private readonly activeF32Lengths = new WeakMap<Resident<Float32Array>, number>();
+  private readonly active = new Set<ScalarBuffer>();
+  private readonly activeF32Lengths = new WeakMap<Buffer<f32>, number>();
   /** Idle caches may yield storage to another job without exceeding the caller's budget. */
   private readonly workingReclaimers = new Set<() => boolean>();
   private reclaimingWorking = false;
@@ -570,7 +574,7 @@ export class ShadeDevice {
       allocations: s.allocations,
       reuses: s.reuses,
       /** Values given to allocate*()/writeF32() and zeros of a new f64 array. A direct
-       *  handle.write() bypasses this counter and remains the runtime's uploadBytes. */
+       *  handle.set() bypasses this counter and remains the runtime's uploadBytes. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
       /** The groups, dispatches and GPU time of each fused call list (at most 160 lists). */
@@ -581,7 +585,7 @@ export class ShadeDevice {
       reads: this.reads,
       /** Round trips of reads: reads that were in flight together count once. */
       readWaves: this.readWaves,
-      /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
+      /** Full arrays returned by Buffer.read(); application counters may name a shorter prefix. */
       residentSnapshotBytes: this.snapshotBytes,
     };
   }
@@ -602,19 +606,19 @@ export class ShadeDevice {
     await this.shade.wait();
   }
   /** @internal */
-  allocate(length: number, values?: Float32Array): Resident<Float32Array> {
-    return this.allocateTyped('f32', length, values) as Resident<Float32Array>;
+  allocate(length: number, values?: Float32Array): Buffer<f32> {
+    return this.allocateTyped('f32', length, values) as Buffer<f32>;
   }
   /** @internal f64 storage uses TypeShade's public Float64Array packing path. */
-  allocateF64(length: number, values?: Float64Array): Resident<Float64Array> {
-    return this.allocateTyped('f64', length, values) as Resident<Float64Array>;
+  allocateF64(length: number, values?: Float64Array): Buffer<f64> {
+    return this.allocateTyped('f64', length, values) as Buffer<f64>;
   }
   /** @internal */
-  allocateU32(length: number, values?: Uint32Array): Resident<Uint32Array> {
-    return this.allocateTyped('u32', length, values) as Resident<Uint32Array>;
+  allocateU32(length: number, values?: Uint32Array): Buffer<u32> {
+    return this.allocateTyped('u32', length, values) as Buffer<u32>;
   }
   /** @internal Replace an owned f32 buffer without changing its allocation or hiding uploads. */
-  writeF32(buffer: Resident<Float32Array>, values: Float32Array): void {
+  writeF32(buffer: Buffer<f32>, values: Float32Array): void {
     if (
       this.closed ||
       !this.active.has(buffer) ||
@@ -622,7 +626,7 @@ export class ShadeDevice {
       this.activeF32Lengths.get(buffer) !== values.length
     )
       throw new RangeError('F32 writes require an active owned buffer of the same length');
-    buffer.write(values);
+    buffer.set(values);
     this.uploads += values.byteLength;
   }
   /**
@@ -675,7 +679,11 @@ export class ShadeDevice {
     }
     if (!fits()) throw new RangeError('Allocation exceeds TypeShade working budget');
   }
-  private allocateTyped(kind: 'f32' | 'f64' | 'u32', length: number, values?: ScalarArray): Buffer {
+  private allocateTyped(
+    kind: 'f32' | 'f64' | 'u32',
+    length: number,
+    values?: ScalarArray,
+  ): ScalarBuffer {
     const bytes = length * (kind === 'f64' ? 8 : 4);
     if (
       !Number.isSafeInteger(length) ||
@@ -695,9 +703,9 @@ export class ShadeDevice {
         : kind === 'f64'
           ? this.shade.array(new Float64Array(length))
           : this.shade.array(length, kind)
-    ) as Buffer;
+    ) as ScalarBuffer;
     this.active.add(result);
-    if (kind === 'f32') this.activeF32Lengths.set(result as Resident<Float32Array>, length);
+    if (kind === 'f32') this.activeF32Lengths.set(result as Buffer<f32>, length);
     this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
@@ -705,14 +713,14 @@ export class ShadeDevice {
   }
   /** @internal Give an array back: the TypeShade device keeps it for a later array of the same
    *  element and length while the pool has room, and frees it otherwise. */
-  recycle(buffer: Buffer): void {
+  recycle(buffer: ScalarBuffer): void {
     if (!this.active.delete(buffer)) return;
     this.shade.release(buffer);
   }
   /** @internal A failed plan's buffers must be destroyed, never reused. */
-  drop(buffer: Buffer): void {
+  drop(buffer: ScalarBuffer): void {
     if (!this.active.delete(buffer)) return;
-    buffer.destroy();
+    buffer.dispose();
   }
   /** @internal A plan, or with `chunk` one chunk of a long kernel: the TypeShade device fences it,
    *  times it and learns the rate of its key (change 0074). The report then carries `chunk`. */
@@ -965,7 +973,11 @@ export class ShadeDevice {
     return report;
   }
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
-  async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {
+  read(buffer: Buffer<f32>, length: number): Promise<Float32Array>;
+  read(buffer: Buffer<f64>, length: number): Promise<Float64Array>;
+  read(buffer: Buffer<u32>, length: number): Promise<Uint32Array>;
+  read(buffer: ScalarBuffer, length: number): Promise<ScalarArray>;
+  async read(buffer: ScalarBuffer, length: number): Promise<ScalarArray> {
     this.reads++;
     if (this.pendingReads++ === 0) this.readWaves++;
     const data = await buffer.read().finally(() => {

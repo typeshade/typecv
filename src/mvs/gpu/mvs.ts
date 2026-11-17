@@ -83,7 +83,7 @@
  *   in flight completes. A cancelled run recycles its arrays, as a successful one does, and
  *   rejects with the signal's reason.
  */
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import { readTogether } from '../../device/gpu/readback.ts';
 import { radialLimitSquared } from '../../geometry/camera.ts';
 import {
@@ -392,7 +392,7 @@ function prepareMvs(
 
 /** The arrays a job allocates, recycled after a success and dropped after a failure. */
 function ownArrays(device: ShadeDevice) {
-  const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+  const owned: (Buffer<f32> | Buffer<u32>)[] = [];
   return {
     f32(n: number, values?: Float32Array) {
       const r = device.allocate(n, values);
@@ -418,13 +418,13 @@ interface MvsRange {
   readonly end: number;
 }
 interface MvsSharedArrays {
-  readonly mvsCameras: Resident<Float32Array>;
-  readonly mvsSources: Resident<Uint32Array>;
-  readonly mvsGray: Resident<Float32Array>;
-  readonly mvsDepth: Resident<Float32Array>;
-  readonly mvsGeoDepth: Resident<Float32Array>;
-  readonly mvsNormal: Resident<Uint32Array>;
-  readonly mvsCost: Resident<Float32Array>;
+  readonly mvsCameras: Buffer<f32>;
+  readonly mvsSources: Buffer<u32>;
+  readonly mvsGray: Buffer<f32>;
+  readonly mvsDepth: Buffer<f32>;
+  readonly mvsGeoDepth: Buffer<f32>;
+  readonly mvsNormal: Buffer<u32>;
+  readonly mvsCost: Buffer<f32>;
 }
 interface MvsSchedule {
   readonly device: ShadeDevice;
@@ -516,7 +516,7 @@ function* photometricSteps(
   schedule: MvsSchedule,
   mvsControl: MvsControlRecord,
   K: number,
-  mvsSeeds: Resident<Float32Array>,
+  mvsSeeds: Buffer<f32>,
   seedFirst: number,
   seedEnd: number,
   T: number,
@@ -807,7 +807,7 @@ async function loadDepthView(
   const { P, width, height } = job;
   const view = job.packedImages[v]!;
   const groups = Math.ceil(P / LANES);
-  A.stageU32.write(packRgba(view.image.rgba, P));
+  A.stageU32.set(packRgba(view.image.rgba, P));
   await steps(job, [
     [
       'mvsUndistort',
@@ -840,7 +840,7 @@ async function loadDepthView(
     ],
   ]);
   if (view.image.observationMask) {
-    A.stageF32.write(Float32Array.from(view.image.observationMask.values));
+    A.stageF32.set(Float32Array.from(view.image.observationMask.values));
     await steps(job, [
       [
         'mvsApplyObservationMask',
@@ -869,7 +869,7 @@ async function loadDepthView(
     ]);
   }
   if (!depth) return;
-  A.stageF32.write(depth);
+  A.stageF32.set(depth);
   await steps(job, [
     [
       'mvsCopyF32',
@@ -899,11 +899,11 @@ async function placeDepthWindow(
 ): Promise<Map<number, number>> {
   const { slotOf, loads } = cache.place(views);
   for (const [v, slot] of loads) await loadDepthView(job, A, v, slot, depths?.[v]);
-  A.mvsCameras.write(slotCameras(job.plan, cache.slots, slotOf));
+  A.mvsCameras.set(slotCameras(job.plan, cache.slots, slotOf));
   const record = new Uint32Array(MVS_SOURCE_SLOTS);
   record[0] = views.length - 1;
   views.slice(1).forEach((s, k) => (record[1 + k] = slotOf.get(s)!));
-  A.mvsSources.write(record);
+  A.mvsSources.set(record);
   return slotOf;
 }
 
@@ -1091,7 +1091,7 @@ async function photometricPass(
     seedCount = seedEnd - seedFirst;
   const seeds = new Float32Array(seedCapacity(A));
   seeds.set(plan.seeds.subarray(MVS_SEED_FLOATS * seedFirst, MVS_SEED_FLOATS * seedEnd));
-  A.mvsSeeds.write(seeds);
+  A.mvsSeeds.set(seeds);
   const T = o.photometricIterations;
   if (residency.mode === 'window') {
     const slotOf = await placeDepthWindow(job, A, cache, [r, ...sources], undefined);
@@ -1175,7 +1175,7 @@ async function geometricPass(
   const { plan, o, mvsControl, P } = job;
   const sources = sourcesOf(plan, r);
   const T = o.photometricIterations;
-  A.mvsNormal.write(normal);
+  A.mvsNormal.set(normal);
   if (residency.mode === 'window') {
     const slotOf = await placeDepthWindow(job, A, cache, [r, ...sources], photometric);
     const control = { ...mvsControl, reference: slotOf.get(r)!, view: r, state: 0, geometric: 1 };
@@ -1901,8 +1901,8 @@ async function placeFusionWindow(
   const { P } = job;
   const { slotOf, loads } = cache.place(views);
   for (const [v, slot] of loads) {
-    F.stageF32.write(maps.depth[v]!);
-    F.stageU32.write(maps.normal[v]!);
+    F.stageF32.set(maps.depth[v]!);
+    F.stageU32.set(maps.normal[v]!);
     await steps(job, [
       [
         'mvsCopyF32',
@@ -1922,7 +1922,7 @@ async function placeFusionWindow(
   const cameras = new Float32Array((MVS_CAMERA_FLOATS + 1) * cache.slots);
   cameras.set(slotCameras(job.plan, cache.slots, slotOf));
   order.forEach((v, k) => (cameras[MVS_CAMERA_FLOATS * cache.slots + k] = slotOf.get(v)!));
-  F.mvsCameras.write(cameras);
+  F.mvsCameras.set(cameras);
   return slotOf;
 }
 
@@ -2326,7 +2326,7 @@ export async function reconstructDense(
       for (const r of order) {
         const view = job.packedImages[r]!;
         const window = windowOf(r);
-        F.mvsRgba.write(packRgba(view.image.rgba, P));
+        F.mvsRgba.set(packRgba(view.image.rgba, P));
         const fuseBase = {
           order: MVS_CAMERA_FLOATS * residency.fusion.slots,
           minViews: d.minConsistentViews,

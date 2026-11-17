@@ -790,18 +790,18 @@ test(`${S4.id} (${S4.row}) ${S4.shape}: ${S4.held}`, async () => {
 const S5 = {
   id: 'S5',
   row: 'C5',
-  shape: 'Resident.write(value, { offset }) on the CPU tier',
-  held: 'the write replaces the whole array, and the offset is ignored',
+  shape: 'Buffer.set(value, { offset }) on the CPU tier',
+  held: 'the set replaces the whole array, and the offset is ignored',
   signal:
     'C5 closed: a partial write lands at its offset, so mvsCopyF32, mvsCopyU32 and their staging buffers could go, in a step that section 5 does not schedule yet (dense, phase 11)',
 };
 test(`${S5.id} (${S5.row}) ${S5.shape}: ${S5.held}`, async () => {
   const say = says(S5);
-  const { resident } = await load("export { resident } from 'typeshade/runtime';");
-  const r = resident(new Float32Array([1, 2, 3, 4]));
-  r.write(new Float32Array([9]), { offset: 2 });
-  assert.deepEqual(Array.from(await r.read()), [9], say('the write kept part of the old array'));
-  r.destroy();
+  const { array } = await load("export { array } from 'typeshade/runtime';");
+  const r = array(new Float32Array([1, 2, 3, 4]));
+  r.set(new Float32Array([9]), { offset: 2 });
+  assert.deepEqual(Array.from(await r.read()), [9], say('the set kept part of the old array'));
+  r.dispose();
 });
 
 const S6 = {

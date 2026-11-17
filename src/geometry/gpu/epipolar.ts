@@ -1,5 +1,5 @@
 import type { CameraIntrinsics } from '../../contracts/camera.ts';
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer as ShadeBuffer, f32 } from 'typeshade/runtime';
 import { validateCamera } from '../camera.ts';
 import { ShadeDevice, type ShadePlanReport } from '../../device/gpu/device.ts';
 import {
@@ -13,7 +13,7 @@ import {
   winningMask,
 } from './epipolar.shade.ts';
 
-type Buffer = Resident<Float32Array>;
+type Buffer = ShadeBuffer<f32>;
 export interface EpipolarScore {
   readonly bestIndex: number;
   readonly inlierCount: number;

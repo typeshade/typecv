@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f64, u32 } from 'typeshade/runtime';
 import type { Camera } from '../../contracts/camera.ts';
 import {
   preparePairModels,
@@ -146,7 +146,7 @@ function checkPairEstimation(
     request;
   return () => {
     const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     const release = () => {
       for (const buffer of owned) successful ? device.recycle(buffer) : device.drop(buffer);
@@ -421,29 +421,29 @@ interface PairEstimationTask {
 
 /** The buffers of one pair estimation that every search binds. */
 interface PairBuffers {
-  raw: Resident<Float64Array>;
-  coords: Resident<Float64Array>;
-  invertible: Resident<Uint32Array>;
-  models: Resident<Float64Array>;
-  valid: Resident<Uint32Array>;
-  partials: Resident<Float64Array>;
-  state: Resident<Uint32Array>;
-  best: Resident<Float64Array>;
-  mask: Resident<Uint32Array>;
-  modelWork: Resident<Float64Array>;
-  modelState: Resident<Uint32Array>;
-  modelProgress: Resident<Uint32Array>;
-  counts: Resident<Uint32Array>;
+  raw: Buffer<f64>;
+  coords: Buffer<f64>;
+  invertible: Buffer<u32>;
+  models: Buffer<f64>;
+  valid: Buffer<u32>;
+  partials: Buffer<f64>;
+  state: Buffer<u32>;
+  best: Buffer<f64>;
+  mask: Buffer<u32>;
+  modelWork: Buffer<f64>;
+  modelState: Buffer<u32>;
+  modelProgress: Buffer<u32>;
+  counts: Buffer<u32>;
 }
 
 /** The buffers of the verification prefix: the prepared rows, their scan and the compaction. */
 interface PairVerificationBuffers {
-  prepared: Resident<Float64Array>;
-  ideal: Resident<Float64Array>;
-  prefix: Resident<Uint32Array>;
-  sourceRows: Resident<Uint32Array>;
-  outputMask: Resident<Uint32Array>;
-  blockOffsets: Resident<Uint32Array>;
+  prepared: Buffer<f64>;
+  ideal: Buffer<f64>;
+  prefix: Buffer<u32>;
+  sourceRows: Buffer<u32>;
+  outputMask: Buffer<u32>;
+  blockOffsets: Buffer<u32>;
 }
 
 /** The control and the buffers of the two-view recovery. */
@@ -458,23 +458,23 @@ interface PairRecoveryBuffers {
     maxError: number;
     separateDirectional: number;
   };
-  pixels: Resident<Float64Array>;
-  coords: Resident<Float64Array>;
-  invertible: Resident<Uint32Array>;
-  essential: Resident<Float64Array>;
-  mask: Resident<Uint32Array>;
-  poses: Resident<Float64Array>;
-  cloud: Resident<Float64Array>;
-  info: Resident<Float64Array>;
-  points: Resident<Float64Array>;
-  trialPoints: Resident<Float64Array>;
-  activity: Resident<Uint32Array>;
-  fixed: Resident<Uint32Array>;
-  flags: Resident<Uint32Array>;
-  pointBlocks: Resident<Float64Array>;
-  normalBlocks: Resident<Float64Array>;
-  metrics: Resident<Float64Array>;
-  angles: Resident<Float64Array>;
+  pixels: Buffer<f64>;
+  coords: Buffer<f64>;
+  invertible: Buffer<u32>;
+  essential: Buffer<f64>;
+  mask: Buffer<u32>;
+  poses: Buffer<f64>;
+  cloud: Buffer<f64>;
+  info: Buffer<f64>;
+  points: Buffer<f64>;
+  trialPoints: Buffer<f64>;
+  activity: Buffer<u32>;
+  fixed: Buffer<u32>;
+  flags: Buffer<u32>;
+  pointBlocks: Buffer<f64>;
+  normalBlocks: Buffer<f64>;
+  metrics: Buffer<f64>;
+  angles: Buffer<f64>;
 }
 
 /** The base control of a pair search; a batch sets `start` and `trials`, a refit `refit`. */
@@ -526,7 +526,7 @@ function* pairEstimationSteps(
     counts,
   } = buffers;
   const scoringFloor = Math.min(batchSize, PAIR_SCORING_FLOOR);
-  function* consensus(settings: typeof base, data: Resident<Float64Array>) {
+  function* consensus(settings: typeof base, data: Buffer<f64>) {
     let budget = settings.maximum;
     yield [
       'initializePair',
@@ -1146,7 +1146,7 @@ export function undistortCorrespondencesGpu(
   const pixels = input.slice();
   return device.enqueue(async () => {
     const before = device.statistics,
-      owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+      owned: (Buffer<f64> | Buffer<u32>)[] = [];
     let successful = false;
     try {
       const raw = device.allocateF64(pixels.length, pixels);

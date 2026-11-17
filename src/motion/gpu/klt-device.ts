@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32 } from 'typeshade/runtime';
 import type { ShadeDevice, ShadePlanReport } from '../../device/gpu/device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
 import { readTogether } from '../../device/gpu/readback.ts';
@@ -68,11 +68,7 @@ export function kltControlOf(
 }
 
 /** Record the pyramid and the gradient of a frame into an open plan body. */
-export function recordKltPyramid(
-  layout: KltLayout,
-  gray: Resident<Float32Array>,
-  grad: Resident<Float32Array>,
-): void {
+export function recordKltPyramid(layout: KltLayout, gray: Buffer<f32>, grad: Buffer<f32>): void {
   for (let l = 0; l + 1 < layout.levels; l++) {
     const level = {
       width: layout.widths[l + 1]!,
@@ -182,8 +178,8 @@ export interface KltResidentPyramid {
   readonly width: number;
   readonly height: number;
   readonly layout: KltLayout;
-  readonly gray: Resident<Float32Array>;
-  readonly grad: Resident<Float32Array>;
+  readonly gray: Buffer<f32>;
+  readonly grad: Buffer<f32>;
 }
 
 /** @internal Snapshot point inputs before entering the device's asynchronous job queue. */
@@ -282,8 +278,8 @@ export async function trackKltResidentPair(
       report: { tier: device.backend, dispatches: 0, submissions: 0, groups: [] },
       trackChunks: [],
     };
-  const owned: Resident<Float32Array>[] = [],
-    own = <T extends Resident<Float32Array>>(buffer: T) => (owned.push(buffer), buffer);
+  const owned: Buffer<f32>[] = [],
+    own = <T extends Buffer<f32>>(buffer: T) => (owned.push(buffer), buffer);
   try {
     const start = own(device.allocate(startData.length, startData)),
       forward = own(device.allocate(forwardData?.length ?? 4 * n, forwardData)),
@@ -368,7 +364,7 @@ export async function trackKltResidentPair(
       }
     }
     const report = await device.planSteps(steps());
-    const read = async (buffer: Resident<Float32Array>, length: number) =>
+    const read = async (buffer: Buffer<f32>, length: number) =>
       (await device.read(buffer, length)).slice(0, length);
     // All outputs follow the final check. Start their independent snapshots together,
     // and let every read settle on failure before finally releases any resident array.
@@ -421,8 +417,8 @@ export function trackKltGpu(
     prevPixels = paddedKltGray(prev, layout),
     curPixels = paddedKltGray(cur, layout);
   return device.enqueue(async () => {
-    const owned: Resident<Float32Array>[] = [],
-      own = <T extends Resident<Float32Array>>(buffer: T) => (owned.push(buffer), buffer);
+    const owned: Buffer<f32>[] = [],
+      own = <T extends Buffer<f32>>(buffer: T) => (owned.push(buffer), buffer);
     try {
       const a = {
           width,

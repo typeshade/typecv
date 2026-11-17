@@ -1,5 +1,5 @@
 // Browser-side runtime only. Fixtures and the f64 oracle are built independently in Node.
-import { createRuntime, configure, resident } from 'typeshade/runtime';
+import { createRuntime, configure, array } from 'typeshade/runtime';
 
 export async function runNccGpu({ packsUrl, fixtures, hardware }) {
   const adapter = await navigator.gpu?.requestAdapter();
@@ -74,8 +74,8 @@ export async function runNccGpu({ packsUrl, fixtures, hardware }) {
       const variants = {};
       for (const [label, pack] of Object.entries(packs)) {
         const owned = [],
-          keep = (array) => {
-            const value = resident(array);
+          keep = (values) => {
+            const value = array(values);
             owned.push(value);
             return value;
           };
@@ -105,7 +105,7 @@ export async function runNccGpu({ packsUrl, fixtures, hardware }) {
         } catch (error) {
           variants[label] = { error: String(error) };
         } finally {
-          for (const value of owned) value.destroy();
+          for (const value of owned) value.dispose();
           for (const scope of ['validation', 'internal', 'out-of-memory']) {
             const error = await gpu.popErrorScope();
             if (error)

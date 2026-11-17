@@ -1,4 +1,4 @@
-import type { Resident } from 'typeshade/runtime';
+import type { Buffer, f32, u32 } from 'typeshade/runtime';
 import type { ShadeDevice } from '../../device/gpu/device.ts';
 import { claheApply, claheHistogram, claheMapTiles } from './clahe.shade.ts';
 
@@ -80,10 +80,10 @@ export const claheScratchLength = (plan: ClahePlan) => plan.tilesX * plan.tilesY
  */
 export function recordClahe(
   plan: ClahePlan,
-  input: Resident<Float32Array>,
-  output: Resident<Float32Array>,
-  hist: Resident<Uint32Array>,
-  map: Resident<Float32Array>,
+  input: Buffer<f32>,
+  output: Buffer<f32>,
+  hist: Buffer<u32>,
+  map: Buffer<f32>,
 ): void {
   const clahe = {
       width: plan.width,
@@ -117,7 +117,7 @@ export function equalizeGrayGpu(
     throw new RangeError('Invalid gray image for CLAHE');
   const plan = planClahe(options, width, height);
   return device.enqueue(async () => {
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const owned: (Buffer<f32> | Buffer<u32>)[] = [];
     try {
       const input = device.allocate(width * height, gray),
         output = device.allocate(width * height),

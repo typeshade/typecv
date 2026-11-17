@@ -246,8 +246,12 @@ export async function measureCameraWorkgroups({
                 // Restore continuation inputs outside the measured pass. Fresh assembly overwrites
                 // its outputs, so the normal benchmark never uploads between samples.
                 if (!input.control.first) {
-                  await bindings.blocks.write(input.blocks);
-                  await bindings.cameraScratch.write(input.cameraScratch);
+                  // A Buffer refuses set() while a dispatch's values are on the device; read first
+                  // (TypeShade change 0138, Amendment A11, Q1).
+                  await bindings.blocks.read();
+                  await bindings.cameraScratch.read();
+                  bindings.blocks.set(input.blocks);
+                  bindings.cameraScratch.set(input.cameraScratch);
                 }
                 await gpu.queue.onSubmittedWorkDone();
                 const start = performance.now(),
@@ -300,8 +304,8 @@ export async function measureCameraWorkgroups({
               ),
             );
             // Hold the production imported-entry path to the same oracle, outside timed samples.
-            await bindings.blocks.write(input.blocks);
-            await bindings.cameraScratch.write(input.cameraScratch);
+            bindings.blocks.set(input.blocks);
+            bindings.cameraScratch.set(input.cameraScratch);
             const constants = row.cooperative
               ? { BA_CAMERA_REDUCE_WG: row.size }
               : { BA_CAMERA_ROWS_WG: row.size };
