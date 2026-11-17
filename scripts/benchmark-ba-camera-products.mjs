@@ -240,7 +240,7 @@ console.log(
   JSON.stringify(
     {
       methodology:
-        'Complete resident BA after pipeline warmup; scalar assembly for all variants. Rotate/reverse variant order. GPU time is null without full timestamp coverage. Tracked uploads exclude direct Resident.write. Synthetic fixtures, not full SfM. Native auto is an unvalidated structural heuristic; software auto uses 32 lanes.',
+        'Complete resident BA after pipeline warmup; scalar assembly for all variants. Rotate/reverse variant order. GPU time is null without full timestamp coverage. Tracked uploads exclude direct Buffer.set. Synthetic fixtures, not full SfM. Native auto is an unvalidated structural heuristic; software auto uses 32 lanes.',
       samples,
       warmup,
       typeshade: pkg.devDependencies.typeshade,
