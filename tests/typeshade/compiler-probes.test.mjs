@@ -37,6 +37,20 @@
 //   (change 0103, typeshade/typeshade#827). The list is still shared by reference, and both CPU
 //   tiers still write the sums, so their REGRESSION signal does not apply.
 //
+// The pin bump from 78a9060f to f149b403 (2026-11-17, Node 22.23.4, the CPU tier) read every probe
+// again. Every probe source that writes an array parameter writes it `@inout`, since a kernel
+// function's array parameter is a value unless it says so (TS8080, TypeShade change 0138,
+// Amendment A15), and every entry takes its built-in values as `gid: builtin<'...'>`, since the
+// decorated `@builtin(...)` form draws the TS8028 warning (change 0111). Compiled at 78a9060f, the
+// four probes below keep their old verdict without `@inout`, so the new verdicts are the
+// compiler's changes, not the qualifier's. Four held verdicts changed:
+// - P18, P20g and S3 (row C9): an integer min or max scatter lowers to a GPU loop on WebGPU, not
+//   WebGL2 (typeshade/typeshade#1045, which closed issue #761). Their signal fired: C9 is closed.
+// - P20d (row C6): a write at out[base + i] lowers to a GPU loop on WebGPU, not WebGL2
+//   (typeshade/typeshade#994, issue #983). Its signal fired: C6 is closed for an injective
+//   offset. The other C6 shapes (P9b, P20c, P30b) keep their verdicts.
+// Each of the four now holds the GPU loop, and its signal is a regression.
+//
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
 // bump, a failure is a signal, not a TypeCV defect. Read the compiler change, then open the
@@ -75,7 +89,7 @@ import { MARK, SOURCES } from './compiler-probes.sources.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 
 /** The typeshade commit whose verdicts the probes hold. */
-const MEASURED_AT = '78a9060f96857710c17902bb95d0d93d2210c08f';
+const MEASURED_AT = 'f149b4039e061b2a925fe33aaaad6da3d7f372c9';
 const AT = `typeshade ${MEASURED_AT.slice(0, 8)}`;
 
 /**
@@ -246,8 +260,6 @@ const C1_CLOSED =
   'C1 closed: a helper may take a storage array, so phase 10 step C1 (one BA module, after R03) may open';
 const C6_CLOSED = (form) =>
   `C6 closed for ${form}: the maps that need it may convert in phase 10 step "C6 and C7" once C7 is closed too (S2)`;
-const C9_CLOSED = (op) =>
-  `C9 closed (typeshade/typeshade#761): an integer ${op} scatter lowers, which no step of section 5 needs by the kernels' source (the KLT maximum is a reduction, S6; the Hough vote a += scatter, P20a)`;
 const REGRESSION = (what) => `a compiler regression: ${what}; report it to TypeShade`;
 
 // The probes of the audit (section 0.1).
@@ -449,8 +461,10 @@ const PROBES = [
     shape: 'best[keys[i]] = min(best[keys[i]], v) on u32',
     source: 'p18',
     fn: 'minScatter',
-    verdict: cpuWarned('R3'),
-    signal: C9_CLOSED('min'),
+    verdict: gpu('webgpu'),
+    signal: REGRESSION(
+      'an integer min scatter no longer lowers (typeshade/typeshade#1045 closed C9, issue #761)',
+    ),
   },
   {
     id: 'P19',
@@ -552,8 +566,10 @@ const PROBES = [
     shape: 'a write at out[base + i]',
     source: 'p20d',
     fn: 'offsetWrite',
-    verdict: cpuWarned('R3'),
-    signal: C6_CLOSED("an injective offset (SIFT's blurOut[outOffset + i] converts as written)"),
+    verdict: gpu('webgpu'),
+    signal: REGRESSION(
+      'a write at out[base + i] no longer lowers (typeshade/typeshade#994, issue #983, closed C6 for an injective offset)',
+    ),
   },
   {
     id: 'P20e',
@@ -605,8 +621,10 @@ const PROBES = [
     shape: 'const k = keys[i]; best[k] = min(best[k], v) on u32',
     source: 'p20g',
     fn: 'minScatter2',
-    verdict: cpuWarned('R3'),
-    signal: C9_CLOSED('min'),
+    verdict: gpu('webgpu'),
+    signal: REGRESSION(
+      'an integer min scatter no longer lowers (typeshade/typeshade#1045 closed C9, issue #761)',
+    ),
   },
   {
     id: 'P30a',
@@ -752,8 +770,10 @@ const S3 = {
   shape: 'const k = keys[i]; best[k] = max(best[k], v) on u32',
   source: 's3',
   fn: 'maxScatter',
-  verdict: cpuWarned('R3'),
-  signal: C9_CLOSED('max'),
+  verdict: gpu('webgpu'),
+  signal: REGRESSION(
+    'an integer max scatter no longer lowers (typeshade/typeshade#1045 closed C9, issue #761)',
+  ),
 };
 probeTest(S3);
 
