@@ -2755,7 +2755,6 @@ class ShadeDevice {
     private readonly shade;
     private readonly diagnosticTracker;
     private readonly active;
-    private readonly activeF32Lengths;
     private readonly workingReclaimers;
     private reclaimingWorking;
     private readonly history;
