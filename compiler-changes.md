@@ -106,11 +106,13 @@ then the pull request that did the work.
   `descriptors`, and `GpuSiftGray` `buffer` and `take()`, are `Buffer<f32>` in place of
   `Resident<Float32Array>`. No name changes. A `Buffer` refuses `set` while a call's values are
   on the device (A11, Q1), so the probes that restore a device-written `Buffer` read it first.
-  Open, and blocking: the library itself overwrites device-written arrays with `write`, which
-  queued after the calls before it. `set` refuses that, so the KLT image cache
-  (`ShadeDevice.writeF32`), the KLT tracker's frame slots and the Dense staging arrays throw on
-  the CPU tier. Reading each array first would add a readback, so no workaround is in this
-  pull request; the owner decides.
+  The library overwrote device-written arrays with `write`, which queued after the calls before
+  it, and `set` refuses that. The owner kept the rule on 2026-11-17 ("staging 재설계"): no
+  `Buffer` is both written by the device and set by the host. The KLT pair cache's reused slot
+  and the KLT tracker's gray frame give the old gray array back and take a new one made with the
+  frame. The Dense depth stage gives `stageF32` back, after `rgbaToGray` wrote it, and takes a
+  new one made with the observation mask or the depth map. Each old array goes back first, so the
+  pool can give it again and the active peak does not grow. No readback and no GPU wait is added.
   The audit host passes its plain-object quartic problems as plain data (A11, Q4). The
   `fuse(fn)` graphs, the legacy `device.fuse` scope and the other milestones of 0138 are not
   migrated: TypeCV still uses `device.fuse()` and `scope`, which the pin keeps. Rule 3.2 of
