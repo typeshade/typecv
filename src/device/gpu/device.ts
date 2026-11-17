@@ -272,7 +272,6 @@ export class ShadeDevice {
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<ScalarBuffer>();
-  private readonly activeF32Lengths = new WeakMap<Buffer<f32>, number>();
   /** Idle caches may yield storage to another job without exceeding the caller's budget. */
   private readonly workingReclaimers = new Set<() => boolean>();
   private reclaimingWorking = false;
@@ -573,7 +572,7 @@ export class ShadeDevice {
       pooledBytes: s.pooledBytes,
       allocations: s.allocations,
       reuses: s.reuses,
-      /** Values given to allocate*()/writeF32() and zeros of a new f64 array. A direct
+      /** Values given to allocate*() and zeros of a new f64 array. A direct
        *  handle.set() bypasses this counter and remains the runtime's uploadBytes. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
@@ -616,18 +615,6 @@ export class ShadeDevice {
   /** @internal */
   allocateU32(length: number, values?: Uint32Array): Buffer<u32> {
     return this.allocateTyped('u32', length, values) as Buffer<u32>;
-  }
-  /** @internal Replace an owned f32 buffer without changing its allocation or hiding uploads. */
-  writeF32(buffer: Buffer<f32>, values: Float32Array): void {
-    if (
-      this.closed ||
-      !this.active.has(buffer) ||
-      !(values instanceof Float32Array) ||
-      this.activeF32Lengths.get(buffer) !== values.length
-    )
-      throw new RangeError('F32 writes require an active owned buffer of the same length');
-    buffer.set(values);
-    this.uploads += values.byteLength;
   }
   /**
    * @internal Register synchronous release of idle cache storage under allocation pressure.
@@ -705,7 +692,6 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as ScalarBuffer;
     this.active.add(result);
-    if (kind === 'f32') this.activeF32Lengths.set(result as Buffer<f32>, length);
     this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;

@@ -113,11 +113,14 @@ then the pull request that did the work.
   frame. The Dense depth stage gives `stageF32` back, after `rgbaToGray` wrote it, and takes a
   new one made with the observation mask or the depth map. Each old array goes back first, so the
   pool can give it again and the active peak does not grow. No readback and no GPU wait is added.
+  The owner accepted this design on 2026-11-17 ("반납 후 새 할당 수용"). If the new array cannot be
+  made, the cache drops the lost slot's gradient and the tracker fails every later call.
+  `ShadeDevice.writeF32` lost its one caller and is removed.
   The audit host passes its plain-object quartic problems as plain data (A11, Q4). The
   `fuse(fn)` graphs, the legacy `device.fuse` scope and the other milestones of 0138 are not
   migrated: TypeCV still uses `device.fuse()` and `scope`, which the pin keeps. Rule 3.2 of
-  `docs/design-rules.md` still names a `Resident`. It is an accepted rule, so its wording waits
-  for the owner.
+  `docs/design-rules.md` names a `Buffer` for an array since #282 (the owner's decision of
+  2026-11-17, "`Buffer`로 용어만 교체").
 - 0108, pull request #283: nothing must change. The host views that the build generates (not
   committed) carry the JSDoc of the shader modules.
 - 0109, pull request #283: nothing must change. The host code imports no class of a shader

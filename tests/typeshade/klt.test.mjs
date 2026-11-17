@@ -460,6 +460,39 @@ test('the RGBA path converts on the device, and the SIFT gray serves as level 0'
   });
 });
 
+test('klt tracker: a gray frame whose new array cannot be made leaves the tracker failed', async () => {
+  // A gray frame takes a new array after the slot gives its old one back (TypeShade change 0138,
+  // Amendment A11, Q1). If that allocation fails, the slot holds no array: every later push and
+  // join throws, and no later frame records into the array that went back.
+  await withDevice(async (device) => {
+    const tracker = await createKltTracker(device, W, H, { options: { capacity: 12 } }),
+      allocate = device.allocate.bind(device),
+      total = kltLayout(W, H, options.levels).total,
+      failure = new Error('injected allocation failure');
+    try {
+      await tracker.push({ gray: renderScene(scene) });
+      await tracker.push({ gray: renderScene(scene, { dx: 1, dy: 0.5 }) });
+      device.allocate = (length, values) => {
+        if (values !== undefined && length === total) throw failure;
+        return allocate(length, values);
+      };
+      await assert.rejects(
+        tracker.push({ gray: renderScene(scene, { dx: 2, dy: 1 }) }),
+        (error) => error === failure,
+      );
+      device.allocate = allocate;
+      const later = (error) =>
+        /lost a frame array to a failed allocation/.test(error.message) && error.cause === failure;
+      await assert.rejects(tracker.push({ rgba: toRgba(renderScene(scene)) }), later);
+      await assert.rejects(tracker.push({ gray: renderScene(scene) }), later);
+      await assert.rejects(tracker.join({ frameId: 0, keypoints: new Float64Array(0) }), later);
+    } finally {
+      device.allocate = allocate;
+      await tracker.dispose();
+    }
+  });
+});
+
 test('klt tracker: an untaken SIFT gray is freed with the result', async () => {
   await withDevice(async (device) => {
     const rgba = toRgba(renderScene(scene)),

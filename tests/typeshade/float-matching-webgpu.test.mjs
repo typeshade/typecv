@@ -138,7 +138,7 @@ test('WebGPU exhaustive float matcher preserves L2 neighbours, tails and strict 
   assert.deepEqual(errors, []);
   assert.deepEqual(result.gpuErrors, []);
   assert.equal(result.liveBuffers, 0);
-  assert.match(result.aliasError, /distinct source and target Resident/);
+  assert.match(result.aliasError, /distinct source and target Buffers/);
   result.rows.forEach((row, i) => {
     const fixture = fixtures[i],
       expected = floatMatchOracle(

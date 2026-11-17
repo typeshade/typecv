@@ -15,7 +15,7 @@ import {
  * Borrowed row-major descriptors. The caller declares public shape metadata,
  * keeps the buffer alive through the returned promise, and uses the same
  * TypeShade runtime/compiler as this ShadeDevice. Opaque storage is never inspected.
- * Source and target must use distinct Resident handles, even for identical data.
+ * Source and target must use distinct Buffers, even for identical data.
  */
 export interface GpuResidentFloatDescriptors {
   readonly descriptors: Buffer<f32>;
@@ -137,7 +137,7 @@ export function matchFloatDescriptorsGpu(
   )
     throw new RangeError('Float descriptor matching exceeds working/storage/dispatch budget');
   if (first.descriptors === second.descriptors)
-    throw new TypeError('Float matching requires distinct source and target Resident buffers');
+    throw new TypeError('Float matching requires distinct source and target Buffers');
   if (!first.count || !second.count)
     return Promise.resolve({
       matches: new Uint32Array(0),
@@ -149,7 +149,7 @@ export function matchFloatDescriptorsGpu(
         residentSnapshotBytes: 0,
       },
     });
-  // Snapshot caller metadata before enqueuing. Resident contents remain borrowed.
+  // Snapshot caller metadata before enqueuing. Buffer contents remain borrowed.
   const left = { ...first },
     right = { ...second };
   // The guide's matrices for the two directions: F maps first-image points to lines in the

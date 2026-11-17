@@ -44,7 +44,7 @@ test('WebGPU globalAssign agrees with the reference: words and descriptor cosine
           ...cases.nearWords(vocabulary, 400, 32),
           ...vocabulary.subarray(0, 50 * 128),
         ]);
-        // Resident descriptors of a real SIFT run on a synthetic texture.
+        // Buffer descriptors of a real SIFT run on a synthetic texture.
         const width = 256,
           height = 192,
           rgba = sift.warped(sift.texture(width, height), width, height, width, height, 1, 0, 0, 0);

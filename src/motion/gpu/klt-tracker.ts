@@ -336,6 +336,16 @@ export async function createKltTracker(
     previous: Slot | undefined,
     lastFrameId = -1,
     disposed = false;
+  // The error of a gray frame's allocation that failed after the slot gave its old array back: the
+  // slot then holds no array, so every later push and join throws.
+  let broken: unknown;
+  const usable = (): void => {
+    if (disposed) throw new Error('The KLT tracker is disposed');
+    if (broken !== undefined)
+      throw new Error('The KLT tracker lost a frame array to a failed allocation', {
+        cause: broken,
+      });
+  };
   let disposal: Promise<void> | undefined;
   const totals = {
     pushes: 0,
@@ -534,9 +544,9 @@ export async function createKltTracker(
   }
 
   async function push(frame: KltFrame, pushOptions: KltPushOptions = {}): Promise<KltStep> {
-    if (disposed) throw new Error('The KLT tracker is disposed');
+    usable();
     return device.enqueue(async () => {
-      if (disposed) throw new Error('The KLT tracker is disposed');
+      usable();
       const index = frames,
         slot = slots[index % 2]!,
         n = table.n;
@@ -568,7 +578,12 @@ export async function createKltTracker(
         // change 0138, Amendment A11, Q1). The old array goes back first, as for a SIFT frame.
         device.recycle(slot.gray);
         owned.delete(slot.gray);
-        slot.gray = device.allocate(layout.total, padded);
+        try {
+          slot.gray = device.allocate(layout.total, padded);
+        } catch (error) {
+          broken = error;
+          throw error;
+        }
         owned.add(slot.gray);
       } else {
         if (frame.rgba.length !== 4 * pixels)
@@ -711,9 +726,9 @@ export async function createKltTracker(
   const MAX_ANCHORS = 8;
 
   async function join(keyframe: KltJoinInput): Promise<KltJoin> {
-    if (disposed) throw new Error('The KLT tracker is disposed');
+    usable();
     return device.enqueue(async () => {
-      if (disposed) throw new Error('The KLT tracker is disposed');
+      usable();
       if (!previous || lastFrameId !== keyframe.frameId)
         throw new RangeError('join() takes the keypoints of the frame of the last push()');
       const started = performance.now(),
