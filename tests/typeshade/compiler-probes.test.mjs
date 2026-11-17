@@ -50,6 +50,10 @@
 //   (typeshade/typeshade#994, issue #983). Its signal fired: C6 is closed for an injective
 //   offset. The other C6 shapes (P9b, P20c, P30b) keep their verdicts.
 // Each of the four now holds the GPU loop, and its signal is a regression.
+// S5 (row C5) is renewed: change 0138 removes `Resident.write(value, { offset })`, and
+// `Buffer.set(data)` takes no offset, so the old shape could not fail. S5 now holds a `Buffer`'s
+// element write, `at(i).set(v)`: it lands at its index outside the window, and is refused from a
+// call that writes the `Buffer` until `read()`. C5 stays open.
 //
 // How to read a failure. The test name gives the probe, the row it serves, the shape and the
 // verdict held. The assertion message adds what changed and what the change means. After a pin
@@ -810,18 +814,43 @@ test(`${S4.id} (${S4.row}) ${S4.shape}: ${S4.held}`, async () => {
 const S5 = {
   id: 'S5',
   row: 'C5',
-  shape: 'Buffer.set(value, { offset }) on the CPU tier',
-  held: 'the set replaces the whole array, and the offset is ignored',
+  shape: 'a partial write into a Buffer, at(i).set(v), on the CPU tier',
+  held: 'it lands at its index while no call has written the Buffer, and is refused with a TypeError from a call that writes the Buffer until read() brings its values back',
   signal:
-    'C5 closed: a partial write lands at its offset, so mvsCopyF32, mvsCopyU32 and their staging buffers could go, in a step that section 5 does not schedule yet (dense, phase 11)',
+    'C5 closed: a partial write lands at its offset after the calls made before it, so mvsCopyF32, mvsCopyU32 and their staging buffers could go, in a step that section 5 does not schedule yet (dense, phase 11)',
 };
+// Renewed at f149b403: `Buffer.set(data)` takes one argument, so the old shape (an offset option)
+// could no longer fail. A `Buffer`'s element view (TypeShade change 0138, Amendment A11, Q1) is
+// the partial write the API has; C5 asks for one that queues after the calls made before it.
 test(`${S5.id} (${S5.row}) ${S5.shape}: ${S5.held}`, async () => {
   const say = says(S5);
-  const { array } = await load("export { array } from 'typeshade/runtime';");
-  const r = array(new Float32Array([1, 2, 3, 4]));
-  r.set(new Float32Array([9]), { offset: 2 });
-  assert.deepEqual(Array.from(await r.read()), [9], say('the set kept part of the old array'));
-  r.dispose();
+  const { face } = await compileProbe('s5');
+  const host = await load(`${face.code}\nexport { array, configure } from 'typeshade/runtime';`);
+  host.configure({ prefer: ['cpu'] });
+  const fresh = host.array(new Float32Array([1, 2, 3, 4]));
+  fresh.at(2).set(9);
+  assert.deepEqual(
+    Array.from(await fresh.read()),
+    [1, 2, 9, 4],
+    say(
+      'an element write outside the window does not land at its index',
+      REGRESSION('a Buffer element write no longer lands at its index'),
+    ),
+  );
+  fresh.dispose();
+  const written = host.array(new Float32Array([1, 2, 3, 4]));
+  host.fill(written, 5);
+  assert.throws(
+    () => written.at(2).set(9),
+    TypeError,
+    say('a partial write after a call that wrote the Buffer is taken now'),
+  );
+  assert.deepEqual(
+    Array.from(await written.read()),
+    [5, 5, 5, 5],
+    say('the call did not write the Buffer'),
+  );
+  written.dispose();
 });
 
 const S6 = {

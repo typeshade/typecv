@@ -346,6 +346,15 @@ export const EMPTY: u32 = 0xffffffff;
 `,
 
   // S6: the KLT maximum (kltEigenMax with kltEigenMaxFinal) as one kernel reduction.
+  // S5: a kernel function that writes every element of an array, to open the window of a Buffer.
+  s5: `"use typeshade";
+export function fill(@inout out: array<f32>, v: f32): void {
+  for (let i: u32 = 0; i < out.length; i++) {
+    out[i] = v;
+  }
+}
+`,
+
   s6: `"use typeshade";
 export function maxReduce(xs: array<f32>): f32 {
   let best: f32 = 0.;
