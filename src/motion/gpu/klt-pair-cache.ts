@@ -9,6 +9,7 @@ import {
   type KltResidentPyramid,
 } from './klt-device.ts';
 import type { KltOptions } from './klt.ts';
+import type { Buffer, f32 } from 'typeshade/runtime';
 
 /** Original image evidence must stay immutable while the cache owns its resident copy. */
 export interface KltCacheFrame {

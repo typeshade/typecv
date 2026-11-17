@@ -339,7 +339,7 @@ export async function createKltTracker(
   // The error of a gray frame's allocation that failed after the slot gave its old array back: the
   // slot then holds no array, so every later push and join throws.
   let broken: unknown;
-  const usable = (): void => {
+  const assertUsable = (): void => {
     if (disposed) throw new Error('The KLT tracker is disposed');
     if (broken !== undefined)
       throw new Error('The KLT tracker lost a frame array to a failed allocation', {
@@ -544,9 +544,9 @@ export async function createKltTracker(
   }
 
   async function push(frame: KltFrame, pushOptions: KltPushOptions = {}): Promise<KltStep> {
-    usable();
+    assertUsable();
     return device.enqueue(async () => {
-      usable();
+      assertUsable();
       const index = frames,
         slot = slots[index % 2]!,
         n = table.n;
@@ -726,9 +726,9 @@ export async function createKltTracker(
   const MAX_ANCHORS = 8;
 
   async function join(keyframe: KltJoinInput): Promise<KltJoin> {
-    usable();
+    assertUsable();
     return device.enqueue(async () => {
-      usable();
+      assertUsable();
       if (!previous || lastFrameId !== keyframe.frameId)
         throw new RangeError('join() takes the keypoints of the frame of the last push()');
       const started = performance.now(),
